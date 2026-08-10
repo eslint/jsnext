@@ -1,0 +1,40 @@
+{
+	"name": "jsscope",
+	"version": "0.0.0",
+	"description": "A fast, ESLint-compatible scope analyzer for JavaScript and TypeScript, built on the jsparse binary AST.",
+	"type": "module",
+	"main": "./dist/jsscope.js",
+	"module": "./dist/jsscope.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/jsscope.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "node scripts/build.js && tsc -p tsconfig.build.json",
+		"pretest": "npm run build --workspace=jsparse",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"typecheck": "npm run build --workspace=jsparse && tsc --noEmit",
+		"bench": "npm run build --workspace=jsparse && npm run build && node benchmarks/benchmark.js",
+		"conformance": "npm run build --workspace=jsparse && npm run build && node scripts/conformance-js.mjs ../../node_modules 5000 && node scripts/conformance-ts.mjs ../../node_modules 5000"
+	},
+	"keywords": [
+		"scope",
+		"scope-analysis",
+		"javascript",
+		"typescript",
+		"eslint",
+		"estree"
+	],
+	"author": "",
+	"license": "Apache-2.0",
+	"dependencies": {
+		"jsparse": "^0.0.0"
+	}
+}

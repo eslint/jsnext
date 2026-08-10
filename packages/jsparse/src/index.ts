@@ -36,6 +36,14 @@ export type { Position, SourceLocation } from "./locations.js";
 export { AstReader, TokenReader } from "./reader.js";
 export * from "./node-kinds.js";
 export * from "./token-kinds.js";
+export * from "./slots.js";
+
+/*
+ * A tool reading the binary buffers directly still has to turn raw identifier
+ * and literal text into values, so the two decoders that do it are part of the
+ * public surface rather than an implementation detail of `toAST()`.
+ */
+export { decodeEscapes, decodeNumber } from "./values.js";
 
 /**
  * The three buffers produced by parsing.

@@ -1,0 +1,11 @@
+[
+	"const a = <div />;",
+	"const a = <Component<Props> value={x} />;",
+	"const a: JSX.Element = <Component />;",
+	"const f = <T,>(a: T) => <div>{a}</div>;",
+	"function App({ value }: Props) { return <div>{value}</div>; }",
+	"const a = <A.B value={c as D} />;",
+	"const a = <>{items.map((item: Item) => <Row key={item.id} />)}</>;",
+	"interface Props { x: number } const C = (p: Props) => <div>{p.x}</div>;",
+	"const a = <this.Component />;"
+]

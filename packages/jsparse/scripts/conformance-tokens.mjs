@@ -17,7 +17,7 @@ function walk(dir, out = [], depth = 0) {
 	return out;
 }
 
-const files = walk("node_modules").slice(0, Number(process.argv[2] ?? 300));
+const files = walk(process.argv[2] ?? "../../node_modules").slice(0, Number(process.argv[3] ?? 300));
 let ok = 0, bad = 0;
 const seen = new Set();
 

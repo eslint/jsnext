@@ -345,7 +345,15 @@ export class Parser extends JsxParser {
 				if (this.awaitStartsUsing()) {
 					this.next();
 
-					return this.parseVariableStatement(DECL_AWAIT_USING);
+					/*
+					 * The `await` has already been consumed, so the
+					 * declaration's own start has to be handed down; the
+					 * current token is the `using` that follows it.
+					 */
+					return this.parseVariableStatement(
+						DECL_AWAIT_USING,
+						start,
+					);
 				}
 
 				break;
@@ -468,8 +476,11 @@ export class Parser extends JsxParser {
 	 * @param declarationKind The packed declaration kind.
 	 * @returns The index of the `VariableDeclaration` node.
 	 */
-	private parseVariableStatement(declarationKind: number): number {
-		const node = this.parseVariableDeclaration(declarationKind);
+	private parseVariableStatement(
+		declarationKind: number,
+		start: number = this.start,
+	): number {
+		const node = this.parseVariableDeclaration(declarationKind, start);
 
 		this.semicolon();
 
@@ -482,8 +493,11 @@ export class Parser extends JsxParser {
 	 * @param declarationKind The packed declaration kind.
 	 * @returns The index of the `VariableDeclaration` node.
 	 */
-	private parseVariableDeclaration(declarationKind: number): number {
-		const node = this.writer.alloc(N_VariableDeclaration, this.start);
+	private parseVariableDeclaration(
+		declarationKind: number,
+		start: number = this.start,
+	): number {
+		const node = this.writer.alloc(N_VariableDeclaration, start);
 		const mark = this.writer.startList();
 
 		this.writer.addFlags(node, declarationKind << DECL_SHIFT);
@@ -663,11 +677,16 @@ export class Parser extends JsxParser {
 
 			this.allowIn = false;
 
+			const declarationStart = this.start;
+
 			if (declarationKind === DECL_AWAIT_USING) {
 				this.next();
 			}
 
-			init = this.parseVariableDeclaration(declarationKind);
+			init = this.parseVariableDeclaration(
+				declarationKind,
+				declarationStart,
+			);
 			this.allowIn = previousAllowIn;
 		} else {
 			const previousAllowIn = this.allowIn;

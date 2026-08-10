@@ -380,11 +380,7 @@ export class AstDecoder {
 			case N_TaggedTemplateExpression:
 				node.tag = this.node(a);
 				node.quasi = this.node(b);
-
-				if (c !== 0) {
-					node.typeArguments = this.node(c);
-				}
-
+				this.addOptional(node, "typeArguments", c);
 				return;
 
 			case N_ExpressionStatement:

@@ -33,7 +33,7 @@ function stable(value) {
 	return out;
 }
 
-const dirs = process.argv[2] ? [process.argv[2]] : ["node_modules"];
+const dirs = [process.argv[2] ?? "../../node_modules"];
 let files = [];
 for (const d of dirs) files = files.concat(walk(d));
 files = files.slice(0, Number(process.argv[3] ?? 400));

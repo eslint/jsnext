@@ -1,0 +1,21 @@
+[
+	"const a = <div />;",
+	"const a = <Component />;",
+	"const a = <Component>{child}</Component>;",
+	"const a = <div>{value}</div>;",
+	"const a = <A.B.C />;",
+	"const a = <this.Component />;",
+	"const a = <div className={cls} onClick={handler} />;",
+	"const a = <div {...props} />;",
+	"const a = <div attr=\"literal\" />;",
+	"const a = <>{one}{two}</>;",
+	"const a = <Outer><Inner value={x} /></Outer>;",
+	"const Component = () => <div>{value}</div>;",
+	"function App() { const x = 1; return <div>{x}</div>; }",
+	"const a = <div>text {value} more</div>;",
+	"const a = <a:b x:y=\"1\" />;",
+	"const a = <foo-bar data-x={value} />;",
+	"const a = <div>{list.map(item => <Item key={item.id} />)}</div>;",
+	"import React from 'react'; const a = <div />;",
+	"const a = <Component>{() => <Nested />}</Component>;"
+]

@@ -1315,11 +1315,23 @@ export abstract class ExpressionParser extends TypeParser {
 		}
 
 		const node = this.writer.alloc(N_NewExpression, start);
+		const callee = this.parseCallOrMemberExpression(true);
 
-		this.writer.set(node, NODE_A, this.parseCallOrMemberExpression(true));
+		/*
+		 * A callee parsed without its call arguments swallows a type argument
+		 * list as an instantiation expression, because `Array<V>` on its own
+		 * is one. Under `new` it is not: the type arguments belong to the
+		 * `new` itself, so the wrapper is unwrapped again here.
+		 */
+		if (this.writer.get(callee, NODE_KIND) === N_TSInstantiationExpression) {
+			this.writer.set(node, NODE_A, this.writer.get(callee, NODE_A));
+			this.writer.set(node, NODE_C, this.writer.get(callee, NODE_B));
+		} else {
+			this.writer.set(node, NODE_A, callee);
 
-		if (this.at(T_LT)) {
-			this.writer.set(node, NODE_C, this.parseTypeArguments());
+			if (this.at(T_LT)) {
+				this.writer.set(node, NODE_C, this.parseTypeArguments());
+			}
 		}
 
 		if (this.at(T_PAREN_OPEN)) {

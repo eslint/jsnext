@@ -1,0 +1,112 @@
+/**
+ * @fileoverview Compares the scope graph against `eslint-scope`.
+ *
+ * `node_modules` holds no `.jsx` files, so the JSX fixtures here are the only
+ * coverage JSX gets outside of a real React codebase. Everything else in this
+ * file is a second, faster check on ground the differential corpus already
+ * walks.
+ */
+
+import { readFileSync } from "node:fs";
+import { analyze as analyzeReference } from "eslint-scope";
+import * as espree from "espree";
+import { describe, expect, it } from "vitest";
+import { parse } from "jsparse";
+import { analyze } from "../src/index.js";
+import {
+	serializeBinary,
+	serializeReference,
+} from "../scripts/serialize.mjs";
+
+/** The fields both implementations fill in. */
+const FLAGS = { index: true, partial: true, typeRefs: false };
+
+/**
+ * Reads a fixture file of source snippets.
+ * @param name The fixture's file name.
+ * @returns The snippets it holds.
+ */
+function fixture(name: string): string[] {
+	return JSON.parse(
+		readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8"),
+	);
+}
+
+/**
+ * Checks one snippet against the reference implementation.
+ *
+ * A snippet that `espree` rejects under one source type — `with` in a module,
+ * say — has nothing to compare against there, so it is reported as skipped
+ * rather than compared. The caller insists that at least one source type
+ * worked, so a fixture cannot quietly stop being checked.
+ * @param code The source text to analyze.
+ * @param sourceType How the program should be interpreted.
+ * @param jsx Whether JSX identifiers count as references.
+ * @returns `true` when the two implementations were actually compared.
+ */
+function compare(
+	code: string,
+	sourceType: "script" | "module",
+	jsx: boolean,
+): boolean {
+	let tree;
+
+	try {
+		tree = espree.parse(code, {
+			ecmaVersion: "latest",
+			sourceType,
+			range: true,
+			ecmaFeatures: { jsx },
+		});
+	} catch {
+		return false;
+	}
+
+	const expected = serializeReference(
+		analyzeReference(tree, { ecmaVersion: 2025, sourceType, jsx }),
+		FLAGS,
+	);
+	const actual = serializeBinary(
+		analyze(parse(code), { sourceType, dialect: "js", jsx }),
+		FLAGS,
+	);
+
+	expect(actual).toEqual(expected);
+
+	return true;
+}
+
+describe("eslint-scope conformance", () => {
+	for (const code of fixture("javascript.json")) {
+		it(`matches eslint-scope for ${JSON.stringify(code)}`, () => {
+			/*
+			 * Both source types are checked, because the choice decides
+			 * whether the top level is strict, whether a module scope exists,
+			 * and where an undeclared assignment lands.
+			 */
+			const asModule = compare(code, "module", false);
+			const asScript = compare(code, "script", false);
+
+			expect(asModule || asScript).toBe(true);
+		});
+	}
+});
+
+describe("eslint-scope conformance for JSX", () => {
+	for (const code of fixture("jsx.json")) {
+		it(`matches eslint-scope for ${JSON.stringify(code)}`, () => {
+			expect(compare(code, "module", true)).toBe(true);
+		});
+	}
+
+	it("creates no reference when JSX support is off", () => {
+		const scopeManager = analyze(parse("const a = <Component />;"), {
+			sourceType: "module",
+			dialect: "js",
+			jsx: false,
+		});
+		const moduleScope = scopeManager.scopes[1];
+
+		expect(moduleScope.through).toHaveLength(0);
+	});
+});

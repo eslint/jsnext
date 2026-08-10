@@ -1,31 +1,23 @@
 {
-	"name": "jsparse",
+	"name": "jsparse-monorepo",
 	"version": "0.0.0",
-	"description": "A fast, ESLint-compatible JavaScript and TypeScript parser.",
+	"description": "A fast, ESLint-compatible parser and scope analyzer for JavaScript and TypeScript.",
 	"type": "module",
-	"main": "./dist/jsparse.js",
-	"module": "./dist/jsparse.js",
-	"types": "./dist/index.d.ts",
-	"exports": {
-		".": {
-			"types": "./dist/index.d.ts",
-			"import": "./dist/jsparse.js"
-		}
-	},
-	"files": [
-		"dist"
+	"private": true,
+	"workspaces": [
+		"packages/*"
 	],
 	"scripts": {
-		"build": "node scripts/build.js && tsc -p tsconfig.build.json",
-		"test": "vitest run",
-		"test:watch": "vitest",
+		"build": "npm run build --workspaces --if-present",
+		"test": "npm run test --workspaces --if-present",
+		"typecheck": "npm run typecheck --workspaces --if-present",
 		"lint": "npm run build && eslint .",
-		"typecheck": "tsc --noEmit",
-		"bench": "npm run build && node benchmarks/benchmark.js",
-		"conformance": "npm run build && node scripts/conformance-js.mjs node_modules 5000 && node scripts/conformance-tokens.mjs 5000 && node scripts/conformance-ts.mjs node_modules 5000"
+		"bench": "npm run bench --workspaces --if-present",
+		"conformance": "npm run conformance --workspaces --if-present"
 	},
 	"keywords": [
 		"parser",
+		"scope",
 		"javascript",
 		"typescript",
 		"eslint",
@@ -38,9 +30,12 @@
 		"@eslint/js": "^10.0.1",
 		"@types/node": "^26.2.0",
 		"@typescript-eslint/parser": "^8.0.0",
+		"@typescript-eslint/scope-manager": "^8.0.0",
+		"@typescript-eslint/types": "^8.0.0",
 		"acorn": "^8.12.0",
 		"esbuild": "^0.24.0",
 		"eslint": "^10.8.1",
+		"eslint-scope": "^9.0.0",
 		"espree": "^10.0.0",
 		"globals": "^17.9.0",
 		"typescript": "^5.6.0",

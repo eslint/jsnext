@@ -1,47 +1,65 @@
-# JSParse
+# jsparse
 
-A fast, ESLint-compatible parser for the latest JavaScript, TypeScript, and JSX
-syntax. TypeScript source, bundled with `esbuild`, tested with `vitest`.
+An npm workspace holding a fast, ESLint-compatible toolchain for the latest
+JavaScript, TypeScript, and JSX syntax. TypeScript source, bundled with
+`esbuild`, tested with `vitest`.
+
+| Package | What it does |
+| ------- | ------------ |
+| `packages/jsparse` | Parser. Source text in, binary AST and token buffers out, ESTree on request. |
+| `packages/jsscope` | Scope analyzer. Runs on `jsparse`'s binary buffers, reproduces `eslint-scope` and `@typescript-eslint/scope-manager`. |
+
+`jsscope` depends on `jsparse`, so **`jsparse` must be built before anything in
+`jsscope` runs**. Its own scripts take care of that; a bare `npx vitest` inside
+`packages/jsscope` will use a stale `dist/` or fail outright.
 
 ## Code Conventions
 
-When writing JavaScript or TypeScript code, follows the conventions in [`docs/javascript.md`](./docs/javascript.md).
+When writing JavaScript or TypeScript code, follow the conventions in
+[`docs/javascript.md`](./docs/javascript.md).
 
 Two things that are easy to miss when matching the surrounding code:
 
 - Source files import each other with `.js` extensions even though they are
   `.ts`. That is required, not a mistake.
-- The existing classes use TypeScript's `private` modifier rather than `#`
-  fields. New code should follow the style guide, but do not churn existing
-  files to match.
+- The existing classes in `packages/jsparse` use TypeScript's `private`
+  modifier rather than `#` fields. New code should follow the style guide, but
+  do not churn existing files to match.
 
 ## Architecture
 
-The architecture of the parser is in [`docs/architecture.md`](./docs/architecture.md).
+Each package has its own technical specification, and both are worth reading
+before changing anything in them:
 
-Read it before changing the tokenizer, the parser, or either binary format. It
-documents the record layouts field by field, the invariants that break subtly
-when violated, and a checklist for adding a node kind.
+- [`packages/jsparse/docs/architecture.md`](./packages/jsparse/docs/architecture.md)
+  documents the tokenizer, the parser, and both binary formats field by field,
+  the invariants that break subtly when violated, and a checklist for adding a
+  node kind.
+- [`packages/jsscope/docs/architecture.md`](./packages/jsscope/docs/architecture.md)
+  documents the walk, resolution, and the rule for reconciling the two scope
+  analyzers it reproduces.
 
 ## Commands
 
+Run from the repository root; every one delegates to the workspaces, and any of
+them takes `--workspace=jsparse` or `--workspace=jsscope` to narrow it.
+
 ```bash
-npm test           # vitest, ~240 tests
+npm test           # vitest, ~460 tests
 npm run typecheck  # tsc --noEmit
 npm run lint       # builds first, then lints this repo with its own parser
-npm run build      # esbuild bundle + .d.ts files
-npm run conformance   # differential test against espree and typescript-eslint
-npm run bench      # performance comparison
+npm run build      # esbuild bundles + .d.ts files
+npm run conformance   # differential tests against every reference implementation
+npm run bench      # performance comparisons
 ```
 
-**`eslint.config.js` imports `./dist/jsparse.js`,** so linting requires a
-build. `npm run lint` does that for you; a bare `npx eslint .` will use a stale
-bundle, or fail outright if `dist/` is missing.
+**`eslint.config.js` imports `./packages/jsparse/dist/jsparse.js`,** so linting
+requires a build. `npm run lint` does that for you; a bare `npx eslint .` will
+use a stale bundle, or fail outright if `dist/` is missing.
 
-The conformance scripts import `dist/` too, and the benchmark prefers it,
-falling back to `src/` only under a TypeScript-aware loader. Plain `node`
-cannot execute the sources directly, because of those `.js` import specifiers.
-Build first.
+The conformance scripts and benchmarks import `dist/` too. Plain `node` cannot
+execute the sources directly, because of those `.js` import specifiers. Build
+first.
 
 ## The rule that decides where code goes
 
@@ -60,31 +78,43 @@ adding a new diagnostic, decide which side of that line it falls on first. A
 check that needs to know the source type or dialect belongs in `validate.ts`,
 even if a reference parser throws for it.
 
+`jsscope` sits alongside phases 2 and 3 rather than after them: it reads the
+same buffers `parse()` produced and needs neither the validation problems nor
+the ESTree tree.
+
 ## Conformance is the real test suite
 
 `npm test` is the fast check. The differential corpus is what actually proves
-correctness: it parses every `.js`/`.jsx` and `.ts`/`.tsx` file in
-`node_modules` and compares the full AST against the reference parser.
+correctness: it runs every `.js`/`.jsx` and `.ts`/`.tsx` file in `node_modules`
+through both packages and compares the result against the implementation each
+one replaces.
 
 ```
-files=1416 ok=1416 mismatch=0 threw=0   # AST vs espree
-ok=1416 bad=0                           # tokens and comments vs espree
-files=1137 ok=1137 mismatch=0 threw=0   # AST vs @typescript-eslint/parser
+files=1424 ok=1424 mismatch=0 threw=0   # jsparse AST vs espree
+ok=1424 bad=0                           # jsparse tokens and comments vs espree
+files=1185 ok=1185 mismatch=0 threw=0   # jsparse AST vs @typescript-eslint/parser
+files=1424 ok=1424 mismatch=0 threw=0   # jsscope vs eslint-scope
+files=1185 ok=1185 mismatch=0 threw=0   # jsscope vs @typescript-eslint/scope-manager
 ```
 
-**Run it after any change to the parser, tokenizer, or decoder.** Zero
-mismatches is the standard; anything else is a regression. Individual scripts
-take a directory and a file cap, which is useful while iterating:
+**Run it after any change to a parser, tokenizer, decoder, or the scope walk.**
+Zero mismatches is the standard; anything else is a regression. Individual
+scripts take a directory and a file cap, which is useful while iterating:
 
 ```bash
-node scripts/conformance-js.mjs node_modules 200
-node scripts/conformance-ts.mjs ../some-project/src 500
+node packages/jsparse/scripts/conformance-js.mjs ../../node_modules 200
+node packages/jsscope/scripts/conformance-ts.mjs ../some-project/src 500
 ```
 
+Note that `node_modules/jsparse` and `node_modules/jsscope` are workspace
+symlinks, so the corpus includes this repository's own source. That is
+deliberate: it is the only TypeScript in reach that uses recent syntax
+heavily.
+
 `node_modules` contains no `.jsx` or `.tsx` files, so JSX has no real-world
-corpus — it is covered only by `tests/fixtures/jsx.json` and `tsx.json`, which
-are checked against both reference parsers. Pointing a conformance script at a
-React codebase is the way to close that gap.
+corpus — it is covered only by the `jsx.json` and `tsx.json` fixtures in each
+package, which are checked against both reference implementations. Pointing a
+conformance script at a React codebase is the way to close that gap.
 
 ## Output contracts
 
@@ -99,12 +129,17 @@ immediately, but knowing them up front saves a debugging cycle:
   them. There is a test pinning this.
 - In `dialect: "js"` mode the TypeScript-only properties are omitted entirely,
   not set to `null`.
+- `jsscope` reproduces `eslint-scope` for JavaScript and JSX and
+  `@typescript-eslint/scope-manager` for TypeScript. **Where the two disagree,
+  `eslint-scope` wins.** The three disagreements that survive as options —
+  `jsxPragma`, `jsxFragmentName`, and the TypeScript standard library — all
+  default to the `eslint-scope` answer.
 
 ## Benchmarking
 
-The numbers move a lot with machine temperature, and `jsparse` is more
-sensitive to it than the allocation-heavy reference parsers, so a hot machine
-does not just add noise — it changes the ratio.
+The numbers move a lot with machine temperature, and both packages are more
+sensitive to it than the allocation-heavy reference implementations, so a hot
+machine does not just add noise — it changes the ratio.
 
 - Each suite already runs in its own child process, so a heap left behind by
   loading TypeScript cannot skew the next one.
@@ -114,14 +149,11 @@ does not just add noise — it changes the ratio.
 - For a before/after on a code change, build both versions and alternate them
   **in one process**. Sequential runs on this machine drift far enough to
   invert a real result.
-- The TypeScript 7 row self-reports as skipped. That is expected:
-  `@typescript-eslint/parser` does not accept TypeScript 7 yet.
+- The TypeScript 7 row in the parser benchmark self-reports as skipped. That is
+  expected: `@typescript-eslint/parser` does not accept TypeScript 7 yet.
 
 ## Notes
 
-- This directory is not a git repository, so there is no history to consult and
-  no way to diff against a previous state. Save a copy before a large
-  refactor.
 - ESLint's `no-undef` and `no-unused-vars` are turned off for `**/*.ts` in
   `eslint.config.js`. They only understand values, so on TypeScript they report
   every type name as undefined. This is the same thing `typescript-eslint`

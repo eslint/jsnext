@@ -31,7 +31,7 @@ function stable(value) {
 	return out;
 }
 
-const files = walk(process.argv[2] ?? "node_modules").slice(0, Number(process.argv[3] ?? 400));
+const files = walk(process.argv[2] ?? "../../node_modules").slice(0, Number(process.argv[3] ?? 400));
 let ok = 0, mismatch = 0, threw = 0;
 const problems = [];
 
