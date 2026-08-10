@@ -8,9 +8,6 @@
  */
 
 import {
-	NODE_A,
-	NODE_B,
-	NF_COMPUTED,
 	SLOT_COUNT,
 	SLOT_LIST,
 	SLOT_NODE,
@@ -28,13 +25,15 @@ import {
 	N_RestElement,
 	N_SpreadElement,
 	N_TSTypeAnnotation,
-	type AstReader,
-} from "jsparse";
+} from "@eslint/jsparse";
+import { SLOT_A, SLOT_B, type AstAccess } from "./ast-access.js";
 
 /**
  * What the walk knows about a name by the time it reaches it.
+ *
+ * @template TNode How one node is represented.
  */
-export interface PatternInfo {
+export interface PatternInfo<TNode> {
 	/** Whether the name is the whole pattern rather than a part of one. */
 	topLevel: boolean;
 
@@ -45,62 +44,67 @@ export interface PatternInfo {
 	 * The `AssignmentPattern` and `AssignmentExpression` nodes enclosing the
 	 * name, which are the defaults that write to it.
 	 */
-	assignments: number[];
+	assignments: TNode[];
 }
 
 /** Called once per name found in a pattern. */
-export type PatternCallback = (pattern: number, info: PatternInfo) => void;
+export type PatternCallback<TNode> = (
+	pattern: TNode,
+	info: PatternInfo<TNode>,
+) => void;
 
 /**
  * Walks a pattern, reporting the names it binds.
+ *
+ * @template TNode How one node is represented.
  */
-export class PatternVisitor {
+export class PatternVisitor<TNode> {
 	/** The expressions inside the pattern that are evaluated, not bound. */
-	readonly rightHandNodes: number[] = [];
+	readonly rightHandNodes: TNode[] = [];
 
-	/** The reader over the AST buffer. */
-	private readonly reader: AstReader;
+	/** How to read the program. */
+	private readonly ast: AstAccess<TNode>;
 
 	/** The node the walk started at. */
-	private readonly rootPattern: number;
+	private readonly rootPattern: TNode;
 
 	/** What to call at every name. */
-	private readonly callback: PatternCallback;
+	private readonly callback: PatternCallback<TNode>;
 
 	/** The defaults currently enclosing the walk. */
-	private readonly assignments: number[] = [];
+	private readonly assignments: TNode[] = [];
 
 	/** The rest elements currently enclosing the walk. */
-	private readonly restElements: number[] = [];
+	private readonly restElements: TNode[] = [];
 
 	/**
 	 * Creates a pattern walk.
-	 * @param reader The reader over the AST buffer.
+	 * @param ast How to read the program.
 	 * @param rootPattern The node the walk starts at.
 	 * @param callback What to call at every name.
 	 */
 	constructor(
-		reader: AstReader,
-		rootPattern: number,
-		callback: PatternCallback,
+		ast: AstAccess<TNode>,
+		rootPattern: TNode,
+		callback: PatternCallback<TNode>,
 	) {
-		this.reader = reader;
+		this.ast = ast;
 		this.rootPattern = rootPattern;
 		this.callback = callback;
 	}
 
 	/**
 	 * Walks a node of a pattern.
-	 * @param node The node index, or `0` for an array hole.
+	 * @param node The node, or `null` for an array hole.
 	 * @returns Nothing.
 	 */
-	visit(node: number): void {
-		if (node === 0) {
+	visit(node: TNode | null): void {
+		if (node === null) {
 			return;
 		}
 
-		const reader = this.reader;
-		const kind = reader.kind(node);
+		const ast = this.ast;
+		const kind = ast.kind(node);
 
 		switch (kind) {
 			case N_Identifier: {
@@ -110,7 +114,7 @@ export class PatternVisitor {
 					topLevel: node === this.rootPattern,
 					rest:
 						last >= 0 &&
-						reader.field(this.restElements[last], NODE_A) === node,
+						ast.child(this.restElements[last], SLOT_A) === node,
 					assignments: this.assignments,
 				});
 
@@ -119,8 +123,8 @@ export class PatternVisitor {
 
 			case N_Property:
 				// A computed key is evaluated; it does not name a binding.
-				if ((reader.flags(node) & NF_COMPUTED) !== 0) {
-					this.rightHandNodes.push(reader.field(node, NODE_A));
+				if (ast.computed(node)) {
+					this.pushRightHand(ast.child(node, SLOT_A));
 				}
 
 				/*
@@ -129,16 +133,15 @@ export class PatternVisitor {
 				 * same identifier as key, and for `{ a = 1 }` at the
 				 * `AssignmentPattern` that wraps it.
 				 */
-				this.visit(reader.field(node, NODE_B));
+				this.visit(ast.child(node, SLOT_B));
 				return;
 
 			case N_ArrayPattern:
 			case N_ArrayExpression: {
-				const elements = reader.field(node, NODE_A);
-				const size = reader.listSize(elements);
+				const size = ast.listSize(node, SLOT_A);
 
 				for (let i = 0; i < size; i++) {
-					this.visit(reader.listItem(elements, i));
+					this.visit(ast.listItem(node, SLOT_A, i));
 				}
 
 				return;
@@ -147,39 +150,38 @@ export class PatternVisitor {
 			case N_AssignmentPattern:
 			case N_AssignmentExpression:
 				this.assignments.push(node);
-				this.visit(reader.field(node, NODE_A));
-				this.rightHandNodes.push(reader.field(node, NODE_B));
+				this.visit(ast.child(node, SLOT_A));
+				this.pushRightHand(ast.child(node, SLOT_B));
 				this.assignments.pop();
 				return;
 
 			case N_RestElement:
 				this.restElements.push(node);
-				this.visit(reader.field(node, NODE_A));
+				this.visit(ast.child(node, SLOT_A));
 				this.restElements.pop();
 				return;
 
 			case N_SpreadElement:
-				this.visit(reader.field(node, NODE_A));
+				this.visit(ast.child(node, SLOT_A));
 				return;
 
 			case N_MemberExpression:
-				if ((reader.flags(node) & NF_COMPUTED) !== 0) {
-					this.rightHandNodes.push(reader.field(node, NODE_B));
+				if (ast.computed(node)) {
+					this.pushRightHand(ast.child(node, SLOT_B));
 				}
 
 				// The object is only read; the write lands on its property.
-				this.rightHandNodes.push(reader.field(node, NODE_A));
+				this.pushRightHand(ast.child(node, SLOT_A));
 				return;
 
 			case N_CallExpression: {
-				const args = reader.field(node, NODE_B);
-				const size = reader.listSize(args);
+				const size = ast.listSize(node, SLOT_B);
 
 				for (let i = 0; i < size; i++) {
-					this.rightHandNodes.push(reader.listItem(args, i));
+					this.pushRightHand(ast.listItem(node, SLOT_B, i));
 				}
 
-				this.visit(reader.field(node, NODE_A));
+				this.visit(ast.child(node, SLOT_A));
 				return;
 			}
 
@@ -194,26 +196,36 @@ export class PatternVisitor {
 	}
 
 	/**
+	 * Records an expression that the pattern evaluates rather than binds.
+	 * @param node The expression, or `null`.
+	 * @returns Nothing.
+	 */
+	private pushRightHand(node: TNode | null): void {
+		if (node !== null) {
+			this.rightHandNodes.push(node);
+		}
+	}
+
+	/**
 	 * Walks every child of a node that the pattern grammar does not name, such
 	 * as the properties of an object pattern.
-	 * @param node The node index.
+	 * @param node The node.
 	 * @param kind The node kind.
 	 * @returns Nothing.
 	 */
-	private visitChildren(node: number, kind: number): void {
+	private visitChildren(node: TNode, kind: number): void {
 		const base = kind * SLOT_COUNT;
 
 		for (let slot = 0; slot < SLOT_COUNT; slot++) {
 			const descriptor = SLOT_TABLE[base + slot];
 
 			if (descriptor === SLOT_NODE) {
-				this.visit(this.reader.field(node, NODE_A + slot));
+				this.visit(this.ast.child(node, slot));
 			} else if (descriptor === SLOT_LIST) {
-				const handle = this.reader.field(node, NODE_A + slot);
-				const size = this.reader.listSize(handle);
+				const size = this.ast.listSize(node, slot);
 
 				for (let i = 0; i < size; i++) {
-					this.visit(this.reader.listItem(handle, i));
+					this.visit(this.ast.listItem(node, slot, i));
 				}
 			}
 		}

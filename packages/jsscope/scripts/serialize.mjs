@@ -12,7 +12,7 @@
  * report a difference that does not exist.
  */
 
-import { NODE_A, NODE_KIND_NAMES } from "jsparse";
+import { NODE_A, NODE_KIND_NAMES } from "@eslint/jsparse";
 
 /**
  * Renders a node as a string that both sides can produce.
@@ -54,7 +54,7 @@ function esKey(node) {
  * @returns The node key, or `null`.
  */
 function binaryKey(reader, node, tsProgramExtent) {
-	if (node === 0) {
+	if (node === null) {
 		return null;
 	}
 
@@ -160,7 +160,11 @@ function serializeScopes(scopes, toKey, flags) {
 		upper: scope.upper ? indexOf.get(scope.upper) : null,
 		variableScope: indexOf.get(scope.variableScope) ?? null,
 		variables: scope.variables
-			.filter(variable => !flags.dropLibVariables || !isLibVariable(variable))
+			.filter(
+				variable =>
+					!flags.dropLibVariables ||
+					!isLibVariable(scope, variable),
+			)
 			.map(variable => ({
 				name: variable.name,
 				identifiers: variable.identifiers.map(toKey),
@@ -173,13 +177,22 @@ function serializeScopes(scopes, toKey, flags) {
 }
 
 /**
- * Reports whether a variable came from a TypeScript `lib` definition rather
+ * Reports whether a variable came from TypeScript's standard library rather
  * than from the source being analyzed.
+ *
+ * `@typescript-eslint/scope-manager` marks its own with a field; a global that
+ * `addGlobals()` supplied to `jsscope` has no marker, but it is equally not
+ * part of the program, and nothing the program declares reaches the global
+ * scope without a definition.
+ * @param scope The scope the variable belongs to.
  * @param variable The variable to test.
- * @returns `true` for a variable the analyzer under test never creates.
+ * @returns `true` for a variable that describes the host, not the program.
  */
-function isLibVariable(variable) {
-	return "eslintImplicitGlobalSetting" in variable;
+function isLibVariable(scope, variable) {
+	return (
+		"eslintImplicitGlobalSetting" in variable ||
+		(scope.type === "global" && variable.defs.length === 0)
+	);
 }
 
 /**

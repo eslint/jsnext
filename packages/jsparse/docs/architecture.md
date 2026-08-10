@@ -566,7 +566,7 @@ the same buffer, and only decodes when the buffer arrived from somewhere else.
 positions from the recorded record size:
 
 ```js
-import { parse, AstReader, N_Identifier } from "jsparse";
+import { parse, AstReader, N_Identifier } from "@eslint/jsparse";
 
 const { ast } = parse("const answer = 42;");
 const reader = new AstReader(ast);

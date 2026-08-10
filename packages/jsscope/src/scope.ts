@@ -12,13 +12,11 @@
  */
 
 import {
-	NODE_A,
-	NODE_B,
-	NODE_C,
 	N_ArrowFunctionExpression,
 	N_BlockStatement,
 	N_Program,
-} from "jsparse";
+} from "@eslint/jsparse";
+import { SLOT_A, SLOT_C, type AstAccess } from "./ast-access.js";
 import type { Definition } from "./definition.js";
 import { implicitGlobalDefinition } from "./definition.js";
 import {
@@ -42,26 +40,28 @@ import { Variable } from "./variable.js";
 /**
  * The names an assignment created in the global scope without declaring them.
  */
-export interface ImplicitGlobals {
+export interface ImplicitGlobals<TNode> {
 	/** The implicit variables, by name. */
-	set: Map<string, Variable>;
+	set: Map<string, Variable<TNode>>;
 
 	/** The implicit variables, in the order they were created. */
-	variables: Variable[];
+	variables: Variable<TNode>[];
 
 	/** The references that never resolved to anything. */
-	left: Reference[];
+	left: Reference<TNode>[];
 }
 
 /**
  * One lexical scope.
+ *
+ * @template TNode How one node is represented.
  */
-export class Scope {
+export class Scope<TNode> {
 	/** Which kind of scope this is. */
 	readonly type: ScopeType;
 
 	/** The variables bound here, by name. */
-	readonly set = new Map<string, Variable>();
+	readonly set = new Map<string, Variable<TNode>>();
 
 	/** The names a `with` statement could redirect. */
 	readonly taints = new Map<string, boolean>();
@@ -73,20 +73,20 @@ export class Scope {
 	 */
 	dynamic: boolean;
 
-	/** The node index of the syntax that opened the scope. */
-	readonly block: number;
+	/** The node of the syntax that opened the scope. */
+	readonly block: TNode;
 
 	/** The references that this scope could not resolve. */
-	through: Reference[] = [];
+	through: Reference<TNode>[] = [];
 
 	/** The variables bound here, in the order they were created. */
-	readonly variables: Variable[] = [];
+	readonly variables: Variable<TNode>[] = [];
 
 	/** Every occurrence written directly in this scope. */
-	readonly references: Reference[] = [];
+	readonly references: Reference<TNode>[] = [];
 
 	/** The nearest enclosing scope that a `var` declaration binds in. */
-	readonly variableScope: Scope;
+	readonly variableScope: Scope<TNode>;
 
 	/** Whether this scope exists only to hold a function expression's name. */
 	functionExpressionScope = false;
@@ -98,43 +98,47 @@ export class Scope {
 	thisFound = false;
 
 	/** The enclosing scope, or `null` for the global scope. */
-	readonly upper: Scope | null;
+	readonly upper: Scope<TNode> | null;
 
 	/** Whether strict mode rules apply here. */
 	isStrict: boolean;
 
 	/** The scopes directly inside this one. */
-	readonly childScopes: Scope[] = [];
+	readonly childScopes: Scope<TNode>[] = [];
 
 	/** The implicit global variables, on the global scope only. */
-	readonly implicit: ImplicitGlobals | null;
+	readonly implicit: ImplicitGlobals<TNode> | null;
 
 	/**
 	 * The references still waiting to be resolved, or `null` once the scope
 	 * has closed.
 	 */
-	left: Reference[] | null = [];
+	left: Reference<TNode>[] | null = [];
 
 	/** The manager that owns this scope. */
-	private readonly scopeManager: ScopeManager;
+	private readonly scopeManager: ScopeManager<TNode>;
+
+	/** How to read the program the scope belongs to. */
+	private readonly ast: AstAccess<TNode>;
 
 	/**
 	 * Creates a scope and registers it with its manager.
 	 * @param scopeManager The manager that owns the scope.
 	 * @param type Which kind of scope this is.
 	 * @param upper The enclosing scope, or `null`.
-	 * @param block The node index of the syntax that opened the scope.
+	 * @param block The node of the syntax that opened the scope.
 	 * @param isMethodDefinition Whether the scope is a method body, which is
 	 *      strict no matter what encloses it.
 	 */
 	constructor(
-		scopeManager: ScopeManager,
+		scopeManager: ScopeManager<TNode>,
 		type: ScopeType,
-		upper: Scope | null,
-		block: number,
+		upper: Scope<TNode> | null,
+		block: TNode,
 		isMethodDefinition: boolean,
 	) {
 		this.scopeManager = scopeManager;
+		this.ast = scopeManager.ast;
 		this.type = type;
 		this.dynamic = type === SCOPE_GLOBAL || type === SCOPE_WITH;
 		this.block = block;
@@ -142,7 +146,7 @@ export class Scope {
 		this.variableScope = isVariableScopeType(type)
 			? this
 			: upper!.variableScope;
-		this.isStrict = isStrictScope(scopeManager, this, block, isMethodDefinition);
+		this.isStrict = isStrictScope(this.ast, this, block, isMethodDefinition);
 		this.implicit =
 			type === SCOPE_GLOBAL
 				? { set: new Map(), variables: [], left: [] }
@@ -164,18 +168,18 @@ export class Scope {
 	 * @param name The name being bound.
 	 * @param set Where to look the name up.
 	 * @param variables Where to append a newly created variable.
-	 * @param identifier The `Identifier` node index, or `0` when the binding
-	 *      has no identifier of its own, as `arguments` does not.
+	 * @param identifier The `Identifier` node, or `null` when the binding has
+	 *      no identifier of its own, as `arguments` does not.
 	 * @param definition The declaration, or `null`.
 	 * @returns The variable the name is bound to.
 	 */
 	defineVariable(
 		name: string,
-		set: Map<string, Variable>,
-		variables: Variable[],
-		identifier: number,
-		definition: Definition | null,
-	): Variable {
+		set: Map<string, Variable<TNode>>,
+		variables: Variable<TNode>[],
+		identifier: TNode | null,
+		definition: Definition<TNode> | null,
+	): Variable<TNode> {
 		let variable = set.get(name);
 
 		if (variable === undefined) {
@@ -190,7 +194,7 @@ export class Scope {
 			this.scopeManager.addDeclaredVariable(variable, definition.parent);
 		}
 
-		if (identifier !== 0) {
+		if (identifier !== null) {
 			variable.identifiers.push(identifier);
 		}
 
@@ -199,15 +203,15 @@ export class Scope {
 
 	/**
 	 * Binds the name an identifier spells.
-	 * @param identifier The `Identifier` node index.
+	 * @param identifier The `Identifier` node.
 	 * @param name The name it spells.
 	 * @param definition The declaration, or `null`.
 	 * @returns Nothing.
 	 */
 	define(
-		identifier: number,
+		identifier: TNode,
 		name: string,
-		definition: Definition | null,
+		definition: Definition<TNode> | null,
 	): void {
 		this.defineVariable(name, this.set, this.variables, identifier, definition);
 	}
@@ -218,8 +222,8 @@ export class Scope {
 	 * @param definition The declaration.
 	 * @returns Nothing.
 	 */
-	defineLiteral(name: string, definition: Definition): void {
-		this.defineVariable(name, this.set, this.variables, 0, definition);
+	defineLiteral(name: string, definition: Definition<TNode>): void {
+		this.defineVariable(name, this.set, this.variables, null, definition);
 	}
 
 	//-------------------------------------------------------------------------
@@ -228,21 +232,21 @@ export class Scope {
 
 	/**
 	 * Records an occurrence of a name used as a value.
-	 * @param identifier The identifier node index.
+	 * @param identifier The identifier node.
 	 * @param name The name it spells.
 	 * @param flag The read/write mode.
-	 * @param writeExpr The expression assigned, for a write, or `0`.
+	 * @param writeExpr The expression assigned, for a write, or `null`.
 	 * @param maybeImplicitGlobal Where an undeclared assignment happened.
 	 * @param partial Whether a write sets only part of the assigned value.
 	 * @param init Whether a write initializes a declaration.
 	 * @returns Nothing.
 	 */
 	referenceValue(
-		identifier: number,
+		identifier: TNode,
 		name: string,
 		flag: number = READ,
-		writeExpr: number = 0,
-		maybeImplicitGlobal: MaybeImplicitGlobal | null = null,
+		writeExpr: TNode | null = null,
+		maybeImplicitGlobal: MaybeImplicitGlobal<TNode> | null = null,
 		partial = false,
 		init = false,
 	): void {
@@ -263,18 +267,18 @@ export class Scope {
 
 	/**
 	 * Records an occurrence of a name used as a type.
-	 * @param identifier The identifier node index.
+	 * @param identifier The identifier node.
 	 * @param name The name it spells.
 	 * @returns Nothing.
 	 */
-	referenceType(identifier: number, name: string): void {
+	referenceType(identifier: TNode, name: string): void {
 		this.addReference(
 			new Reference(
 				identifier,
 				name,
 				this,
 				READ,
-				0,
+				null,
 				null,
 				false,
 				false,
@@ -286,18 +290,18 @@ export class Scope {
 	/**
 	 * Records an occurrence that could name either a value or a type, which is
 	 * what a bare `export { x }` does.
-	 * @param identifier The identifier node index.
+	 * @param identifier The identifier node.
 	 * @param name The name it spells.
 	 * @returns Nothing.
 	 */
-	referenceDualValueType(identifier: number, name: string): void {
+	referenceDualValueType(identifier: TNode, name: string): void {
 		this.addReference(
 			new Reference(
 				identifier,
 				name,
 				this,
 				READ,
-				0,
+				null,
 				null,
 				false,
 				false,
@@ -311,7 +315,7 @@ export class Scope {
 	 * @param reference The reference to record.
 	 * @returns Nothing.
 	 */
-	private addReference(reference: Reference): void {
+	private addReference(reference: Reference<TNode>): void {
 		this.references.push(reference);
 		this.left!.push(reference);
 	}
@@ -324,7 +328,7 @@ export class Scope {
 	 * Resolves everything left over and hands back the enclosing scope.
 	 * @returns The enclosing scope, or `null` after the global scope closes.
 	 */
-	close(): Scope | null {
+	close(): Scope<TNode> | null {
 		if (this.type === SCOPE_GLOBAL) {
 			this.closeGlobal();
 			this.resolveLeft();
@@ -375,7 +379,7 @@ export class Scope {
 				}
 			} else {
 				// Every enclosing scope has to see a name it might not own.
-				let current: Scope | null = this;
+				let current: Scope<TNode> | null = this;
 
 				do {
 					current.through.push(reference);
@@ -427,7 +431,7 @@ export class Scope {
 	 * @param reference The reference to resolve.
 	 * @returns `true` when the reference was resolved here.
 	 */
-	private resolve(reference: Reference): boolean {
+	private resolve(reference: Reference<TNode>): boolean {
 		const variable = this.set.get(reference.name);
 
 		if (variable === undefined) {
@@ -477,31 +481,31 @@ export class Scope {
 	 * @returns `true` when the reference may resolve to the variable.
 	 */
 	private isValidResolution(
-		reference: Reference,
-		variable: Variable,
+		reference: Reference<TNode>,
+		variable: Variable<TNode>,
 	): boolean {
 		if (this.type !== SCOPE_FUNCTION) {
 			return true;
 		}
 
-		const reader = this.scopeManager.reader;
+		const ast = this.ast;
 
 		// With `globalReturn`, the function scope's block is the program.
-		if (reader.kind(this.block) === N_Program) {
+		if (ast.kind(this.block) === N_Program) {
 			return true;
 		}
 
-		const body = reader.field(this.block, NODE_C);
-		const bodyStart = body === 0 ? -1 : reader.start(body);
+		const body = ast.child(this.block, SLOT_C);
+		const bodyStart = body === null ? -1 : ast.start(body);
 
 		if (
 			variable.scope !== this ||
-			reader.start(reference.identifier) >= bodyStart
+			ast.start(reference.identifier) >= bodyStart
 		) {
 			return true;
 		}
 
-		return !variable.defs.every(def => reader.start(def.name) >= bodyStart);
+		return !variable.defs.every(def => ast.start(def.name) >= bodyStart);
 	}
 
 	/**
@@ -509,7 +513,7 @@ export class Scope {
 	 * @param reference The unresolved reference.
 	 * @returns Nothing.
 	 */
-	private delegateToUpperScope(reference: Reference): void {
+	private delegateToUpperScope(reference: Reference<TNode>): void {
 		if (this.upper !== null) {
 			this.upper.left!.push(reference);
 		}
@@ -527,7 +531,7 @@ export class Scope {
 	 * @returns Nothing.
 	 */
 	detectEval(): void {
-		let current: Scope | null = this;
+		let current: Scope<TNode> | null = this;
 
 		this.directCallToEvalScope = true;
 
@@ -572,10 +576,7 @@ export class Scope {
 			return true;
 		}
 
-		if (
-			this.scopeManager.reader.kind(this.block) ===
-			N_ArrowFunctionExpression
-		) {
+		if (this.ast.kind(this.block) === N_ArrowFunctionExpression) {
 			return false;
 		}
 
@@ -605,11 +606,11 @@ export class Scope {
 
 	/**
 	 * Finds the reference this scope recorded for a particular identifier.
-	 * @param identifier The identifier node index.
+	 * @param identifier The identifier node.
 	 * @returns The reference, or `null` when the identifier is not one this
 	 *      scope referenced.
 	 */
-	resolveIdentifier(identifier: number): Reference | null {
+	resolveIdentifier(identifier: TNode): Reference<TNode> | null {
 		for (let i = 0; i < this.references.length; i++) {
 			if (this.references[i].identifier === identifier) {
 				return this.references[i];
@@ -641,16 +642,16 @@ export class Scope {
 
 /**
  * Decides whether a scope runs under strict mode.
- * @param scopeManager The manager that owns the scope.
+ * @param ast How to read the program.
  * @param scope The scope being created.
- * @param block The node index of the syntax that opened it.
+ * @param block The node of the syntax that opened it.
  * @param isMethodDefinition Whether the scope is a method body.
  * @returns `true` when strict mode rules apply.
  */
-function isStrictScope(
-	scopeManager: ScopeManager,
-	scope: Scope,
-	block: number,
+function isStrictScope<TNode>(
+	ast: AstAccess<TNode>,
+	scope: Scope<TNode>,
+	block: TNode,
 	isMethodDefinition: boolean,
 ): boolean {
 	// Strictness is inherited, so an enclosing strict scope settles it.
@@ -666,16 +667,15 @@ function isStrictScope(
 		return false;
 	}
 
-	const reader = scopeManager.reader;
-	let body: number;
+	let body: TNode | null;
 
 	if (scope.type === SCOPE_FUNCTION) {
-		const kind = reader.kind(block);
+		const kind = ast.kind(block);
 
 		if (kind === N_Program) {
 			body = block;
 		} else {
-			body = reader.field(block, NODE_C);
+			body = ast.child(block, SLOT_C);
 
 			/*
 			 * An expression-bodied arrow has no statement list, so it has no
@@ -683,13 +683,13 @@ function isStrictScope(
 			 */
 			if (
 				kind === N_ArrowFunctionExpression &&
-				(body === 0 || reader.kind(body) !== N_BlockStatement)
+				(body === null || ast.kind(body) !== N_BlockStatement)
 			) {
 				return false;
 			}
 		}
 
-		if (body === 0) {
+		if (body === null) {
 			return false;
 		}
 	} else if (scope.type === SCOPE_GLOBAL) {
@@ -698,34 +698,36 @@ function isStrictScope(
 		return false;
 	}
 
-	return hasUseStrictDirective(scopeManager, body);
+	return hasUseStrictDirective(ast, body);
 }
 
 /**
  * Reports whether a statement list opens with a `"use strict"` directive.
- * @param scopeManager The manager holding the reader.
- * @param body The `Program` or `BlockStatement` node index.
+ * @param ast How to read the program.
+ * @param body The `Program` or `BlockStatement` node.
  * @returns `true` when the directive is present in the prologue.
  */
-function hasUseStrictDirective(
-	scopeManager: ScopeManager,
-	body: number,
+function hasUseStrictDirective<TNode>(
+	ast: AstAccess<TNode>,
+	body: TNode,
 ): boolean {
-	const reader = scopeManager.reader;
-	const statements = reader.field(body, NODE_A);
-	const size = reader.listSize(statements);
+	const size = ast.listSize(body, SLOT_A);
 
 	for (let i = 0; i < size; i++) {
-		const statement = reader.listItem(statements, i);
+		const statement = ast.listItem(body, SLOT_A, i);
 
-		// The prologue ends at the first statement that is not a directive.
-		if (reader.field(statement, NODE_B) !== 1) {
+		if (statement === null) {
 			return false;
 		}
 
-		const raw = reader.text(reader.field(statement, NODE_A));
+		const directive = ast.directive(statement);
 
-		if (raw.slice(1, -1) === "use strict") {
+		// The prologue ends at the first statement that is not a directive.
+		if (directive === null) {
+			return false;
+		}
+
+		if (directive === "use strict") {
 			return true;
 		}
 	}

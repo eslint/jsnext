@@ -1,5 +1,5 @@
 {
-	"name": "jsparse",
+	"name": "@eslint/jsparse",
 	"version": "0.0.0",
 	"description": "A fast, ESLint-compatible JavaScript and TypeScript parser.",
 	"type": "module",

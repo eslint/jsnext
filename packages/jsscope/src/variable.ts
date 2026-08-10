@@ -8,22 +8,24 @@ import type { Scope } from "./scope.js";
 
 /**
  * A locally scoped name, together with everywhere it is declared and used.
+ *
+ * @template TNode How one node is represented.
  */
-export class Variable {
+export class Variable<TNode> {
 	/** The name as written in the source. */
 	readonly name: string;
 
-	/** The `Identifier` nodes that declare the name, as node indices. */
-	readonly identifiers: number[] = [];
+	/** The `Identifier` nodes that declare the name. */
+	readonly identifiers: TNode[] = [];
 
 	/** Every occurrence that resolved to this variable. */
-	readonly references: Reference[] = [];
+	readonly references: Reference<TNode>[] = [];
 
 	/** Every declaration of the name. */
-	readonly defs: Definition[] = [];
+	readonly defs: Definition<TNode>[] = [];
 
 	/** The scope the name is bound in. */
-	readonly scope: Scope;
+	readonly scope: Scope<TNode>;
 
 	/** Whether a `with` statement could redirect a reference to this name. */
 	tainted = false;
@@ -42,7 +44,7 @@ export class Variable {
 	 * @param name The name as written in the source.
 	 * @param scope The scope the name is bound in.
 	 */
-	constructor(name: string, scope: Scope) {
+	constructor(name: string, scope: Scope<TNode>) {
 		this.name = name;
 		this.scope = scope;
 	}

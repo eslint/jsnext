@@ -1,18 +1,26 @@
 /**
  * @fileoverview Differential test of `jsscope` against `eslint-scope`.
  *
- * Every JavaScript file in a directory tree is parsed twice — by `espree` for
- * `eslint-scope` and by `jsparse` for `jsscope` — and the two scope graphs are
- * reduced to the same comparable form and checked against each other. A file
- * that `espree` cannot parse is skipped, since there is nothing to compare to.
+ * Every JavaScript file in a directory tree is checked twice over, because
+ * there are two ways in:
+ *
+ * - `analyze()` reads the binary buffers `@eslint/jsparse` produced from the
+ *   same source `espree` was given.
+ * - `analyzeTree()` reads `espree`'s own tree — the very object
+ *   `eslint-scope` was handed, so the two walk identical input and any
+ *   difference is a difference in the analyzers.
+ *
+ * Both results are reduced to the same comparable form and checked against
+ * `eslint-scope`. A file that `espree` cannot parse is skipped, since there is
+ * nothing to compare to.
  */
 
 import { analyze as analyzeReference } from "eslint-scope";
 import * as espree from "espree";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { parse } from "jsparse";
-import { analyze } from "../dist/jsscope.js";
+import { parse } from "@eslint/jsparse";
+import { analyze, analyzeTree } from "../dist/jsscope.js";
 import {
 	firstDifference,
 	serializeBinary,
@@ -67,10 +75,61 @@ const files = walk(process.argv[2] ?? "../../node_modules").slice(
 	Number(process.argv[3] ?? 400),
 );
 
-let ok = 0;
-let mismatch = 0;
-let threw = 0;
+const results = {
+	binary: { ok: 0, mismatch: 0, threw: 0 },
+	tree: { ok: 0, mismatch: 0, threw: 0 },
+};
 const seen = new Set();
+
+/**
+ * Compares one analysis against the reference and records the outcome.
+ * @param label Which entry point produced it.
+ * @param file The file being analyzed.
+ * @param sourceType How the program was interpreted.
+ * @param expected The reference implementation's structure.
+ * @param produce Builds the structure to check.
+ * @returns Nothing.
+ */
+function check(label, file, sourceType, expected, produce) {
+	const tally = results[label];
+	let actual;
+
+	try {
+		actual = produce();
+	} catch (error) {
+		tally.threw++;
+
+		const key = `T${label}${error.message.slice(0, 80)}`;
+
+		if (!seen.has(key)) {
+			seen.add(key);
+			console.log(
+				`THROW [${label}] ${file} [${sourceType}]: ${error.stack
+					.split("\n")
+					.slice(0, 3)
+					.join("\n")}`,
+			);
+		}
+
+		return;
+	}
+
+	const difference = firstDifference(expected, actual);
+
+	if (difference === null) {
+		tally.ok++;
+		return;
+	}
+
+	tally.mismatch++;
+
+	const key = `D${label}${difference.slice(0, 120)}`;
+
+	if (!seen.has(key)) {
+		seen.add(key);
+		console.log(`DIFF [${label}] ${file} [${sourceType}]\n   ${difference}`);
+	}
+}
 
 for (const file of files) {
 	const code = readFileSync(file, "utf8");
@@ -89,8 +148,8 @@ for (const file of files) {
 			continue;
 		}
 
+		const options = { sourceType, dialect: "js", jsx: true };
 		let expected;
-		let actual;
 
 		try {
 			expected = serializeReference(
@@ -101,44 +160,32 @@ for (const file of files) {
 				}),
 				FLAGS,
 			);
-			actual = serializeBinary(
-				analyze(parse(code), {
-					sourceType,
-					dialect: "js",
-					jsx: true,
-				}),
-				FLAGS,
-			);
-		} catch (error) {
-			threw++;
-
-			const key = `T${error.message.slice(0, 80)}`;
-
-			if (!seen.has(key)) {
-				seen.add(key);
-				console.log(`THROW ${file} [${sourceType}]: ${error.stack.split("\n").slice(0, 3).join("\n")}`);
-			}
-
+		} catch {
 			break;
 		}
 
-		const difference = firstDifference(expected, actual);
-
-		if (difference === null) {
-			ok++;
-		} else {
-			mismatch++;
-
-			const key = `D${difference.slice(0, 120)}`;
-
-			if (!seen.has(key)) {
-				seen.add(key);
-				console.log(`DIFF ${file} [${sourceType}]\n   ${difference}`);
-			}
-		}
+		check(
+			"binary",
+			file,
+			sourceType,
+			expected,
+			() => serializeBinary(analyze(parse(code), options), FLAGS),
+		);
+		check(
+			"tree",
+			file,
+			sourceType,
+			expected,
+			() => serializeReference(analyzeTree(tree, options), FLAGS),
+		);
 
 		break;
 	}
 }
 
-console.log(`files=${files.length} ok=${ok} mismatch=${mismatch} threw=${threw}`);
+for (const [label, tally] of Object.entries(results)) {
+	console.log(
+		`${label.padEnd(6)} files=${files.length} ok=${tally.ok} ` +
+			`mismatch=${tally.mismatch} threw=${tally.threw}`,
+	);
+}

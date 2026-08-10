@@ -8,18 +8,18 @@ representation of a program:
 
 | Package | What it does |
 | ------- | ------------ |
-| [`packages/jsparse`](./packages/jsparse) | Parses source text into a binary AST and token stream, validates it, and materializes an ESTree AST on request. Drops into `languageOptions.parser`. |
-| [`packages/jsscope`](./packages/jsscope) | Finds the scopes in a parsed program and resolves every identifier, reproducing `eslint-scope` and `@typescript-eslint/scope-manager`. |
+| [`packages/jsparse`](./packages/jsparse) (`@eslint/jsparse`) | Parses source text into a binary AST and token stream, validates it, and materializes an ESTree AST on request. Drops into `languageOptions.parser`. |
+| [`packages/jsscope`](./packages/jsscope) (`@eslint/jsscope`) | Finds the scopes in a program and resolves every identifier, reproducing `eslint-scope` and `@typescript-eslint/scope-manager`. |
 
 The reason they are one repository is the buffer between them. `jsparse` hands
-back two `ArrayBuffer`s rather than an object tree, and `jsscope` runs its whole
-analysis against those buffers without ever materializing a node. Parsing and
-scope analysis together run about **2.9× faster than `espree` +
+back two `ArrayBuffer`s rather than an object tree, and `jsscope` can run its
+whole analysis against those buffers without ever materializing a node. Parsing
+and scope analysis together run about **2.9× faster than `espree` +
 `eslint-scope`** and **20× faster than the `@typescript-eslint` pair**.
 
 ```js
-import { parse, toAST } from "jsparse";
-import { analyze } from "jsscope";
+import { parse, toAST } from "@eslint/jsparse";
+import { analyze } from "@eslint/jsscope";
 
 const result = parse(`const answer: number = 42; answer;`);
 
@@ -31,6 +31,20 @@ scopeManager.scopes[1].variables[0].references.length; // 2
 // An ESTree AST is built only if something asks for one.
 const { ast, errors } = toAST(result, { sourceType: "module", dialect: "ts" });
 ```
+
+`jsscope` also works on an AST it did not produce, for compatibility with the
+parsers already in use. Same walk, same results, no binary format involved:
+
+```js
+import * as espree from "espree";
+import { analyzeTree } from "@eslint/jsscope";
+
+const tree = espree.parse(code, { ecmaVersion: "latest", range: true });
+const scopeManager = analyzeTree(tree, { dialect: "js" });
+```
+
+The two entry points are tree-shakeable, so a consumer who imports one does not
+ship the other.
 
 Each package has its own README and its own technical specification:
 
@@ -66,12 +80,17 @@ run through both packages and compared against the implementations they
 replace.
 
 ```
-files=1424 ok=1424 mismatch=0 threw=0   # jsparse AST vs espree
-ok=1424 bad=0                           # jsparse tokens and comments vs espree
-files=1185 ok=1185 mismatch=0 threw=0   # jsparse AST vs @typescript-eslint/parser
-files=1424 ok=1424 mismatch=0 threw=0   # jsscope vs eslint-scope
-files=1185 ok=1185 mismatch=0 threw=0   # jsscope vs @typescript-eslint/scope-manager
+files=1431 ok=1431 mismatch=0 threw=0   # jsparse AST vs espree
+ok=1431 bad=0                           # jsparse tokens and comments vs espree
+files=1219 ok=1219 mismatch=0 threw=0   # jsparse AST vs @typescript-eslint/parser
+
+binary files=1431 ok=1431 mismatch=0 threw=0   # jsscope vs eslint-scope
+tree   files=1431 ok=1431 mismatch=0 threw=0
+binary files=1219 ok=1219 mismatch=0 threw=0   # jsscope vs @typescript-eslint/scope-manager
+tree   files=1219 ok=1219 mismatch=0 threw=0
 ```
+
+`jsscope` is checked twice per file, once through each entry point.
 
 Zero mismatches is the standard; anything else is a regression.
 

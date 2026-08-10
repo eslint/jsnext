@@ -3,11 +3,8 @@
  * makes them findable.
  */
 
-import {
-	NODE_KIND_NAMES,
-	N_ArrowFunctionExpression,
-	type AstReader,
-} from "jsparse";
+import { N_ArrowFunctionExpression, type AstReader } from "@eslint/jsparse";
+import type { AstAccess } from "./ast-access.js";
 import type { ResolvedOptions } from "./options.js";
 import {
 	SCOPE_BLOCK,
@@ -36,38 +33,47 @@ import type { Variable } from "./variable.js";
 /**
  * Every scope found in a program, and the maps that make them findable.
  *
- * Nodes are identified by their index in the binary AST rather than by object
- * identity, so the maps are plain `Map`s keyed on integers.
+ * A node is whatever the analysis represents one with — an index into a binary
+ * buffer, or an ESTree object — and both work as `Map` keys, so the two
+ * lookups below are the same code either way.
+ *
+ * @template TNode How one node is represented.
  */
-export class ScopeManager {
+export class ScopeManager<TNode> {
 	/** Every scope, in the order they were created. */
-	readonly scopes: Scope[] = [];
+	readonly scopes: Scope<TNode>[] = [];
 
 	/** The outermost scope. */
-	globalScope: Scope | null = null;
+	globalScope: Scope<TNode> | null = null;
 
 	/** The scope being filled in right now, or `null` once analysis ends. */
-	currentScope: Scope | null = null;
+	currentScope: Scope<TNode> | null = null;
 
-	/** The reader over the AST the scopes describe. */
-	readonly reader: AstReader;
+	/** How to read the program the scopes describe. */
+	readonly ast: AstAccess<TNode>;
+
+	/**
+	 * The reader over the binary buffer, when the analysis ran on one.
+	 * `analyzeTree()` leaves this `null`, since there is no buffer to read.
+	 */
+	reader: AstReader | null = null;
 
 	/** The options the analysis ran with. */
 	readonly options: ResolvedOptions;
 
-	/** Every scope a node opened, by node index. */
-	private readonly nodeToScope = new Map<number, Scope[]>();
+	/** Every scope a node opened. */
+	private readonly nodeToScope = new Map<TNode, Scope<TNode>[]>();
 
-	/** Every variable a node declares, by node index. */
-	private readonly declaredVariables = new Map<number, Variable[]>();
+	/** Every variable a node declares. */
+	private readonly declaredVariables = new Map<TNode, Variable<TNode>[]>();
 
 	/**
 	 * Creates an empty manager.
-	 * @param reader The reader over the AST to analyze.
+	 * @param ast How to read the program to analyze.
 	 * @param options The options the analysis runs with.
 	 */
-	constructor(reader: AstReader, options: ResolvedOptions) {
-		this.reader = reader;
+	constructor(ast: AstAccess<TNode>, options: ResolvedOptions) {
+		this.ast = ast;
 		this.options = options;
 	}
 
@@ -80,7 +86,7 @@ export class ScopeManager {
 	 * @param scope The scope to file.
 	 * @returns Nothing.
 	 */
-	register(scope: Scope): void {
+	register(scope: Scope<TNode>): void {
 		this.scopes.push(scope);
 
 		const existing = this.nodeToScope.get(scope.block);
@@ -95,11 +101,11 @@ export class ScopeManager {
 	/**
 	 * Records that a node declares a variable.
 	 * @param variable The variable being declared.
-	 * @param node The declaring node index, or `0` for no node.
+	 * @param node The declaring node, or `null` for no node.
 	 * @returns Nothing.
 	 */
-	addDeclaredVariable(variable: Variable, node: number): void {
-		if (node === 0) {
+	addDeclaredVariable(variable: Variable<TNode>, node: TNode | null): void {
+		if (node === null) {
 			return;
 		}
 
@@ -149,10 +155,10 @@ export class ScopeManager {
 
 	/**
 	 * The variables a node declares.
-	 * @param node The node index.
+	 * @param node The node.
 	 * @returns The variables, or an empty array when the node declares none.
 	 */
-	getDeclaredVariables(node: number): Variable[] {
+	getDeclaredVariables(node: TNode): Variable<TNode>[] {
 		return this.declaredVariables.get(node) ?? [];
 	}
 
@@ -163,12 +169,12 @@ export class ScopeManager {
 	 * in a module, the module scope as well — so this picks the one a caller
 	 * almost always means, skipping the scope that exists only to hold a
 	 * function expression's name.
-	 * @param node The node index.
+	 * @param node The node.
 	 * @param inner Whether to prefer the innermost scope rather than the
 	 *      outermost.
 	 * @returns The scope, or `null` when the node opened none.
 	 */
-	acquire(node: number, inner = false): Scope | null {
+	acquire(node: TNode, inner = false): Scope<TNode> | null {
 		const scopes = this.nodeToScope.get(node);
 
 		if (scopes === undefined || scopes.length === 0) {
@@ -200,21 +206,21 @@ export class ScopeManager {
 
 	/**
 	 * Every scope a node opened.
-	 * @param node The node index.
+	 * @param node The node.
 	 * @returns The scopes, or `undefined` when the node opened none.
 	 */
-	acquireAll(node: number): Scope[] | undefined {
+	acquireAll(node: TNode): Scope<TNode>[] | undefined {
 		return this.nodeToScope.get(node);
 	}
 
 	/**
 	 * The scope enclosing the one a node opened.
-	 * @param node The node index.
+	 * @param node The node.
 	 * @param inner Whether to prefer the innermost scope of the enclosing
 	 *      node.
 	 * @returns The enclosing scope, or `null` when there is none.
 	 */
-	release(node: number, inner = false): Scope | null {
+	release(node: TNode, inner = false): Scope<TNode> | null {
 		const scopes = this.nodeToScope.get(node);
 
 		if (scopes === undefined || scopes.length === 0) {
@@ -246,7 +252,7 @@ export class ScopeManager {
 				name,
 				globalScope.set,
 				globalScope.variables,
-				0,
+				null,
 				null,
 			);
 			globalScope.implicit!.set.delete(name);
@@ -277,21 +283,21 @@ export class ScopeManager {
 	}
 
 	/**
-	 * The ESTree type name of a node, for callers holding an index.
-	 * @param node The node index.
-	 * @returns The `type` string the node would decode to.
+	 * The ESTree type name of a node, for a caller holding an opaque node.
+	 * @param node The node.
+	 * @returns Its `type` string.
 	 */
-	nodeType(node: number): string {
-		return NODE_KIND_NAMES[this.reader.kind(node)];
+	nodeType(node: TNode): string {
+		return this.ast.typeName(node);
 	}
 
 	/**
-	 * The source extent of a node, for callers holding an index.
-	 * @param node The node index.
+	 * The source extent of a node, for a caller holding an opaque node.
+	 * @param node The node.
 	 * @returns The start and end offsets.
 	 */
-	nodeRange(node: number): [number, number] {
-		return [this.reader.start(node), this.reader.end(node)];
+	nodeRange(node: TNode): [number, number] {
+		return [this.ast.start(node), this.ast.end(node)];
 	}
 
 	//-------------------------------------------------------------------------
@@ -301,15 +307,15 @@ export class ScopeManager {
 	/**
 	 * Opens a scope inside the current one and makes it current.
 	 * @param type The kind of scope to open.
-	 * @param block The node index of the syntax opening it.
+	 * @param block The node of the syntax opening it.
 	 * @param isMethodDefinition Whether the scope is a method body.
 	 * @returns The new scope.
 	 */
 	private nest(
 		type: ScopeType,
-		block: number,
+		block: TNode,
 		isMethodDefinition = false,
-	): Scope {
+	): Scope<TNode> {
 		const scope = new Scope(
 			this,
 			type,
@@ -325,10 +331,10 @@ export class ScopeManager {
 
 	/**
 	 * Opens the global scope.
-	 * @param block The `Program` node index.
+	 * @param block The `Program` node.
 	 * @returns The global scope.
 	 */
-	nestGlobalScope(block: number): Scope {
+	nestGlobalScope(block: TNode): Scope<TNode> {
 		const scope = this.nest(SCOPE_GLOBAL, block);
 
 		this.globalScope = scope;
@@ -338,20 +344,20 @@ export class ScopeManager {
 
 	/**
 	 * Opens a module scope.
-	 * @param block The `Program` node index.
+	 * @param block The `Program` node.
 	 * @returns The new scope.
 	 */
-	nestModuleScope(block: number): Scope {
+	nestModuleScope(block: TNode): Scope<TNode> {
 		return this.nest(SCOPE_MODULE, block);
 	}
 
 	/**
 	 * Opens a function scope.
-	 * @param block The function node index.
+	 * @param block The function node.
 	 * @param isMethodDefinition Whether the function is a method body.
 	 * @returns The new scope.
 	 */
-	nestFunctionScope(block: number, isMethodDefinition: boolean): Scope {
+	nestFunctionScope(block: TNode, isMethodDefinition: boolean): Scope<TNode> {
 		const scope = this.nest(SCOPE_FUNCTION, block, isMethodDefinition);
 
 		/*
@@ -359,12 +365,12 @@ export class ScopeManager {
 		 * has no `arguments` object of its own, so a mention of the name in
 		 * one belongs to the enclosing function.
 		 */
-		if (this.reader.kind(block) !== N_ArrowFunctionExpression) {
+		if (this.ast.kind(block) !== N_ArrowFunctionExpression) {
 			scope.defineVariable(
 				"arguments",
 				scope.set,
 				scope.variables,
-				0,
+				null,
 				null,
 			);
 			scope.taints.set("arguments", true);
@@ -375,10 +381,10 @@ export class ScopeManager {
 
 	/**
 	 * Opens the scope that holds a named function expression's own name.
-	 * @param block The `FunctionExpression` node index.
+	 * @param block The `FunctionExpression` node.
 	 * @returns The new scope.
 	 */
-	nestFunctionExpressionNameScope(block: number): Scope {
+	nestFunctionExpressionNameScope(block: TNode): Scope<TNode> {
 		const scope = this.nest(SCOPE_FUNCTION_EXPRESSION_NAME, block);
 
 		scope.functionExpressionScope = true;
@@ -388,127 +394,127 @@ export class ScopeManager {
 
 	/**
 	 * Opens a block scope.
-	 * @param block The `BlockStatement` node index.
+	 * @param block The `BlockStatement` node.
 	 * @returns The new scope.
 	 */
-	nestBlockScope(block: number): Scope {
+	nestBlockScope(block: TNode): Scope<TNode> {
 		return this.nest(SCOPE_BLOCK, block);
 	}
 
 	/**
 	 * Opens a `switch` scope.
-	 * @param block The `SwitchStatement` node index.
+	 * @param block The `SwitchStatement` node.
 	 * @returns The new scope.
 	 */
-	nestSwitchScope(block: number): Scope {
+	nestSwitchScope(block: TNode): Scope<TNode> {
 		return this.nest(SCOPE_SWITCH, block);
 	}
 
 	/**
 	 * Opens a `catch` scope.
-	 * @param block The `CatchClause` node index.
+	 * @param block The `CatchClause` node.
 	 * @returns The new scope.
 	 */
-	nestCatchScope(block: number): Scope {
+	nestCatchScope(block: TNode): Scope<TNode> {
 		return this.nest(SCOPE_CATCH, block);
 	}
 
 	/**
 	 * Opens a `with` scope.
-	 * @param block The `WithStatement` node index.
+	 * @param block The `WithStatement` node.
 	 * @returns The new scope.
 	 */
-	nestWithScope(block: number): Scope {
+	nestWithScope(block: TNode): Scope<TNode> {
 		return this.nest(SCOPE_WITH, block);
 	}
 
 	/**
 	 * Opens the scope of a `for` statement's own bindings.
-	 * @param block The loop node index.
+	 * @param block The loop node.
 	 * @returns The new scope.
 	 */
-	nestForScope(block: number): Scope {
+	nestForScope(block: TNode): Scope<TNode> {
 		return this.nest(SCOPE_FOR, block);
 	}
 
 	/**
 	 * Opens a class scope.
-	 * @param block The class node index.
+	 * @param block The class node.
 	 * @returns The new scope.
 	 */
-	nestClassScope(block: number): Scope {
+	nestClassScope(block: TNode): Scope<TNode> {
 		return this.nest(SCOPE_CLASS, block);
 	}
 
 	/**
 	 * Opens the scope a class field initializer runs in.
-	 * @param block The initializer expression node index.
+	 * @param block The initializer expression node.
 	 * @returns The new scope.
 	 */
-	nestClassFieldInitializerScope(block: number): Scope {
+	nestClassFieldInitializerScope(block: TNode): Scope<TNode> {
 		return this.nest(SCOPE_CLASS_FIELD_INITIALIZER, block, true);
 	}
 
 	/**
 	 * Opens the scope of a `static` block.
-	 * @param block The `StaticBlock` node index.
+	 * @param block The `StaticBlock` node.
 	 * @returns The new scope.
 	 */
-	nestClassStaticBlockScope(block: number): Scope {
+	nestClassStaticBlockScope(block: TNode): Scope<TNode> {
 		return this.nest(SCOPE_CLASS_STATIC_BLOCK, block, true);
 	}
 
 	/**
 	 * Opens the scope holding a type alias or interface's type parameters.
-	 * @param block The declaration node index.
+	 * @param block The declaration node.
 	 * @returns The new scope.
 	 */
-	nestTypeScope(block: number): Scope {
+	nestTypeScope(block: TNode): Scope<TNode> {
 		return this.nest(SCOPE_TYPE, block);
 	}
 
 	/**
 	 * Opens the scope of a function type's parameters.
-	 * @param block The function type node index.
+	 * @param block The function type node.
 	 * @returns The new scope.
 	 */
-	nestFunctionTypeScope(block: number): Scope {
+	nestFunctionTypeScope(block: TNode): Scope<TNode> {
 		return this.nest(SCOPE_FUNCTION_TYPE, block);
 	}
 
 	/**
 	 * Opens the scope a conditional type's `infer` names belong to.
-	 * @param block The `TSConditionalType` node index.
+	 * @param block The `TSConditionalType` node.
 	 * @returns The new scope.
 	 */
-	nestConditionalTypeScope(block: number): Scope {
+	nestConditionalTypeScope(block: TNode): Scope<TNode> {
 		return this.nest(SCOPE_CONDITIONAL_TYPE, block);
 	}
 
 	/**
 	 * Opens the scope of a mapped type's key.
-	 * @param block The `TSMappedType` node index.
+	 * @param block The `TSMappedType` node.
 	 * @returns The new scope.
 	 */
-	nestMappedTypeScope(block: number): Scope {
+	nestMappedTypeScope(block: TNode): Scope<TNode> {
 		return this.nest(SCOPE_MAPPED_TYPE, block);
 	}
 
 	/**
 	 * Opens the scope of an enum's members.
-	 * @param block The `TSEnumDeclaration` node index.
+	 * @param block The `TSEnumDeclaration` node.
 	 * @returns The new scope.
 	 */
-	nestTSEnumScope(block: number): Scope {
+	nestTSEnumScope(block: TNode): Scope<TNode> {
 		return this.nest(SCOPE_TS_ENUM, block);
 	}
 
 	/**
 	 * Opens the scope of a namespace or module body.
-	 * @param block The `TSModuleDeclaration` node index.
+	 * @param block The `TSModuleDeclaration` node.
 	 * @returns The new scope.
 	 */
-	nestTSModuleScope(block: number): Scope {
+	nestTSModuleScope(block: TNode): Scope<TNode> {
 		return this.nest(SCOPE_TS_MODULE, block);
 	}
 }

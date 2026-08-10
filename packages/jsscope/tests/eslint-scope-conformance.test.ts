@@ -1,6 +1,10 @@
 /**
  * @fileoverview Compares the scope graph against `eslint-scope`.
  *
+ * Both entry points are checked against the same `eslint-scope` result: the
+ * binary one over buffers `@eslint/jsparse` produced from the same source, and
+ * the tree one over the very `espree` tree `eslint-scope` was handed.
+ *
  * `node_modules` holds no `.jsx` files, so the JSX fixtures here are the only
  * coverage JSX gets outside of a real React codebase. Everything else in this
  * file is a second, faster check on ground the differential corpus already
@@ -11,8 +15,8 @@ import { readFileSync } from "node:fs";
 import { analyze as analyzeReference } from "eslint-scope";
 import * as espree from "espree";
 import { describe, expect, it } from "vitest";
-import { parse } from "jsparse";
-import { analyze } from "../src/index.js";
+import { parse } from "@eslint/jsparse";
+import { analyze, analyzeTree } from "../src/index.js";
 import {
 	serializeBinary,
 	serializeReference,
@@ -62,16 +66,18 @@ function compare(
 		return false;
 	}
 
+	const options = { sourceType, dialect: "js" as const, jsx };
 	const expected = serializeReference(
 		analyzeReference(tree, { ecmaVersion: 2025, sourceType, jsx }),
 		FLAGS,
 	);
-	const actual = serializeBinary(
-		analyze(parse(code), { sourceType, dialect: "js", jsx }),
-		FLAGS,
-	);
 
-	expect(actual).toEqual(expected);
+	expect(serializeBinary(analyze(parse(code), options), FLAGS)).toEqual(
+		expected,
+	);
+	expect(serializeReference(analyzeTree(tree, options), FLAGS)).toEqual(
+		expected,
+	);
 
 	return true;
 }

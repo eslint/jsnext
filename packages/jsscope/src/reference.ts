@@ -12,29 +12,31 @@ import type { Variable } from "./variable.js";
  * The global scope collects these while closing and turns the ones that no
  * declaration covers into implicit global variables.
  */
-export interface MaybeImplicitGlobal {
+export interface MaybeImplicitGlobal<TNode> {
 	/** The `Identifier` node being assigned to. */
-	pattern: number;
+	pattern: TNode;
 
 	/** The assignment or `for` statement that assigns it. */
-	node: number;
+	node: TNode;
 }
 
 /**
  * One occurrence of an identifier, and the variable it turned out to mean.
+ *
+ * @template TNode How one node is represented.
  */
-export class Reference {
-	/** The `Identifier` or `JSXIdentifier` node index. */
-	readonly identifier: number;
+export class Reference<TNode> {
+	/** The `Identifier` or `JSXIdentifier` node. */
+	readonly identifier: TNode;
 
 	/** The name the identifier spells, with escapes already resolved. */
 	readonly name: string;
 
 	/** The scope the occurrence was written in. */
-	readonly from: Scope;
+	readonly from: Scope<TNode>;
 
 	/** The variable the occurrence resolved to, or `null` if none did. */
-	resolved: Variable | null = null;
+	resolved: Variable<TNode> | null = null;
 
 	/**
 	 * Whether a `with` statement could redirect this reference at runtime, so
@@ -42,8 +44,8 @@ export class Reference {
 	 */
 	tainted = false;
 
-	/** The expression assigned, for a write, or `0`. */
-	readonly writeExpr: number;
+	/** The expression assigned, for a write, or `null`. */
+	readonly writeExpr: TNode | null;
 
 	/** Whether a write is the initialization of a declaration. */
 	readonly init: boolean;
@@ -58,7 +60,7 @@ export class Reference {
 	readonly partial: boolean;
 
 	/** Where an undeclared assignment happened, or `null`. */
-	readonly maybeImplicitGlobal: MaybeImplicitGlobal | null;
+	readonly maybeImplicitGlobal: MaybeImplicitGlobal<TNode> | null;
 
 	/** The read/write mode, one of `READ`, `WRITE`, or `READ_WRITE`. */
 	private readonly flag: number;
@@ -68,23 +70,23 @@ export class Reference {
 
 	/**
 	 * Creates a reference.
-	 * @param identifier The identifier node index.
+	 * @param identifier The identifier node.
 	 * @param name The name the identifier spells.
 	 * @param from The scope the occurrence was written in.
 	 * @param flag The read/write mode.
-	 * @param writeExpr The expression assigned, for a write, or `0`.
+	 * @param writeExpr The expression assigned, for a write, or `null`.
 	 * @param maybeImplicitGlobal Where an undeclared assignment happened.
 	 * @param partial Whether a write sets only part of the assigned value.
 	 * @param init Whether a write initializes a declaration.
 	 * @param referenceType Whether the name is a value, a type, or both.
 	 */
 	constructor(
-		identifier: number,
+		identifier: TNode,
 		name: string,
-		from: Scope,
+		from: Scope<TNode>,
 		flag: number,
-		writeExpr: number,
-		maybeImplicitGlobal: MaybeImplicitGlobal | null,
+		writeExpr: TNode | null,
+		maybeImplicitGlobal: MaybeImplicitGlobal<TNode> | null,
 		partial: boolean,
 		init: boolean,
 		referenceType: number,

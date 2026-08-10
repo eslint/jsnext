@@ -1,4 +1,4 @@
-# jsparse
+# @eslint/jsparse
 
 A fast, ESLint-compatible parser for the latest JavaScript, TypeScript, and JSX
 syntax.
@@ -28,13 +28,13 @@ TypeScript, and JSX syntax, always.
 ## Install
 
 ```bash
-npm install jsparse
+npm install @eslint/jsparse
 ```
 
 ## Usage
 
 ```js
-import { parse, validate, toAST } from "jsparse";
+import { parse, validate, toAST } from "@eslint/jsparse";
 
 const code = `const greeting: string = "hello";`;
 
@@ -69,7 +69,7 @@ The error carries `index` (0-based offset), `lineNumber`, and `column` (both
 1-based), and its message ends with `(line:column)`.
 
 ```js
-import { parse, ParseError } from "jsparse";
+import { parse, ParseError } from "@eslint/jsparse";
 
 try {
 	parse("var a = ;");
@@ -121,7 +121,7 @@ and you are done — there are no low-level calls to make.
 
 ```js
 // eslint.config.js
-import { eslintParser } from "jsparse";
+import { eslintParser } from "@eslint/jsparse";
 
 export default [
 	{
@@ -259,7 +259,7 @@ sentinel, so a slot holding `0` always decodes to `null`.
 ### Reading the buffers directly
 
 ```js
-import { parse, AstReader, TokenReader, N_Identifier } from "jsparse";
+import { parse, AstReader, TokenReader, N_Identifier } from "@eslint/jsparse";
 
 const { ast } = parse("const answer = 42;");
 const reader = new AstReader(ast);

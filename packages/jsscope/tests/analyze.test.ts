@@ -4,9 +4,16 @@
  * implementation.
  */
 
+import * as espree from "espree";
 import { describe, expect, it } from "vitest";
-import { parse } from "jsparse";
-import { analyze, type Scope, type ScopeManager } from "../src/index.js";
+import { parse, toAST } from "@eslint/jsparse";
+import {
+	analyze,
+	analyzeTree,
+	type EsTreeNode,
+	type Scope,
+	type ScopeManager,
+} from "../src/index.js";
 
 /**
  * Analyzes source text.
@@ -384,5 +391,150 @@ describe("jsx", () => {
 		expect(scopeManager.scopes[1].set.get("Frag")!.references).toHaveLength(
 			1,
 		);
+	});
+});
+
+describe("analyzeTree", () => {
+	/**
+	 * Analyzes source text through `espree` rather than the binary format.
+	 * @param code The source text.
+	 * @param options How the program should be interpreted.
+	 * @returns The tree that was analyzed and the scope graph.
+	 */
+	function fromEspree(
+		code: string,
+		options: Parameters<typeof analyzeTree>[1] = {},
+	): { tree: EsTreeNode; scopeManager: ScopeManager<EsTreeNode> } {
+		const tree = espree.parse(code, {
+			ecmaVersion: "latest",
+			sourceType: "module",
+			range: true,
+			ecmaFeatures: { jsx: true },
+		}) as unknown as EsTreeNode;
+
+		return {
+			tree,
+			scopeManager: analyzeTree(tree, {
+				sourceType: "module",
+				dialect: "js",
+				...options,
+			}),
+		};
+	}
+
+	it("finds the same scopes an espree tree describes", () => {
+		const { scopeManager } = fromEspree(
+			"const a = 1; function f(b) { return a + b; }",
+		);
+
+		expect(scopeManager.scopes.map(scope => scope.type)).toEqual([
+			"global",
+			"module",
+			"function",
+		]);
+		expect(names(scopeManager.scopes[1])).toEqual(["a", "f"]);
+		expect(names(scopeManager.scopes[2])).toEqual(["arguments", "b"]);
+	});
+
+	it("hands back the caller's own node objects", () => {
+		const code = "const a = 1; a;";
+		const { tree, scopeManager } = fromEspree(code);
+		const declaration = (tree.body as EsTreeNode[])[0];
+		const declarator = (declaration.declarations as EsTreeNode[])[0];
+		const moduleScope = scopeManager.scopes[1];
+		const [variable] = moduleScope.variables;
+
+		expect(scopeManager.globalScope!.block).toBe(tree);
+		expect(variable.identifiers[0]).toBe(declarator.id);
+		expect(variable.defs[0].node).toBe(declarator);
+		expect(variable.defs[0].parent).toBe(declaration);
+		expect(moduleScope.references[1].identifier).toBe(
+			((tree.body as EsTreeNode[])[1].expression as EsTreeNode),
+		);
+	});
+
+	it("reads a node's extent from range or from start and end", () => {
+		const withRange = espree.parse("function f(a = x) { const x = 1; }", {
+			ecmaVersion: "latest",
+			sourceType: "module",
+			range: true,
+		}) as unknown as EsTreeNode;
+		const withoutRange = espree.parse(
+			"function f(a = x) { const x = 1; }",
+			{ ecmaVersion: "latest", sourceType: "module" },
+		) as unknown as EsTreeNode;
+
+		/*
+		 * Resolving a default parameter compares offsets, so a tree that
+		 * reports them only as `start` and `end` has to work too.
+		 */
+		for (const tree of [withRange, withoutRange]) {
+			const scopeManager = analyzeTree(tree, {
+				sourceType: "module",
+				dialect: "js",
+			});
+			const functionScope = scopeManager.scopes[2];
+			const read = functionScope.references.find(
+				reference => reference.name === "x" && reference.isRead(),
+			)!;
+
+			expect(read.resolved).toBe(null);
+			expect(functionScope.set.get("x")!.references).toHaveLength(1);
+		}
+	});
+
+	it("agrees with the binary path on the same program", () => {
+		const code =
+			"import a from 'm'; export const b = a; class C extends a { m() { return b; } }";
+		const result = parse(code);
+		const binary = analyze(result, {
+			sourceType: "module",
+			dialect: "ts",
+		});
+		const tree = analyzeTree(
+			toAST(result, { sourceType: "module", dialect: "ts" })
+				.ast as unknown as EsTreeNode,
+			{ sourceType: "module", dialect: "ts" },
+		);
+
+		expect(tree.scopes.map(scope => scope.type)).toEqual(
+			binary.scopes.map(scope => scope.type),
+		);
+		expect(tree.scopes.map(scope => names(scope))).toEqual(
+			binary.scopes.map(scope => names(scope)),
+		);
+		expect(tree.scopes.map(scope => scope.through.map(r => r.name))).toEqual(
+			binary.scopes.map(scope => scope.through.map(r => r.name)),
+		);
+	});
+
+	it("walks a node type it has never heard of", () => {
+		const { tree, scopeManager: before } = fromEspree("const a = 1;");
+
+		expect(before.scopes[1].through).toHaveLength(0);
+
+		/*
+		 * A parser with syntax of its own produces types this analyzer cannot
+		 * know. Skipping the subtree would silently lose every reference in
+		 * it, so the children are found by inspection instead.
+		 */
+		const invented: EsTreeNode = {
+			type: "SomethingNobodyHasHeardOf",
+			expression: {
+				type: "ExpressionStatement",
+				expression: { type: "Identifier", name: "missing" },
+			},
+		};
+
+		(tree.body as EsTreeNode[]).push(invented);
+
+		const scopeManager = analyzeTree(tree, {
+			sourceType: "module",
+			dialect: "js",
+		});
+
+		expect(scopeManager.scopes[1].through.map(ref => ref.name)).toEqual([
+			"missing",
+		]);
 	});
 });

@@ -7,7 +7,10 @@
  * The `analysis` suites measure scope analysis alone, with the parse hoisted
  * out of the measured region. That is the honest comparison of the analyzers
  * themselves, and it is where working on the binary buffers shows up: no
- * ESTree objects are read, and the walk dispatches on integers.
+ * ESTree objects are read, and the walk dispatches on integers. Both jsscope
+ * entry points appear there, so the cost of the compatibility path is visible
+ * next to the reference analyzer it competes with — `analyzeTree()` and the
+ * reference analyzer are handed the very same tree.
  *
  * The `full` suites measure parsing and analysis together, which is what a
  * tool actually asks for. Nobody analyzes a program they did not just parse,
@@ -82,7 +85,7 @@ function measure(run, bytes) {
  * @returns The contenders, each with a name and a function to measure.
  */
 async function contenders(dialect, code, withParse) {
-	const jsparse = await import("jsparse");
+	const jsparse = await import("@eslint/jsparse");
 	const jsscope = await import("../dist/jsscope.js");
 	const list = [];
 
@@ -101,7 +104,7 @@ async function contenders(dialect, code, withParse) {
 		const parsed = jsparse.parse(code);
 
 		list.push({
-			name: "jsscope",
+			name: "jsscope (analyze)",
 			run: () => jsscope.analyze(parsed, jsscopeOptions),
 		});
 	}
@@ -136,6 +139,10 @@ async function contenders(dialect, code, withParse) {
 		} else {
 			const tree = parser.parse(code, parserOptions);
 
+			list.push({
+				name: "jsscope (analyzeTree)",
+				run: () => jsscope.analyzeTree(tree, jsscopeOptions),
+			});
 			list.push({
 				name: "@typescript-eslint/scope-manager",
 				run: () => scopeManager.analyze(tree, analyzeOptions),
@@ -172,6 +179,10 @@ async function contenders(dialect, code, withParse) {
 	} else {
 		const tree = espree.parse(code, parserOptions);
 
+		list.push({
+			name: "jsscope (analyzeTree)",
+			run: () => jsscope.analyzeTree(tree, jsscopeOptions),
+		});
 		list.push({
 			name: "eslint-scope",
 			run: () => eslintScope.analyze(tree, analyzeOptions),

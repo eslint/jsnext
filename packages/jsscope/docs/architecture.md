@@ -1,7 +1,7 @@
 # jsscope Technical Specification
 
-How scope analysis works against a binary AST, and what it does differently
-from the two implementations it reproduces.
+How one scope analysis serves two AST representations, and what it does
+differently from the two implementations it reproduces.
 
 This is a reference for people changing the analyzer. The
 [README](../README.md) covers the public API; this document covers the
@@ -11,11 +11,14 @@ machinery behind it.
 
 - [What the analysis is](#what-the-analysis-is)
 - [Source layout](#source-layout)
-- [Working without a tree](#working-without-a-tree)
-  - [Nodes are integers](#nodes-are-integers)
+- [Two representations, one walk](#two-representations-one-walk)
+  - [The accessor](#the-accessor)
+  - [Nodes are integers, or objects](#nodes-are-integers-or-objects)
   - [Dispatch](#dispatch)
   - [The generic child walk](#the-generic-child-walk)
+  - [Slot names](#slot-names)
   - [Names](#names)
+  - [Tree shaking](#tree-shaking)
 - [The walk](#the-walk)
   - [Opening and closing scopes](#opening-and-closing-scopes)
   - [Patterns](#patterns)
@@ -51,9 +54,12 @@ the bottom of a function still resolves a reference from the top of it.
 
 ```text
 src/
+  ast-access.ts       the narrow view of an AST that the walk needs
+  binary-ast.ts       that view over @eslint/jsparse's binary buffers
+  estree-ast.ts       that view over an ordinary ESTree tree
+  slot-names.ts       what each slot is called in an ESTree tree
   kinds.ts            scope types, definition types, reference flags
   options.ts          the options an analysis runs with
-  names.ts            reading identifier and literal text out of the source
   definition.ts       a declaring occurrence, and the factories for each kind
   variable.ts         a bound name
   reference.ts        an occurrence of a name
@@ -61,27 +67,52 @@ src/
   scope-manager.ts    the collection of scopes and the maps over them
   pattern-visitor.ts  the walk over a destructuring pattern
   referencer.ts       the main walk
-  index.ts            the public API
+  index.ts            the public API: analyze() and analyzeTree()
 ```
 
-## Working without a tree
+## Two representations, one walk
 
-### Nodes are integers
+### The accessor
 
-`jsparse` stores every node as twelve 32-bit words in one `ArrayBuffer`, and a
-node is identified by its index. `jsscope` never leaves that representation:
-a scope's `block`, a reference's `identifier`, and a definition's `name`,
-`node`, and `parent` are all indices, and `0` is the "no node" sentinel the
-buffer itself uses.
+The walk never touches a node directly. Everything it needs to know goes
+through `AstAccess`, an interface with two implementations: `BinaryAst` over
+`@eslint/jsparse`'s buffers, and `EstreeAst` over an ordinary tree.
 
-This is the entire performance story. The reference analyzers are not slow;
-they are handed a tree that had to be built first, and building it allocates an
-object per node with a string `type` on it. Reading `reader.kind(node)` instead
-is one multiply, one add, and one typed-array load.
+The alternative was writing the walk twice, which would have been faster —
+neither implementation would pay for the indirection, and each could read
+children the way its representation prefers. It was rejected because the walk
+is fifty-odd rules reconciled from two reference implementations, and keeping
+two copies of those rules in agreement is a losing game. One walk, checked
+against both references through both entry points, is worth the indirection.
 
-The cost is that a caller holding a node index cannot do much with it directly,
-which is what `ScopeManager#nodeType`, `ScopeManager#nodeRange`, and the
-exposed `reader` are for.
+Three things had to be true for a single walk to be possible at all, and the
+interface is shaped around them: kinds are integers, children are addressed by
+slot, and absence is `null`.
+
+### Nodes are integers, or objects
+
+`@eslint/jsparse` stores every node as twelve 32-bit words in one
+`ArrayBuffer`, and a node is identified by its index. On that path `jsscope`
+never leaves the buffer: a scope's `block`, a reference's `identifier`, and a
+definition's `name`, `node`, and `parent` are all integers.
+
+This is the performance story. The reference analyzers are not slow; they are
+handed a tree that had to be built first, and building it allocates an object
+per node with a string `type` on it. Reading `reader.kind(node)` instead is one
+multiply, one add, and one typed-array load.
+
+On the tree path a node is the caller's own object, which is what makes the
+result usable next to an AST the caller already holds: a rule can compare
+`reference.identifier` against the node it is visiting.
+
+**Absence is `null` in both.** The binary format spells it `0`, and `BinaryAst`
+translates on the way out, so nothing above the accessor has to know. The one
+extra comparison per child read buys a model that means the same thing either
+way.
+
+A caller holding a bare node index cannot do much with it, which is what
+`ScopeManager#nodeType`, `ScopeManager#nodeRange`, and the exposed `reader` are
+for. The first two work on either representation.
 
 ### Dispatch
 
@@ -91,11 +122,17 @@ engine compiles to a jump table. `Referencer#visit` is that switch, and
 `Referencer#visitType` is a second one for [type
 position](#value-position-and-type-position).
 
+`EstreeAst` maps `type` to the same integer constants `@eslint/jsparse`
+assigns, once per node, and caches the result so that the slot lookups right
+after it are free. A `type` it does not recognize maps to kind `0`, which
+routes to the fallback described below.
+
 ### The generic child walk
 
 Kinds with no rule of their own fall through to `visitChildren`, which reads
-`SLOT_TABLE` from `jsparse` — the table that says, for each kind, whether each
-of the eight data slots holds a child node, a list handle, or opaque data.
+`SLOT_TABLE` from `@eslint/jsparse` — the table that says, for each kind,
+whether each of the eight data slots holds a child node, a list handle, or
+opaque data.
 
 The reference implementations use visitor keys for the same purpose, and the
 two agree on **order** everywhere the difference is observable, which matters
@@ -109,16 +146,58 @@ That is the failure mode to watch for when adding a node kind: a wrong slot
 order produces a scope graph that is correct in every respect except the order
 of two references, which nothing but the differential corpus will catch.
 
+A node whose kind is `0` — a type from a parser with syntax of its own — has no
+slot table, so its children are found by inspecting its properties instead.
+That is what `eslint-scope` does for the same case, and skipping the subtree
+would silently lose every reference in it.
+
+### Slot names
+
+`EstreeAst` turns a slot back into a property name through `SLOT_NAMES`, which
+is `slots.ts` from `@eslint/jsparse` with names filled in. The two files are
+deliberately laid out the same way so they can be read side by side, but the
+grouping differs wherever kinds share a layout without sharing names: a
+`WithStatement` and a `LabeledStatement` both hold two child nodes, and one
+calls the first `object` while the other calls it `label`.
+
+Three things the two representations genuinely disagree about could not be
+expressed as a slot, so they are separate methods on the accessor:
+
+- **`TSMappedType`.** The binary format hangs the key and its constraint off a
+  synthetic `TSTypeParameter`; the ESTree shape has them directly on the mapped
+  type.
+- **A parameter's decorators.** `@eslint/jsparse` wraps a decorated parameter
+  in a `TSParameterProperty`; an ESTree tree leaves the parameter alone and
+  gives it a `decorators` property.
+- **Directives.** The binary format flags an `ExpressionStatement` as a
+  directive; a tree carries the text in `directive`.
+
 ### Names
 
-Resolution is by name, so every identifier's text has to be read. `names.ts`
-slices it straight out of the source string and only calls `jsparse`'s
-`decodeEscapes` when a backslash is present, which is almost never. On an
-`Identifier` the name ends where slot A says, not at the node's `end`, because
-a type annotation extends the node past its name.
+Resolution is by name, so every identifier's text has to be read. On a tree
+that is `node.name`. On the binary path `BinaryAst#name` slices it straight out
+of the source string and only calls `@eslint/jsparse`'s `decodeEscapes` when a
+backslash is present, which is almost never; the name ends where slot A says,
+not at the node's `end`, because a type annotation extends the node past its
+name.
 
 A name is read once and stored on the `Reference`, because resolution needs it
 again at every scope on the way out.
+
+### Tree shaking
+
+`analyze()` and `analyzeTree()` are separate exports importing separate
+adapters, and the package is marked `sideEffects: false`, so a bundler drops
+whichever one is unused — along with, in the binary case, the slot-name table
+that only the tree adapter reads.
+
+That only works if these modules are free of top-level side effects, which took
+some care: both `SLOT_NAMES` and the tree adapter's type-to-kind map are built
+by a function called as a `/* @__PURE__ */` expression rather than by top-level
+statements that mutate a module-level array. Eighty `define()` calls at the top
+level look like eighty side effects, and no bundler will remove any of them.
+`tests/tree-shaking.test.ts` bundles each entry point and asserts what came
+out, so the property cannot quietly regress.
 
 ## The walk
 
@@ -253,24 +332,33 @@ Things that will break subtly if violated:
    element by element.
 4. **A name is read once.** `Reference#name` is the resolution key; deriving it
    again from the node at resolution time would be correct but slow.
-5. **Node index `0` means no node** everywhere, including in a definition's
-   `parent` and a reference's `writeExpr`.
+5. **`null` means no node** everywhere above the accessor, including in a
+   definition's `parent` and a reference's `writeExpr`. Only `BinaryAst` knows
+   that the buffer spells it `0`.
 6. **The global scope's implicit variables are not in `set`.** Putting them
    there would resolve later references to them and change the meaning of
    `through`.
+7. **The two adapters answer identically.** Anything the walk asks is a
+   question about the program, not about how the program is stored. A method
+   that only one of them can answer honestly belongs somewhere else.
 
 ## Adding a node kind
 
-When `jsparse` gains a node kind, decide three things:
+When `@eslint/jsparse` gains a node kind, decide four things:
 
-1. **Does it open a scope?** Add a `nest*` method to `ScopeManager` and a
-   scope type to `kinds.ts`, and remember `isVariableScopeType` and
+1. **What are its slots called?** Add an entry to `SLOT_NAMES`, in the same
+   place `slots.ts` puts the kind. Forgetting this is the failure mode to watch
+   for: the binary path keeps working and the tree path silently stops
+   descending into the node.
+2. **Does it open a scope?** Add a `nest*` method to `ScopeManager` and a scope
+   type to `kinds.ts`, and remember `isVariableScopeType` and
    `isImplicitlyStrictType` if the answer is not obvious.
-2. **Does it bind or reference a name?** Add a case to `Referencer#visit`, or
+3. **Does it bind or reference a name?** Add a case to `Referencer#visit`, or
    to `visitType` if the name appears in type position.
-3. **Does it do neither?** Then it needs no case at all — the generic child
+4. **Does it do neither?** Then it needs no case at all — the generic child
    walk handles it — but check that its slot order matches the visitor-key
    order of whichever reference implementation covers it, and add an explicit
    case if it does not.
 
-Then run `npm run conformance`. Zero mismatches is the standard.
+Then run `npm run conformance`, which exercises both entry points. Zero
+mismatches is the standard.

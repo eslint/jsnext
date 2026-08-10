@@ -4,14 +4,32 @@ An npm workspace holding a fast, ESLint-compatible toolchain for the latest
 JavaScript, TypeScript, and JSX syntax. TypeScript source, bundled with
 `esbuild`, tested with `vitest`.
 
-| Package | What it does |
-| ------- | ------------ |
-| `packages/jsparse` | Parser. Source text in, binary AST and token buffers out, ESTree on request. |
-| `packages/jsscope` | Scope analyzer. Runs on `jsparse`'s binary buffers, reproduces `eslint-scope` and `@typescript-eslint/scope-manager`. |
+| Package | Name | What it does |
+| ------- | ---- | ------------ |
+| `packages/jsparse` | `@eslint/jsparse` | Parser. Source text in, binary AST and token buffers out, ESTree on request. |
+| `packages/jsscope` | `@eslint/jsscope` | Scope analyzer. Reproduces `eslint-scope` and `@typescript-eslint/scope-manager`. |
 
 `jsscope` depends on `jsparse`, so **`jsparse` must be built before anything in
 `jsscope` runs**. Its own scripts take care of that; a bare `npx vitest` inside
 `packages/jsscope` will use a stale `dist/` or fail outright.
+
+`jsscope` has **two entry points over one walk**: `analyze()` reads the binary
+buffers and `analyzeTree()` reads an ordinary ESTree tree. Neither is a
+separate implementation — the walk goes through the `AstAccess` interface and
+each representation supplies an adapter. A change to scope semantics belongs in
+`referencer.ts` and lands on both; a change to how a node is *read* belongs in
+`binary-ast.ts` or `estree-ast.ts` and must be made in both, answering the same
+question the same way.
+
+Two consequences worth knowing before you touch it:
+
+- **A new node kind needs an entry in `slot-names.ts`.** Miss it and the binary
+  path keeps working while the tree path silently stops descending into that
+  node. The conformance run catches it; nothing else will.
+- **The entry points are tree-shakeable, and that is tested.** Module-level
+  side effects in `slot-names.ts` or `estree-ast.ts` break it, which is why
+  both build their tables in a function called as a `/* @__PURE__ */`
+  expression.
 
 ## Code Conventions
 
@@ -42,10 +60,11 @@ before changing anything in them:
 ## Commands
 
 Run from the repository root; every one delegates to the workspaces, and any of
-them takes `--workspace=jsparse` or `--workspace=jsscope` to narrow it.
+them takes `--workspace=@eslint/jsparse` or `--workspace=@eslint/jsscope` to
+narrow it.
 
 ```bash
-npm test           # vitest, ~460 tests
+npm test           # vitest, ~470 tests
 npm run typecheck  # tsc --noEmit
 npm run lint       # builds first, then lints this repo with its own parser
 npm run build      # esbuild bundles + .d.ts files
@@ -90,25 +109,36 @@ through both packages and compares the result against the implementation each
 one replaces.
 
 ```
-files=1424 ok=1424 mismatch=0 threw=0   # jsparse AST vs espree
-ok=1424 bad=0                           # jsparse tokens and comments vs espree
-files=1185 ok=1185 mismatch=0 threw=0   # jsparse AST vs @typescript-eslint/parser
-files=1424 ok=1424 mismatch=0 threw=0   # jsscope vs eslint-scope
-files=1185 ok=1185 mismatch=0 threw=0   # jsscope vs @typescript-eslint/scope-manager
+files=1431 ok=1431 mismatch=0 threw=0   # jsparse AST vs espree
+ok=1431 bad=0                           # jsparse tokens and comments vs espree
+files=1219 ok=1219 mismatch=0 threw=0   # jsparse AST vs @typescript-eslint/parser
+
+binary files=1431 ok=1431 mismatch=0 threw=0   # jsscope vs eslint-scope
+tree   files=1431 ok=1431 mismatch=0 threw=0
+binary files=1219 ok=1219 mismatch=0 threw=0   # jsscope vs @typescript-eslint/scope-manager
+tree   files=1219 ok=1219 mismatch=0 threw=0
 ```
+
+`jsscope` is checked twice per file, once through each entry point. The tree
+run is the more direct of the two: `analyzeTree()` is handed the very tree
+object the reference analyzer was given, so a difference can only be a
+difference between the analyzers.
 
 **Run it after any change to a parser, tokenizer, decoder, or the scope walk.**
 Zero mismatches is the standard; anything else is a regression. Individual
 scripts take a directory and a file cap, which is useful while iterating:
 
+The directory is resolved against the working directory, so run these from the
+package they belong to:
+
 ```bash
-node packages/jsparse/scripts/conformance-js.mjs ../../node_modules 200
-node packages/jsscope/scripts/conformance-ts.mjs ../some-project/src 500
+cd packages/jsparse && node scripts/conformance-js.mjs ../../node_modules 200
+cd packages/jsscope && node scripts/conformance-ts.mjs ../some-project/src 500
 ```
 
-Note that `node_modules/jsparse` and `node_modules/jsscope` are workspace
-symlinks, so the corpus includes this repository's own source. That is
-deliberate: it is the only TypeScript in reach that uses recent syntax
+Note that `node_modules/@eslint/jsparse` and `node_modules/@eslint/jsscope` are
+workspace symlinks, so the corpus includes this repository's own source. That
+is deliberate: it is the only TypeScript in reach that uses recent syntax
 heavily.
 
 `node_modules` contains no `.jsx` or `.tsx` files, so JSX has no real-world
@@ -134,6 +164,9 @@ immediately, but knowing them up front saves a debugging cycle:
   `eslint-scope` wins.** The three disagreements that survive as options —
   `jsxPragma`, `jsxFragmentName`, and the TypeScript standard library — all
   default to the `eslint-scope` answer.
+- `jsscope`'s two entry points must produce the same graph for the same
+  program, and `null` is the only spelling of "no node" above the accessor
+  layer, whichever representation is underneath.
 
 ## Benchmarking
 

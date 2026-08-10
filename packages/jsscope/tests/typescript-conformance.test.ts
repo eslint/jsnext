@@ -11,8 +11,8 @@ import { readFileSync } from "node:fs";
 import { analyze as analyzeReference } from "@typescript-eslint/scope-manager";
 import { parse as parseReference } from "@typescript-eslint/parser";
 import { describe, expect, it } from "vitest";
-import { parse } from "jsparse";
-import { analyze } from "../src/index.js";
+import { parse } from "@eslint/jsparse";
+import { analyze, analyzeTree } from "../src/index.js";
 import {
 	serializeBinary,
 	serializeReference,
@@ -24,8 +24,14 @@ const FLAGS = {
 	partial: false,
 	typeRefs: true,
 	dropLibVariables: true,
-	tsProgramExtent: true,
 };
+
+/**
+ * The same fields, plus the adjustment the binary path needs: the buffer holds
+ * `espree`'s notion of how far a `Program` reaches, and the decoder derives
+ * `@typescript-eslint/parser`'s from it.
+ */
+const BINARY_FLAGS = { ...FLAGS, tsProgramExtent: true };
 
 /**
  * Reads a fixture file of source snippets.
@@ -51,6 +57,16 @@ function compare(code: string, jsx: boolean): void {
 		loc: false,
 		jsx,
 	});
+	/*
+	 * `const` is the one name the reference analyzer injects even with
+	 * `lib: []`, so that `x as const` resolves.
+	 */
+	const options = {
+		sourceType: "module" as const,
+		dialect: "ts" as const,
+		jsx,
+		globals: ["const"],
+	};
 	const expected = serializeReference(
 		analyzeReference(tree, {
 			sourceType: "module",
@@ -59,12 +75,13 @@ function compare(code: string, jsx: boolean): void {
 		}),
 		FLAGS,
 	);
-	const actual = serializeBinary(
-		analyze(parse(code), { sourceType: "module", dialect: "ts", jsx }),
-		FLAGS,
-	);
 
-	expect(actual).toEqual(expected);
+	expect(
+		serializeBinary(analyze(parse(code), options), BINARY_FLAGS),
+	).toEqual(expected);
+	expect(serializeReference(analyzeTree(tree, options), FLAGS)).toEqual(
+		expected,
+	);
 }
 
 describe("typescript-eslint scope-manager conformance", () => {

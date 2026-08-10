@@ -1,7 +1,7 @@
 {
-	"name": "jsscope",
+	"name": "@eslint/jsscope",
 	"version": "0.0.0",
-	"description": "A fast, ESLint-compatible scope analyzer for JavaScript and TypeScript, built on the jsparse binary AST.",
+	"description": "A fast, ESLint-compatible scope analyzer for JavaScript and TypeScript.",
 	"type": "module",
 	"main": "./dist/jsscope.js",
 	"module": "./dist/jsscope.js",
@@ -15,14 +15,15 @@
 	"files": [
 		"dist"
 	],
+	"sideEffects": false,
 	"scripts": {
 		"build": "node scripts/build.js && tsc -p tsconfig.build.json",
-		"pretest": "npm run build --workspace=jsparse",
+		"pretest": "npm run build --workspace=@eslint/jsparse",
 		"test": "vitest run",
 		"test:watch": "vitest",
-		"typecheck": "npm run build --workspace=jsparse && tsc --noEmit",
-		"bench": "npm run build --workspace=jsparse && npm run build && node benchmarks/benchmark.js",
-		"conformance": "npm run build --workspace=jsparse && npm run build && node scripts/conformance-js.mjs ../../node_modules 5000 && node scripts/conformance-ts.mjs ../../node_modules 5000"
+		"typecheck": "npm run build --workspace=@eslint/jsparse && tsc --noEmit",
+		"bench": "npm run build --workspace=@eslint/jsparse && npm run build && node benchmarks/benchmark.js",
+		"conformance": "npm run build --workspace=@eslint/jsparse && npm run build && node scripts/conformance-js.mjs ../../node_modules 5000 && node scripts/conformance-ts.mjs ../../node_modules 5000"
 	},
 	"keywords": [
 		"scope",
@@ -35,6 +36,6 @@
 	"author": "",
 	"license": "Apache-2.0",
 	"dependencies": {
-		"jsparse": "^0.0.0"
+		"@eslint/jsparse": "^0.0.0"
 	}
 }

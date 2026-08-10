@@ -27,21 +27,24 @@ import {
 /**
  * A declaring occurrence of a variable.
  *
- * Every node-valued field is a node index into the binary AST, with `0`
- * standing for "no node" exactly as it does in the buffer itself.
+ * Every node-valued field holds whatever the analysis represents a node with:
+ * an index into a binary buffer, or an ESTree object. `null` means there is no
+ * node.
+ *
+ * @template TNode How one node is represented.
  */
-export class Definition {
+export class Definition<TNode> {
 	/** Which kind of declaration introduced the name. */
 	readonly type: DefinitionType;
 
 	/** The `Identifier` node that spells the name. */
-	readonly name: number;
+	readonly name: TNode;
 
 	/** The node that declares it, such as the `VariableDeclarator`. */
-	readonly node: number;
+	readonly node: TNode;
 
-	/** The enclosing statement, such as the `VariableDeclaration`, or `0`. */
-	readonly parent: number;
+	/** The enclosing statement, such as the `VariableDeclaration`, or `null`. */
+	readonly parent: TNode | null;
 
 	/** The position within a multi-declarator statement, or `null`. */
 	readonly index: number | null;
@@ -63,7 +66,7 @@ export class Definition {
 	 * @param type Which kind of declaration introduced the name.
 	 * @param name The `Identifier` node that spells the name.
 	 * @param node The node that declares it.
-	 * @param parent The enclosing statement, or `0`.
+	 * @param parent The enclosing statement, or `null`.
 	 * @param index The position within a multi-declarator statement, or `null`.
 	 * @param kind The declaration keyword, or `null`.
 	 * @param rest Whether a parameter came from a rest element.
@@ -72,9 +75,9 @@ export class Definition {
 	 */
 	constructor(
 		type: DefinitionType,
-		name: number,
-		node: number,
-		parent: number,
+		name: TNode,
+		node: TNode,
+		parent: TNode | null,
 		index: number | null,
 		kind: string | null,
 		rest: boolean,
@@ -102,13 +105,13 @@ export class Definition {
  * @param kind The declaration keyword.
  * @returns The definition.
  */
-export function variableDefinition(
-	name: number,
-	declarator: number,
-	declaration: number,
+export function variableDefinition<TNode>(
+	name: TNode,
+	declarator: TNode,
+	declaration: TNode,
 	index: number,
 	kind: string,
-): Definition {
+): Definition<TNode> {
 	return new Definition(
 		DEF_VARIABLE,
 		name,
@@ -130,17 +133,17 @@ export function variableDefinition(
  * @param rest Whether the name came from a rest element.
  * @returns The definition.
  */
-export function parameterDefinition(
-	name: number,
-	func: number,
+export function parameterDefinition<TNode>(
+	name: TNode,
+	func: TNode,
 	index: number,
 	rest: boolean,
-): Definition {
+): Definition<TNode> {
 	return new Definition(
 		DEF_PARAMETER,
 		name,
 		func,
-		0,
+		null,
 		index,
 		null,
 		rest,
@@ -155,15 +158,15 @@ export function parameterDefinition(
  * @param func The function node.
  * @returns The definition.
  */
-export function functionNameDefinition(
-	name: number,
-	func: number,
-): Definition {
+export function functionNameDefinition<TNode>(
+	name: TNode,
+	func: TNode,
+): Definition<TNode> {
 	return new Definition(
 		DEF_FUNCTION_NAME,
 		name,
 		func,
-		0,
+		null,
 		null,
 		null,
 		false,
@@ -178,12 +181,12 @@ export function functionNameDefinition(
  * @param node The class node.
  * @returns The definition.
  */
-export function classNameDefinition(name: number, node: number): Definition {
+export function classNameDefinition<TNode>(name: TNode, node: TNode): Definition<TNode> {
 	return new Definition(
 		DEF_CLASS_NAME,
 		name,
 		node,
-		0,
+		null,
 		null,
 		null,
 		false,
@@ -198,15 +201,15 @@ export function classNameDefinition(name: number, node: number): Definition {
  * @param node The `CatchClause` node.
  * @returns The definition.
  */
-export function catchClauseDefinition(
-	name: number,
-	node: number,
-): Definition {
+export function catchClauseDefinition<TNode>(
+	name: TNode,
+	node: TNode,
+): Definition<TNode> {
 	return new Definition(
 		DEF_CATCH_CLAUSE,
 		name,
 		node,
-		0,
+		null,
 		null,
 		null,
 		false,
@@ -222,11 +225,11 @@ export function catchClauseDefinition(
  * @param declaration The `ImportDeclaration` node.
  * @returns The definition.
  */
-export function importBindingDefinition(
-	name: number,
-	specifier: number,
-	declaration: number,
-): Definition {
+export function importBindingDefinition<TNode>(
+	name: TNode,
+	specifier: TNode,
+	declaration: TNode,
+): Definition<TNode> {
 	return new Definition(
 		DEF_IMPORT_BINDING,
 		name,
@@ -247,15 +250,15 @@ export function importBindingDefinition(
  * @param node The assignment or `for` statement that created it.
  * @returns The definition.
  */
-export function implicitGlobalDefinition(
-	name: number,
-	node: number,
-): Definition {
+export function implicitGlobalDefinition<TNode>(
+	name: TNode,
+	node: TNode,
+): Definition<TNode> {
 	return new Definition(
 		DEF_IMPLICIT_GLOBAL_VARIABLE,
 		name,
 		node,
-		0,
+		null,
 		null,
 		null,
 		false,
@@ -271,12 +274,12 @@ export function implicitGlobalDefinition(
  * @param node The declaring node.
  * @returns The definition.
  */
-export function typeDefinition(name: number, node: number): Definition {
+export function typeDefinition<TNode>(name: TNode, node: TNode): Definition<TNode> {
 	return new Definition(
 		DEF_TYPE,
 		name,
 		node,
-		0,
+		null,
 		null,
 		null,
 		false,
@@ -291,12 +294,12 @@ export function typeDefinition(name: number, node: number): Definition {
  * @param node The `TSEnumDeclaration` node.
  * @returns The definition.
  */
-export function enumNameDefinition(name: number, node: number): Definition {
+export function enumNameDefinition<TNode>(name: TNode, node: TNode): Definition<TNode> {
 	return new Definition(
 		DEF_TS_ENUM_NAME,
 		name,
 		node,
-		0,
+		null,
 		null,
 		null,
 		false,
@@ -311,12 +314,12 @@ export function enumNameDefinition(name: number, node: number): Definition {
  * @param node The `TSEnumMember` node.
  * @returns The definition.
  */
-export function enumMemberDefinition(name: number, node: number): Definition {
+export function enumMemberDefinition<TNode>(name: TNode, node: TNode): Definition<TNode> {
 	return new Definition(
 		DEF_TS_ENUM_MEMBER,
 		name,
 		node,
-		0,
+		null,
 		null,
 		null,
 		false,
@@ -331,12 +334,12 @@ export function enumMemberDefinition(name: number, node: number): Definition {
  * @param node The `TSModuleDeclaration` node.
  * @returns The definition.
  */
-export function moduleNameDefinition(name: number, node: number): Definition {
+export function moduleNameDefinition<TNode>(name: TNode, node: TNode): Definition<TNode> {
 	return new Definition(
 		DEF_TS_MODULE_NAME,
 		name,
 		node,
-		0,
+		null,
 		null,
 		null,
 		false,

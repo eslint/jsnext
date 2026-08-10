@@ -1,7 +1,6 @@
-# jsscope
+# @eslint/jsscope
 
-A fast, ESLint-compatible scope analyzer for JavaScript, TypeScript, and JSX,
-built on the [`jsparse`](../jsparse) binary AST.
+A fast, ESLint-compatible scope analyzer for JavaScript, TypeScript, and JSX.
 
 `jsscope` answers the question every lint rule about variables has to ask:
 *which declaration does this identifier refer to?* It reproduces
@@ -10,75 +9,93 @@ and [`@typescript-eslint/scope-manager`](https://typescript-eslint.io) for
 TypeScript, down to the scope types, the definition types, and the order the
 references appear in.
 
-The difference is what it reads. Both reference analyzers walk an ESTree tree,
-which means something has to allocate one object per node first. `jsscope`
-walks the binary buffers `jsparse.parse()` produces and never materializes the
-tree at all — scope analysis alone runs about **1.4× faster than
-`eslint-scope`** and **4× faster than `@typescript-eslint/scope-manager`**, and
-parsing plus analysis together runs **2.9×** and **20×** faster than the same
-job done with the reference parser in front.
+There are two ways in, and they share one implementation:
+
+| Entry point | Reads | Use it when |
+| ----------- | ----- | ----------- |
+| `analyze()` | [`@eslint/jsparse`](../jsparse)'s binary buffers | The source is yours to parse. Nothing is ever decoded into ESTree objects, which is where the speed comes from. |
+| `analyzeTree()` | An ordinary ESTree tree | You already have an AST, from `espree`, `@typescript-eslint/parser`, or anything else ESLint-compatible. |
+
+Both run the same walk and produce the same scope graph. The two entry points
+pull in separate adapters and this package is marked `sideEffects: false`, so a
+bundler drops whichever one you do not import.
 
 ## Install
 
 ```bash
-npm install jsscope jsparse
+npm install @eslint/jsscope
 ```
+
+`@eslint/jsparse` comes with it, and only `analyze()` needs it.
 
 ## Usage
 
-```js
-import { parse } from "jsparse";
-import { analyze } from "jsscope";
+### From an existing AST
 
-const scopeManager = analyze(parse("const answer = 42; answer;"), {
+```js
+import * as espree from "espree";
+import { analyzeTree } from "@eslint/jsscope";
+
+const tree = espree.parse("const answer = 42; answer;", {
+	ecmaVersion: "latest",
 	sourceType: "module",
-	dialect: "ts",
+	range: true,
 });
 
-scopeManager.scopes.map(scope => scope.type);
-// => ["global", "module"]
+const scopeManager = analyzeTree(tree, {
+	sourceType: "module",
+	dialect: "js",
+});
 
 const moduleScope = scopeManager.scopes[1];
 const [variable] = moduleScope.variables;
 
 variable.name; // "answer"
 variable.references.length; // 2 — the initializer's write and the later read
-variable.references[1].isReadOnly(); // true
+variable.identifiers[0]; // the very Identifier node espree produced
 ```
 
-### Nodes are numbers
+Every node in the result is the tree's own object, so it compares by identity
+with the nodes you already hold.
 
-Everything the reference implementations spell as an ESTree node — a scope's
-`block`, a reference's `identifier`, a definition's `name`, `node`, and
-`parent` — is a **node index into the binary AST**, and `0` means "no node".
-That is the whole trick: nothing has to exist as an object for the analysis to
-run.
-
-Two helpers on the manager turn an index back into something readable, and
-`jsparse`'s `AstReader` does the rest:
+### From source text
 
 ```js
-import { AstReader, NODE_KIND_NAMES } from "jsparse";
+import { parse } from "@eslint/jsparse";
+import { analyze } from "@eslint/jsscope";
+
+const scopeManager = analyze(parse("const answer = 42; answer;"), {
+	sourceType: "module",
+	dialect: "ts",
+});
+```
+
+This is the fast path. Here a node is an **index into the binary buffer** — an
+integer — because no tree is ever built. `null` means there is no node.
+
+```js
+import { NODE_KIND_NAMES } from "@eslint/jsparse";
 
 const scope = scopeManager.scopes[1];
 
 scopeManager.nodeType(scope.block); // "Program"
 scopeManager.nodeRange(scope.block); // [0, 26]
 
-const reader = scopeManager.reader; // the AstReader the analysis used
-
-reader.text(variable.identifiers[0]); // "answer"
+// The reader the analysis used, for anything else you need.
+scopeManager.reader.text(scope.variables[0].identifiers[0]); // "answer"
 ```
 
-### `analyze(result, options)`
+`nodeType()` and `nodeRange()` work on either representation, so code written
+against them runs unchanged on both.
 
-`result` is the value `jsparse`'s `parse()` returned. Every option has a
-default, and every default is noted below.
+### Options
+
+Both entry points take the same options. Every one has a default.
 
 | Option | Default | Meaning |
 | ------ | ------- | ------- |
 | `sourceType` | `"module"` | `"script"`, `"module"`, or `"commonjs"`. |
-| `dialect` | `"ts"` | `"js"` or `"ts"`. See [dialect](#dialect). |
+| `dialect` | `"ts"` | `"js"` or `"ts"`. See [the disagreements](#where-the-two-reference-implementations-disagree). |
 | `jsx` | `true` | Whether a JSX identifier counts as a reference. |
 | `impliedStrict` | `false` | Apply strict mode without a directive. |
 | `globalReturn` | `false` | Wrap the program in a function scope. Implied by `"commonjs"`. |
@@ -111,13 +128,14 @@ scopeManager.globalScope.through.map(reference => reference.name); // ["x"]
 | ------ | ----------- |
 | `scopes` | Every scope, in the order they were created. |
 | `globalScope` | The outermost scope. |
-| `reader` | The `AstReader` the analysis ran over. |
+| `ast` | How the analysis read the program. |
+| `reader` | The `AstReader`, for `analyze()`; `null` for `analyzeTree()`. |
 | `acquire(node, inner?)` | The scope a node opened. |
 | `acquireAll(node)` | Every scope a node opened. |
 | `release(node, inner?)` | The scope enclosing the one a node opened. |
 | `getDeclaredVariables(node)` | The variables a node declares. |
 | `addGlobals(names)` | Declare globals and resolve what waited for them. |
-| `nodeType(node)`, `nodeRange(node)` | Read a node index without a reader. |
+| `nodeType(node)`, `nodeRange(node)` | Read a node without caring which representation it is. |
 
 ### `Scope`
 
@@ -154,8 +172,8 @@ write. `isTypeReference` and `isValueReference` say what kind of name it is.
 `type` is one of `Variable`, `Parameter`, `FunctionName`, `ClassName`,
 `CatchClause`, `ImportBinding`, `ImplicitGlobalVariable`, and — in TypeScript —
 `Type`, `TSEnumName`, `TSEnumMemberName`, and `TSModuleName`. `name`, `node`,
-and `parent` are node indices; `index` and `kind` place a `Variable` definition
-within its declaration; `rest` marks a rest parameter.
+and `parent` are nodes; `index` and `kind` place a `Variable` definition within
+its declaration; `rest` marks a rest parameter.
 
 ## Where the two reference implementations disagree
 
@@ -166,8 +184,9 @@ within its declaration; `rest` marks a rest parameter.
   `eslint-scope` does not, so neither does this by default. Set `jsxPragma` and
   `jsxFragmentName` to get the other behavior.
 - **The standard library.** The TypeScript analyzer seeds the global scope with
-  every name in whichever `lib` is configured. Nothing is seeded here; pass
-  `globals` for the same effect and better control.
+  every name in whichever `lib` is configured, plus `const` so that `x as const`
+  resolves. Nothing is seeded here; pass `globals` for the same effect and
+  better control.
 - **`export { a }`.** Under `dialect: "ts"` this names both a value and a type,
   which is what TypeScript needs. Under `"js"` it is an ordinary read, which is
   what `eslint-scope` reports.
@@ -179,18 +198,24 @@ the syntax — see below.
 
 `npm test` is the fast check. What actually proves correctness is the
 differential corpus: every `.js`/`.jsx` and `.ts`/`.tsx` file in `node_modules`
-is analyzed twice and the two scope graphs are compared in full — every scope,
-its type, strictness and extent; every variable, its definitions and its
-resolved references; every reference, its mode and what it resolved to; and
-every unresolved reference passing through.
+is analyzed by **both entry points** and compared in full against the reference
+— every scope, its type, strictness and extent; every variable, its definitions
+and its resolved references; every reference, its mode and what it resolved to;
+and every unresolved reference passing through.
+
+The tree path is compared especially directly: `analyzeTree()` is handed the
+very same tree object the reference analyzer was given, so any difference is a
+difference between the analyzers and nothing else.
 
 ```bash
 npm run conformance
 ```
 
 ```
-files=1424 ok=1424 mismatch=0 threw=0   # vs eslint-scope
-files=1185 ok=1185 mismatch=0 threw=0   # vs @typescript-eslint/scope-manager
+binary files=1431 ok=1431 mismatch=0 threw=0   # vs eslint-scope
+tree   files=1431 ok=1431 mismatch=0 threw=0
+binary files=1219 ok=1219 mismatch=0 threw=0   # vs @typescript-eslint/scope-manager
+tree   files=1219 ok=1219 mismatch=0 threw=0
 ```
 
 `node_modules` contains no `.jsx` or `.tsx` files, so JSX is covered by
@@ -209,25 +234,51 @@ node scripts/conformance-ts.mjs ../some-react-app/src 500
 npm run bench
 ```
 
-Analysis alone, with the parse hoisted out of the measured region — this is the
-comparison of the analyzers themselves:
+Analysis alone, with the parse hoisted out of the measured region. Every
+contender in a row is handed the same work, and `analyzeTree()` and the
+reference analyzer are handed the same tree object:
 
-| Suite | jsscope | reference | |
-| ----- | ------- | --------- | --- |
-| JavaScript | 21.2 MB/s | 14.8 MB/s (`eslint-scope`) | 1.4× |
-| TypeScript | 36.1 MB/s | 8.4 MB/s (`@typescript-eslint/scope-manager`) | 4.3× |
-| JSX | 35.6 MB/s | 21.3 MB/s (`eslint-scope`) | 1.7× |
+| Suite | `analyze()` | `analyzeTree()` | Reference |
+| ----- | ----------- | --------------- | --------- |
+| JavaScript | **1.4×** | 0.86× | `eslint-scope` |
+| TypeScript | **3.9×** | 1.6× | `@typescript-eslint/scope-manager` |
+| JSX | **1.5×** | 0.85× | `eslint-scope` |
+
+Reading the binary format is what buys the speed. `analyzeTree()` does the same
+work through property lookups driven by a table, which costs it roughly what
+`eslint-scope`'s hand-written property access saves — it is a little slower
+than `eslint-scope` on JavaScript and comfortably faster than the TypeScript
+analyzer, which is the trade for having one walk instead of two.
 
 Parsing and analysis together, which is what a tool actually asks for:
 
-| Suite | jsparse + jsscope | reference | |
-| ----- | ----------------- | --------- | --- |
-| JavaScript | 10.2 MB/s | 3.6 MB/s (`espree` + `eslint-scope`) | 2.9× |
-| TypeScript | 10.6 MB/s | 0.5 MB/s (`@typescript-eslint/*`) | 20× |
+| Suite | `jsparse` + `analyze()` | Reference |
+| ----- | ----------------------- | --------- |
+| JavaScript | **2.9×** | `espree` + `eslint-scope` |
+| TypeScript | **20×** | `@typescript-eslint/*` |
 
-Numbers move a lot with machine temperature, and `jsscope` is more sensitive to
-it than the allocation-heavy reference analyzers, so compare ratios within a
-single run rather than absolute numbers across runs.
+Numbers move a lot with machine temperature, and not evenly: `jsscope`
+allocates far less than the reference analyzers, so a throttled machine slows
+it down proportionally more and *deflates its ratio*. The TypeScript row reads
+about 3.9× on a cool machine and about 2.5× on a hot one, with `jsscope`'s own
+throughput halved in the second case. Take the best of several runs, and
+compare ratios within a run rather than absolute numbers across runs.
+
+## Bundle size
+
+Importing one entry point does not ship the other. Minified, bundled with
+`esbuild`:
+
+| Imports | Size |
+| ------- | ---- |
+| `analyze` | 39.7 KiB |
+| `analyzeTree` | 40.8 KiB |
+| both | 44.6 KiB |
+
+A tree-only bundle contains neither the binary reader nor the parser; a
+binary-only bundle contains neither the tree adapter nor the slot-name table it
+needs. `tests/tree-shaking.test.ts` bundles each entry point and checks exactly
+that, so the property cannot quietly break.
 
 ## Development
 
