@@ -1,0 +1,55 @@
+{
+	"name": "jsparse",
+	"version": "0.0.0",
+	"description": "A fast, ESLint-compatible JavaScript and TypeScript parser.",
+	"type": "module",
+	"main": "./dist/jsparse.js",
+	"module": "./dist/jsparse.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/jsparse.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "node scripts/build.js && tsc -p tsconfig.build.json",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"lint": "npm run build && eslint .",
+		"typecheck": "tsc --noEmit",
+		"bench": "npm run build && node benchmarks/benchmark.js",
+		"conformance": "npm run build && node scripts/conformance-js.mjs node_modules 5000 && node scripts/conformance-tokens.mjs 5000 && node scripts/conformance-ts.mjs node_modules 5000"
+	},
+	"keywords": [
+		"parser",
+		"javascript",
+		"typescript",
+		"eslint",
+		"estree",
+		"ast"
+	],
+	"author": "",
+	"license": "Apache-2.0",
+	"devDependencies": {
+		"@eslint/js": "^10.0.1",
+		"@types/node": "^26.2.0",
+		"@typescript-eslint/parser": "^8.0.0",
+		"acorn": "^8.12.0",
+		"esbuild": "^0.24.0",
+		"eslint": "^10.8.1",
+		"espree": "^10.0.0",
+		"globals": "^17.9.0",
+		"typescript": "^5.6.0",
+		"typescript-6": "npm:typescript@^6.0.3",
+		"typescript-7": "npm:typescript@^7.0.2",
+		"vitest": "^2.0.0"
+	},
+	"allowScripts": {
+		"esbuild@0.24.2": true,
+		"esbuild@0.21.5": true
+	}
+}

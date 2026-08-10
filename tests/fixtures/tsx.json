@@ -1,0 +1,10 @@
+[
+ "const f = <T,>(x: T): T => x;",
+ "const a = <Foo<string> x={1}/>;",
+ "const a: JSX.Element = <div>{items.map((i: number) => <li key={i}>{i}</li>)}</div>;",
+ "function C(): JSX.Element { return <div a b={c} {...d}>t</div>; }",
+ "const a = <div>{...spread}</div>;",
+ "const a = <div>{x as string}</div>;",
+ "const a = <div>{x!}</div>;",
+ "const a = <div prop={x satisfies Y}/>;"
+]
