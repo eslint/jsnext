@@ -66,6 +66,12 @@ before changing anything in them:
 covers the six scripts behind `npm run conformance` and how they divide the
 work.
 
+Task-specific procedures live in [`.agents/skills/`](./.agents/skills), which
+`.claude/skills` symlinks to. Adding an AST node kind is one of them —
+[`.agents/skills/add-node-type/`](./.agents/skills/add-node-type/SKILL.md) has
+the seven registration sites and a driver that checks all of them and then runs
+the node through both packages.
+
 ## Commands
 
 Run from the repository root; every one delegates to the workspaces, and any of
