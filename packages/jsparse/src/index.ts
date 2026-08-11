@@ -14,6 +14,7 @@ import { LineIndex, type SourceLocation } from "./locations.js";
 import { Parser } from "./parser.js";
 import { AstReader, TokenReader } from "./reader.js";
 import { AstDecoder, type EsNode } from "./to-ast.js";
+import type { Program } from "./ast-types.js";
 import {
 	KIND_TOKEN_TYPE,
 	TOKEN_TYPE_NAMES,
@@ -34,6 +35,12 @@ export { ParseError } from "./errors.js";
 export { LineIndex } from "./locations.js";
 export type { Position, SourceLocation } from "./locations.js";
 export { AstReader, TokenReader } from "./reader.js";
+
+/*
+ * The shape of everything `toAST()` produces, node by node. Type-only, so a
+ * bundler drops the module entirely.
+ */
+export type * from "./ast-types.js";
 export * from "./node-kinds.js";
 export * from "./token-kinds.js";
 export * from "./slots.js";
@@ -110,7 +117,7 @@ export interface Token {
  */
 export interface ToAstResult {
 	/** The ESTree `Program` node. */
-	ast: EsNode;
+	ast: Program;
 
 	/** The problems found while validating. */
 	errors: ValidationError[];
@@ -246,8 +253,14 @@ function buildAst(
 	program.comments = comments;
 	program.tokens = tokens;
 
+	/*
+	 * The decoder builds a node by assigning to a bag of properties, which no
+	 * discriminated union can describe, so it works in `EsNode` and the shape
+	 * is asserted once here. `conformance-types.mjs` is what actually holds
+	 * the two together.
+	 */
 	return {
-		ast: program,
+		ast: program as unknown as Program,
 		errors: locateProblems(
 			problems,
 			lines ?? new LineIndex(result.lineStarts),
@@ -457,7 +470,7 @@ export const eslintParser = {
 	 * @throws {ParseError} When the source has a syntax error, or when
 	 * validation finds a problem that makes the program invalid.
 	 */
-	parse(code: string, options: EslintParserOptions = {}): EsNode {
+	parse(code: string, options: EslintParserOptions = {}): Program {
 		const result = parse(code);
 		const lines = new LineIndex(result.lineStarts);
 		const { ast, problems } = buildAst(

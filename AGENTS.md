@@ -46,16 +46,25 @@ Two things that are easy to miss when matching the surrounding code:
 
 ## Architecture
 
-Each package has its own technical specification, and both are worth reading
+Each package has its own technical specification, and all are worth reading
 before changing anything in them:
 
 - [`packages/jsparse/docs/architecture.md`](./packages/jsparse/docs/architecture.md)
   documents the tokenizer, the parser, and both binary formats field by field,
   the invariants that break subtly when violated, and a checklist for adding a
   node kind.
+- [`packages/jsparse/docs/types.md`](./packages/jsparse/docs/types.md) documents
+  `src/ast-types.ts` — the hand-written ESTree declarations `toAST()` returns.
+  **Read it before reaching for `@types/estree` or `@typescript-eslint/types`:**
+  both were evaluated and rejected for reasons that are not obvious, and the
+  file records what is machine-checked, what is not, and why.
 - [`packages/jsscope/docs/architecture.md`](./packages/jsscope/docs/architecture.md)
   documents the walk, resolution, and the rule for reconciling the two scope
   analyzers it reproduces.
+
+[`packages/jsparse/scripts/README.md`](./packages/jsparse/scripts/README.md)
+covers the six scripts behind `npm run conformance` and how they divide the
+work.
 
 ## Commands
 
@@ -113,6 +122,9 @@ files=1431 ok=1431 mismatch=0 threw=0   # jsparse AST vs espree
 ok=1431 bad=0                           # jsparse tokens and comments vs espree
 files=1219 ok=1219 mismatch=0 threw=0   # jsparse AST vs @typescript-eslint/parser
 
+problems=0 unseen=0                     # ast-types.ts vs the decoder's output
+identical=158 differ=0                  # ast-types.ts vs the fill() switch
+
 binary files=1431 ok=1431 mismatch=0 threw=0   # jsscope vs eslint-scope
 tree   files=1431 ok=1431 mismatch=0 threw=0
 binary files=1219 ok=1219 mismatch=0 threw=0   # jsscope vs @typescript-eslint/scope-manager
@@ -159,6 +171,11 @@ immediately, but knowing them up front saves a debugging cycle:
   them. There is a test pinning this.
 - In `dialect: "js"` mode the TypeScript-only properties are omitted entirely,
   not set to `null`.
+- Those three facts are also the contract `src/ast-types.ts` encodes, which is
+  why `start` and `end` are required there while `range`, `loc`, and every
+  TypeScript-only property are optional. See
+  [`docs/types.md`](./packages/jsparse/docs/types.md) before changing any of
+  them.
 - `jsscope` reproduces `eslint-scope` for JavaScript and JSX and
   `@typescript-eslint/scope-manager` for TypeScript. **Where the two disagree,
   `eslint-scope` wins.** The three disagreements that survive as options —

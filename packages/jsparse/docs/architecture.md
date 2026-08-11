@@ -643,10 +643,23 @@ the sixteen are used, so twelve remain.
 
 To add a node kind: append it in the correct partition (JavaScript, JSX, or
 TypeScript at or above `TS_FIRST`), raise `NODE_KIND_COUNT`, add its name to
-`NODE_KIND_NAMES`, describe its slots in `slots.ts`, and add a `fill()` case.
-Forgetting the `slots.ts` entry is the failure mode to watch for: the node
-decodes correctly but generic walks silently do not descend into it, so
-validation quietly stops checking that subtree.
+`NODE_KIND_NAMES`, describe its slots in `slots.ts`, add a `fill()` case, and
+declare its interface in `ast-types.ts`. Forgetting the `slots.ts` entry is the
+failure mode to watch for: the node decodes correctly but generic walks
+silently do not descend into it, so validation quietly stops checking that
+subtree.
+
+The `ast-types.ts` entry is the one thing on that list nothing else depends on
+at runtime, so it is also the easiest to skip. Two scripts stop it drifting:
+`conformance-types.mjs` compares the declarations against what the decoder
+emits over the whole corpus, and `derive-shapes.mjs` reads the `fill()` switch
+itself and reports any node whose declared properties disagree with the ones
+assigned. Both run as part of `npm run conformance`. Between them, a new kind
+with no interface, an interface with a property the decoder never writes, and a
+property whose declared type forbids a `null` the decoder emits are all caught.
+What neither can check is which node types belong in a slot: `this.node(a)`
+says a child goes there, not which children, so the unions in `ast-types.ts`
+are written by hand.
 
 Bumping `TOKEN_VERSION` or `AST_VERSION` is only necessary for a change that
 existing readers could misinterpret. Adding a field at the end of a record, a
