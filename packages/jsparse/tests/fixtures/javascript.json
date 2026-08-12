@@ -176,5 +176,16 @@
  "class C { #\\u0061 = 1; }",
  "0xFFn + 0b101n + 0o17n + 1_000n + 10n;",
  "1_0_0;",
- "1; 'not a directive';"
+ "1; 'not a directive';",
+ "class D extends getBase() {}",
+ "class D extends Mix(A, B) {}",
+ "const x = async => async;",
+ "async => async => async;",
+ "class C { static\n x = 1; }",
+ "class C { static }",
+ "class C { accessor\n x = 1; }",
+ "class C { async\n m() {} }",
+ "[a = 1] = b;",
+ "({x: a = 1} = b);",
+ "class C { \"constructor\"() {} }"
 ]

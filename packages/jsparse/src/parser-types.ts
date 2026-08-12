@@ -22,7 +22,9 @@ import {
 	NODE_D,
 	NODE_E,
 	NODE_F,
+	NODE_END,
 	NODE_KIND,
+	NODE_START,
 	NF_PREFIX,
 	N_UnaryExpression,
 	N_TSAnyKeyword,
@@ -210,18 +212,7 @@ export abstract class TypeParser extends ParserBase {
 
 				if (this.at(T_is)) {
 					this.next();
-
-					const annotation = this.writer.alloc(
-						N_TSTypeAnnotation,
-						this.start,
-					);
-
-					this.writer.set(annotation, NODE_A, this.parseType());
-					this.writer.set(
-						node,
-						NODE_B,
-						this.writer.finish(annotation, this.lastEnd),
-					);
+					this.writer.set(node, NODE_B, this.parsePredicateType());
 				}
 
 				return this.writer.finish(node, this.lastEnd);
@@ -249,17 +240,7 @@ export abstract class TypeParser extends ParserBase {
 			);
 			this.next();
 
-			const annotation = this.writer.alloc(
-				N_TSTypeAnnotation,
-				this.start,
-			);
-
-			this.writer.set(annotation, NODE_A, this.parseType());
-			this.writer.set(
-				node,
-				NODE_B,
-				this.writer.finish(annotation, this.lastEnd),
-			);
+			this.writer.set(node, NODE_B, this.parsePredicateType());
 
 			return this.writer.finish(node, this.lastEnd);
 		}
@@ -274,12 +255,8 @@ export abstract class TypeParser extends ParserBase {
 
 				this.next();
 
-				const annotation = this.writer.alloc(
-					N_TSTypeAnnotation,
-					this.start,
-				);
+				const annotation = this.parsePredicateType();
 
-				this.writer.set(annotation, NODE_A, this.parseType());
 				this.writer.set(
 					node,
 					NODE_A,
@@ -287,17 +264,38 @@ export abstract class TypeParser extends ParserBase {
 						? type
 						: this.writer.get(type, NODE_A),
 				);
-				this.writer.set(
-					node,
-					NODE_B,
-					this.writer.finish(annotation, this.lastEnd),
-				);
+				this.writer.set(node, NODE_B, annotation);
 
 				return this.writer.finish(node, this.lastEnd);
 			}
 		}
 
 		return type;
+	}
+
+	/**
+	 * Parses the type after the `is` of a type predicate, wrapped the way
+	 * `@typescript-eslint/parser` wraps it.
+	 *
+	 * The wrapper is not written in the source — there is no `:` introducing
+	 * it — so it takes the range of the type itself rather than the span of
+	 * the text it was read from. The two differ when the type is
+	 * parenthesized, because parentheses leave no node behind: in
+	 * `x is (string)` the wrapper covers `string`, not `(string)`.
+	 * @returns The index of the `TSTypeAnnotation` node.
+	 */
+	private parsePredicateType(): number {
+		const annotation = this.writer.alloc(N_TSTypeAnnotation, this.start);
+		const type = this.parseType();
+
+		this.writer.set(annotation, NODE_A, type);
+		this.writer.set(
+			annotation,
+			NODE_START,
+			this.writer.get(type, NODE_START),
+		);
+
+		return this.writer.finish(annotation, this.writer.get(type, NODE_END));
 	}
 
 	/**

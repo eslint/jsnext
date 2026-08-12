@@ -28,6 +28,7 @@ import {
 	NODE_C,
 	NODE_D,
 	NODE_E,
+	NODE_G,
 	NODE_FLAGS,
 	NODE_KIND,
 	NODE_START,
@@ -162,6 +163,14 @@ export class Parser extends JsxParser {
 		const node = this.writer.alloc(N_Program, 0);
 		const mark = this.writer.startList();
 
+		/*
+		 * Where the first token begins, which is not always where the first
+		 * statement begins: decorators written before an `export` sit outside
+		 * the node they decorate, so `@dec export class C {}` starts its
+		 * program at the `@` and its export at the `export`.
+		 */
+		const firstTokenStart = this.start;
+
 		this.parseStatementList(T_EOF);
 
 		/*
@@ -170,10 +179,7 @@ export class Parser extends JsxParser {
 		 * whole text so that its range is never inverted.
 		 */
 		const size = this.writer.listSize(mark);
-		const start = size === 0 ? 0 : this.writer.get(
-			this.writer.listAt(mark, 0),
-			NODE_START,
-		);
+		const start = size === 0 ? 0 : firstTokenStart;
 		const end = size === 0 ? this.source.length : this.lastEnd;
 
 		this.writer.set(node, NODE_START, start);
@@ -291,6 +297,16 @@ export class Parser extends JsxParser {
 			case T_AT: {
 				const decorators = this.parseDecorators();
 
+				/*
+				 * Decorators may sit on either side of `export`. Written
+				 * before it they belong to the class all the same, but they
+				 * widen neither the export nor the class, which is why they
+				 * are attached after both have been parsed.
+				 */
+				if (this.at(T_export)) {
+					return this.parseDecoratedExport(decorators);
+				}
+
 				return this.parseClass(N_ClassDeclaration, decorators, start);
 			}
 
@@ -395,7 +411,7 @@ export class Parser extends JsxParser {
 				break;
 
 			case T_abstract:
-				if (this.nextIs(T_class)) {
+				if (this.nextIs(T_class, true)) {
 					this.next();
 
 					const node = this.parseClass(N_ClassDeclaration, 0, start);
@@ -1098,7 +1114,11 @@ export class Parser extends JsxParser {
 		const node = this.writer.alloc(N_ImportSpecifier, this.start);
 		let typeOnly = false;
 
-		if (this.at(T_type) && !this.nextIs(T_as) && !this.nextIs(T_COMMA)) {
+		if (
+			this.at(T_type) &&
+			!this.nextIsAsRename() &&
+			!this.nextIs(T_COMMA)
+		) {
 			const state = this.tokenizer.save();
 
 			this.next();
@@ -1211,6 +1231,26 @@ export class Parser extends JsxParser {
 		this.semicolon();
 
 		return this.writer.finish(node, this.lastEnd);
+	}
+
+	/**
+	 * Parses an export whose decorators were written before the `export`.
+	 * @param decorators A list handle holding the `Decorator` nodes.
+	 * @returns The index of the export declaration node.
+	 * @throws {ParseError} When the export declares something undecoratable.
+	 */
+	private parseDecoratedExport(decorators: number): number {
+		const node = this.parseExportDeclaration();
+		const declaration = this.writer.get(node, NODE_A);
+		const kind = this.writer.get(declaration, NODE_KIND);
+
+		if (kind !== N_ClassDeclaration) {
+			throw this.error("Decorators are not valid here");
+		}
+
+		this.writer.set(declaration, NODE_G, decorators);
+
+		return node;
 	}
 
 	/**
@@ -1363,7 +1403,7 @@ export class Parser extends JsxParser {
 			return this.parseClass(N_ClassDeclaration, decorators, start);
 		}
 
-		if (this.at(T_abstract) && this.nextIs(T_class)) {
+		if (this.at(T_abstract) && this.nextIs(T_class, true)) {
 			this.next();
 
 			const node = this.parseClass(N_ClassDeclaration, 0, start);
@@ -1396,8 +1436,15 @@ export class Parser extends JsxParser {
 
 			this.next();
 
+			// The namespace may be named by a string, as `export * as` allows.
 			if (this.eat(T_as)) {
-				this.writer.set(node, NODE_A, this.parseIdentifierName());
+				this.writer.set(
+					node,
+					NODE_A,
+					this.at(T_STRING)
+						? this.parseLiteral()
+						: this.parseIdentifierName(),
+				);
 			}
 
 			this.expect(T_from);
@@ -1417,7 +1464,11 @@ export class Parser extends JsxParser {
 			const specifier = this.writer.alloc(N_ExportSpecifier, this.start);
 
 			// An individual specifier may carry its own `type` marker.
-			if (this.at(T_type) && !this.nextIs(T_COMMA) && !this.nextIs(T_as)) {
+			if (
+				this.at(T_type) &&
+				!this.nextIs(T_COMMA) &&
+				!this.nextIsAsRename()
+			) {
 				const state = this.tokenizer.save();
 
 				this.next();
@@ -1677,16 +1728,45 @@ export class Parser extends JsxParser {
 	//-------------------------------------------------------------------------
 
 	/**
-	 * Tests the kind of the token after the current one.
-	 * @param kind The kind to look for.
-	 * @returns `true` when the next token has that kind.
+	 * Determines whether the `as` after the current token renames it, rather
+	 * than being the name that a `type` modifier applies to.
+	 *
+	 * `as` is a name like any other, so `{ type as }` is a type-only specifier
+	 * for something called `as`, while `{ type as foo }` renames something
+	 * called `type`. What tells them apart is whether a name follows the `as`.
+	 * @returns `true` when the `as` introduces a new name.
 	 */
-	private nextIs(kind: number): boolean {
+	private nextIsAsRename(): boolean {
 		const state = this.tokenizer.save();
 
 		this.next();
 
-		const result = this.at(kind);
+		let result = false;
+
+		if (this.at(T_as)) {
+			this.next();
+			result = !this.at(T_COMMA) && !this.at(T_BRACE_CLOSE);
+		}
+
+		this.tokenizer.restore(state);
+
+		return result;
+	}
+
+	/**
+	 * Tests the kind of the token after the current one.
+	 * @param kind The kind to look for.
+	 * @param sameLine Whether a line break between the two disqualifies it,
+	 *      which is how a modifier such as `abstract` is told apart from an
+	 *      expression statement that merely mentions the same name.
+	 * @returns `true` when the next token has that kind.
+	 */
+	private nextIs(kind: number, sameLine = false): boolean {
+		const state = this.tokenizer.save();
+
+		this.next();
+
+		const result = this.at(kind) && (!sameLine || !this.newlineBefore);
 
 		this.tokenizer.restore(state);
 

@@ -183,6 +183,30 @@ is always there.
 
 ---
 
+## Known gaps
+
+Not deviations — bugs that are simply not fixed yet. All four were found by
+running TypeScript's own conformance suite (see
+[AGENTS.md](../AGENTS.md#conformance-is-the-real-test-suite)) and all four are
+confined to input that is already an error, which is why they have been left.
+
+- **`export { type as as bar }`** throws. A binding actually named `as`, with a
+  `type` modifier and a rename, needs three tokens of lookahead to tell from a
+  binding named `type`; the parser does two. The four other spellings in that
+  family parse correctly.
+- **`({...({})} = {})`** produces an `ObjectPattern` where the reference keeps
+  an `ObjectExpression`. Parentheses around an invalid rest target are the
+  trigger; without them the two agree.
+- **`function *f(a = yield) {}`** reads `yield` as an identifier where
+  `@typescript-eslint/parser` builds a `YieldExpression`. `yield` is not legal
+  in a generator's parameters at all, and `espree` rejects the program
+  outright, so there is no answer that satisfies both references.
+- **Error recovery in general.** TypeScript's parser continues after a syntax
+  error and produces a tree; this one throws. Roughly twenty files in the
+  conformance suite differ for that reason alone, all of them negative tests.
+  Matching TypeScript's recovery is not a goal — see [the rule that decides
+  where code goes](../AGENTS.md#the-rule-that-decides-where-code-goes).
+
 ## Not deviations
 
 Two things look like deviations and are not.

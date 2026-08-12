@@ -3,12 +3,14 @@
  */
 
 import { AFTER_JSX_EXPRESSION } from "./parser-base.js";
+import { decodeEscapes } from "./values.js";
 import { TypeParser } from "./parser-types.js";
 import {
 	ACCESS_PRIVATE,
 	ACCESS_PROTECTED,
 	ACCESS_PUBLIC,
 	ACCESS_SHIFT,
+	LIT_STRING,
 	MKIND_CONSTRUCTOR,
 	MKIND_GET,
 	MKIND_INIT,
@@ -56,6 +58,7 @@ import {
 	N_Decorator,
 	N_Identifier,
 	N_ImportExpression,
+	N_Literal,
 	N_LogicalExpression,
 	N_MemberExpression,
 	N_MetaProperty,
@@ -905,6 +908,17 @@ export abstract class ExpressionParser extends TypeParser {
 			case T_class:
 				return this.parseClass(N_ClassExpression, 0);
 
+			case T_AT: {
+				/*
+				 * A class expression may be decorated too, and unlike the
+				 * declaration form there is no `export` for the decorators to
+				 * sit outside of, so they widen the class itself.
+				 */
+				const decorators = this.parseDecorators();
+
+				return this.parseClass(N_ClassExpression, decorators, start);
+			}
+
 			case T_new:
 				return this.parseNewExpression();
 
@@ -1411,7 +1425,14 @@ export abstract class ExpressionParser extends TypeParser {
 		const kind = this.kind;
 		const start = this.start;
 
-		if (this.atBindingName() && kind !== T_async && this.peekIsArrow()) {
+		/*
+		 * `async` is a binding name like any other when a `=>` follows it
+		 * directly: `async => async` is an ordinary arrow whose parameter
+		 * happens to be called `async`. Every other use of it — `async x => x`,
+		 * `async () => {}`, `async function` — has something between the two,
+		 * so it falls through to `parseAsyncExpression()` below.
+		 */
+		if (this.atBindingName() && this.peekIsArrow()) {
 			return this.parseArrowFromSingleParameter(start, false);
 		}
 
@@ -1786,13 +1807,20 @@ export abstract class ExpressionParser extends TypeParser {
 
 		const target = this.parseBindingAtom();
 
+		/*
+		 * The `?` and `!` are part of the binding they mark, so they widen it.
+		 * A type annotation would widen it further, but there may not be one:
+		 * `function f(y?)` is a parameter whose whole text is `y?`.
+		 */
 		if (this.eat(T_QUESTION)) {
 			this.writer.addFlags(target, NF_OPTIONAL);
+			this.writer.finish(target, this.lastEnd);
 		}
 
 		if (this.at(T_NOT)) {
 			this.next();
 			this.writer.addFlags(target, NF_DEFINITE);
+			this.writer.finish(target, this.lastEnd);
 		}
 
 		const annotation = this.tryParseTypeAnnotation();
@@ -1964,7 +1992,7 @@ export abstract class ExpressionParser extends TypeParser {
 
 		switch (kind) {
 			case N_ArrayExpression: {
-				this.writer.retype(node, N_ArrayPattern);
+				this.retypeAsPattern(node, N_ArrayPattern);
 				this.forEachListItem(this.writer.get(node, NODE_A), item => {
 					this.toPattern(item);
 				});
@@ -1972,7 +2000,7 @@ export abstract class ExpressionParser extends TypeParser {
 			}
 
 			case N_ObjectExpression: {
-				this.writer.retype(node, N_ObjectPattern);
+				this.retypeAsPattern(node, N_ObjectPattern);
 				this.forEachListItem(this.writer.get(node, NODE_A), item => {
 					this.toPattern(item);
 				});
@@ -1984,18 +2012,36 @@ export abstract class ExpressionParser extends TypeParser {
 				return;
 
 			case N_SpreadElement:
-				this.writer.retype(node, N_RestElement);
+				this.retypeAsPattern(node, N_RestElement);
 				this.toPattern(this.writer.get(node, NODE_A));
 				return;
 
 			case N_AssignmentExpression:
-				this.writer.retype(node, N_AssignmentPattern);
+				this.retypeAsPattern(node, N_AssignmentPattern);
 				this.toPattern(this.writer.get(node, NODE_A));
 				return;
 
 			default:
 				return;
 		}
+	}
+
+	/**
+	 * Retypes an expression node as the binding pattern that mirrors it.
+	 *
+	 * Slot C means different things on the two sides. Every binding form uses
+	 * it for the decorators a parameter was written with, while
+	 * `AssignmentExpression` uses it for the operator's token kind — so
+	 * retyping one without clearing it would leave a small integer sitting
+	 * where a list handle is expected, and the decoder would follow it into
+	 * whatever that part of the list region happens to hold.
+	 * @param node The node to convert in place.
+	 * @param kind The pattern kind to give it.
+	 * @returns Nothing.
+	 */
+	private retypeAsPattern(node: number, kind: number): void {
+		this.writer.retype(node, kind);
+		this.writer.set(node, NODE_C, 0);
 	}
 
 	/**
@@ -2077,7 +2123,17 @@ export abstract class ExpressionParser extends TypeParser {
 		this.writer.set(node, NODE_D, this.tryParseTypeParameters());
 
 		if (this.eat(T_extends)) {
-			this.writer.set(node, NODE_B, this.parseCallOrMemberExpression(true));
+			/*
+			 * The heritage clause is a `LeftHandSideExpression`, so it may be a
+			 * call: `class C extends Mix(A, B) {}` is how a mixin is written.
+			 * The type arguments that may follow are the class's own, as in
+			 * `class C extends B<T> {}`, and are parsed separately below.
+			 */
+			this.writer.set(
+				node,
+				NODE_B,
+				this.parseCallOrMemberExpression(false),
+			);
 
 			if (this.at(T_LT)) {
 				this.writer.set(node, NODE_E, this.parseTypeArguments());
@@ -2189,7 +2245,13 @@ export abstract class ExpressionParser extends TypeParser {
 		for (;;) {
 			const kind = this.kind;
 
-			if (kind === T_static && this.nextStartsClassElementName()) {
+			/*
+			 * `static` is the one modifier a line break may follow, so
+			 * `class C { static\n x = 1; }` declares a static `x` rather than a
+			 * field named `static`. Every other modifier, `accessor` and the
+			 * TypeScript-only ones alike, is written on the name's own line.
+			 */
+			if (kind === T_static && this.nextStartsClassElementName(true)) {
 				this.next();
 				isStatic = true;
 				continue;
@@ -2485,13 +2547,33 @@ export abstract class ExpressionParser extends TypeParser {
 	}
 
 	/**
-	 * Determines whether a key node is a plain identifier with a given name.
+	 * Determines whether a key node names something, however it spells it.
+	 *
+	 * A class element's name is its string value, so `"constructor"() {}`
+	 * declares the constructor exactly as `constructor() {}` does.
 	 * @param key The key node to test.
 	 * @param name The name to compare against.
 	 * @returns `true` when the key spells exactly that name.
 	 */
 	private isNamed(key: number, name: string): boolean {
 		const kind = this.writer.get(key, NODE_KIND);
+
+		if (kind === N_Literal) {
+			if (this.writer.get(key, NODE_A) !== LIT_STRING) {
+				return false;
+			}
+
+			const raw = this.source.slice(
+				this.writer.get(key, NODE_START) + 1,
+				this.writer.get(key, NODE_END) - 1,
+			);
+
+			return (
+				(raw.indexOf("\\") === -1
+					? raw
+					: decodeEscapes(raw, false)) === name
+			);
+		}
 
 		if (kind !== N_Identifier) {
 			return false;
@@ -2515,9 +2597,11 @@ export abstract class ExpressionParser extends TypeParser {
 
 	/**
 	 * Determines whether a class element name follows the current token.
+	 * @param allowNewline Whether a line break between the two is allowed,
+	 *      which it is only after `static`.
 	 * @returns `true` when the next token can start a class element name.
 	 */
-	private nextStartsClassElementName(): boolean {
+	private nextStartsClassElementName(allowNewline = false): boolean {
 		const state = this.tokenizer.save();
 
 		this.next();
@@ -2531,7 +2615,7 @@ export abstract class ExpressionParser extends TypeParser {
 				kind === T_PRIVATE_IDENT ||
 				kind === T_STAR ||
 				kind === T_BRACE_OPEN) &&
-			!this.newlineBefore;
+			(allowNewline || !this.newlineBefore);
 
 		this.tokenizer.restore(state);
 
