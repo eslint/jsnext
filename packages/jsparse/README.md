@@ -149,7 +149,18 @@ It differs from `toAST()` in four ways, each because ESLint requires it:
   explicit `dialect` in `parserOptions` to override that.
 - **JSX comes from the file name too.** `.jsx` and `.tsx` files accept JSX and
   every other extension reports it, so neither needs configuring. Pass an
-  explicit `jsx` in `parserOptions` to override that.
+  explicit `ecmaFeatures.jsx` in `parserOptions` to override that — the same
+  place `espree` reads it from, so a configuration written for `espree` keeps
+  working:
+
+  ```js
+  languageOptions: {
+  	parser: eslintParser,
+  	parserOptions: {
+  		ecmaFeatures: { jsx: true },
+  	},
+  }
+  ```
 
 `sourceType` is taken from the `languageOptions.sourceType` that ESLint already
 resolves for you.

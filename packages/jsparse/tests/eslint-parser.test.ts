@@ -134,12 +134,33 @@ describe("eslintParser.parse()", () => {
 		).toThrow(/JSX syntax is not allowed/u);
 	});
 
-	it("lets an explicit jsx option win over the file name", () => {
+	it("lets an explicit ecmaFeatures.jsx option win over the file name", () => {
 		expect(() =>
-			eslintParser.parse("<div/>;", { filePath: "a.js", jsx: true }),
+			eslintParser.parse("<div/>;", {
+				filePath: "a.js",
+				ecmaFeatures: { jsx: true },
+			}),
 		).not.toThrow();
 		expect(() =>
-			eslintParser.parse("<div/>;", { filePath: "a.jsx", jsx: false }),
+			eslintParser.parse("<div/>;", {
+				filePath: "a.jsx",
+				ecmaFeatures: { jsx: false },
+			}),
+		).toThrow(/JSX syntax is not allowed/u);
+	});
+
+	it("falls back to the file name when ecmaFeatures omits jsx", () => {
+		expect(() =>
+			eslintParser.parse("<div/>;", {
+				filePath: "a.jsx",
+				ecmaFeatures: {},
+			}),
+		).not.toThrow();
+		expect(() =>
+			eslintParser.parse("<div/>;", {
+				filePath: "a.js",
+				ecmaFeatures: {},
+			}),
 		).toThrow(/JSX syntax is not allowed/u);
 	});
 

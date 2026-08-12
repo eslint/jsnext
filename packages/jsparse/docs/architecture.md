@@ -89,7 +89,9 @@ src/
   values.ts         escape and numeric literal decoding
   entities.ts       XHTML named entities for JSX text
   errors.ts         ParseError
-  index.ts          the public API and the ESLint parser object
+  api.ts            parse(), validate(), toAST(), and the token decoder
+  eslint-parser.ts  the ESLint parser object
+  index.ts          the public surface, and nothing but re-exports
 ```
 
 ## Tokenization

@@ -9,7 +9,7 @@
  * The decoder is regular enough to read mechanically: a case label names the
  * kind and the body assigns properties, either directly or through one of a
  * handful of helpers. A `Program` picks up three more in `buildAst()`, which
- * is why `index.ts` is read too.
+ * is why `api.ts` is read too.
  *
  * What cannot be read this way is which node types belong in a slot —
  * `this.node(a)` says a child goes there, not which children — so the unions
@@ -429,7 +429,7 @@ function readSwitch(node, source, into) {
  * @returns The same shape with the three late properties added.
  */
 function addProgramExtras(shape) {
-	const source = read("index.ts");
+	const source = read("api.ts");
 	const buildAst = find(
 		treeOf(source),
 		node =>

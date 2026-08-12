@@ -141,7 +141,7 @@ The decoder builds a node by assigning to a bag of properties, which no
 discriminated union can describe: TypeScript cannot narrow on a runtime `kind`
 integer and then permit member-specific assignments. So `AstDecoder` works in
 `EsNode` — a plain `Record<string, unknown>` — and the shape is asserted once,
-at the return of `buildAst()` in `index.ts`. That single `as unknown as
+at the return of `buildAst()` in `api.ts`. That single `as unknown as
 Program` is the entire cost of the arrangement, and the two scripts are what
 make it honest.
 
