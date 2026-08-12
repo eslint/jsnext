@@ -125,6 +125,7 @@ import {
 	N_TSModuleBlock,
 	N_TSModuleDeclaration,
 	N_TSNamedTupleMember,
+	N_TSNamespaceExportDeclaration,
 	N_TSNonNullExpression,
 	N_TSOptionalType,
 	N_TSParameterProperty,
@@ -191,7 +192,7 @@ function buildSlotNames(): (string | null)[] {
 	}
 
 	define([N_Program], ["body"]);
-	define([N_Identifier], [null, "typeAnnotation"]);
+	define([N_Identifier], [null, "typeAnnotation", "decorators"]);
 	define([N_TemplateLiteral], ["quasis", "expressions"]);
 	define([N_TSTemplateLiteralType], ["quasis", "types"]);
 	define([N_TaggedTemplateExpression], ["tag", "quasi", "typeArguments"]);
@@ -242,6 +243,7 @@ function buildSlotNames(): (string | null)[] {
 		["expression"],
 	);
 	define([N_BreakStatement, N_ContinueStatement], ["label"]);
+	define([N_TSNamespaceExportDeclaration], ["id"]);
 	define([N_ExportDefaultDeclaration], ["declaration"]);
 	define(
 		[N_TSTypeAnnotation, N_TSRestType, N_TSOptionalType],
@@ -265,7 +267,7 @@ function buildSlotNames(): (string | null)[] {
 	define([N_ForStatement], ["init", "test", "update", "body"]);
 	define([N_ForInStatement, N_ForOfStatement], ["left", "right", "body"]);
 	define([N_VariableDeclarator], ["id", "init"]);
-	define([N_AssignmentPattern], ["left", "right"]);
+	define([N_AssignmentPattern], ["left", "right", "decorators"]);
 
 	define(
 		[
@@ -303,10 +305,15 @@ function buildSlotNames(): (string | null)[] {
 		["key", "value", "decorators", "typeAnnotation"],
 	);
 
-	define([N_ArrayExpression, N_ArrayPattern], ["elements", "typeAnnotation"]);
+	define([N_ArrayExpression], ["elements", "typeAnnotation"]);
 	define(
-		[N_ObjectExpression, N_ObjectPattern],
-		["properties", "typeAnnotation"],
+		[N_ArrayPattern],
+		["elements", "typeAnnotation", "decorators"],
+	);
+	define([N_ObjectExpression], ["properties", "typeAnnotation"]);
+	define(
+		[N_ObjectPattern],
+		["properties", "typeAnnotation", "decorators"],
 	);
 
 	define([N_Property], ["key", "value"]);
@@ -344,7 +351,7 @@ function buildSlotNames(): (string | null)[] {
 		["left", "right"],
 	);
 	define([N_CallExpression, N_NewExpression], ["callee", "arguments", "typeArguments"]);
-	define([N_RestElement], ["argument", "typeAnnotation"]);
+	define([N_RestElement], ["argument", "typeAnnotation", "decorators"]);
 	define([N_ImportDeclaration], ["specifiers", "source", "attributes"]);
 	define(
 		[N_ExportNamedDeclaration],

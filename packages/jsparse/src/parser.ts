@@ -17,6 +17,7 @@ import {
 	NF_ABSTRACT,
 	NF_ASYNC,
 	NF_COMPUTED,
+	LIT_STRING,
 	NF_CONST,
 	NF_DECLARE,
 	NF_DEFINITE,
@@ -72,6 +73,7 @@ import {
 	N_TSInterfaceHeritage,
 	N_TSModuleBlock,
 	N_TSModuleDeclaration,
+	N_TSNamespaceExportDeclaration,
 	N_TSTypeAliasDeclaration,
 	N_ThrowStatement,
 	N_TryStatement,
@@ -216,7 +218,17 @@ export class Parser extends JsxParser {
 
 		const expression = this.writer.get(statement, NODE_A);
 
-		return this.writer.get(expression, NODE_KIND) === N_Literal;
+		if (this.writer.get(expression, NODE_KIND) !== N_Literal) {
+			return false;
+		}
+
+		/*
+		 * Only a string literal is a directive. Without the subtype check a
+		 * number in the same position would be marked as one, and `toAST()`
+		 * would report the text between its first and last character as the
+		 * directive it states.
+		 */
+		return this.writer.get(expression, NODE_A) === LIT_STRING;
 	}
 
 	//-------------------------------------------------------------------------
@@ -1216,6 +1228,24 @@ export class Parser extends JsxParser {
 
 			this.next();
 			this.writer.set(node, NODE_A, this.parseExpression());
+			this.semicolon();
+
+			return this.writer.finish(node, this.lastEnd);
+		}
+
+		/*
+		 * `export as namespace A;` has to be tested before the `export *`
+		 * branch, because `export * as A from "m"` also continues with `as`.
+		 */
+		if (this.at(T_as) && this.nextIs(T_namespace)) {
+			const node = this.writer.alloc(
+				N_TSNamespaceExportDeclaration,
+				start,
+			);
+
+			this.next();
+			this.next();
+			this.writer.set(node, NODE_A, this.parseIdentifierName());
 			this.semicolon();
 
 			return this.writer.finish(node, this.lastEnd);

@@ -613,9 +613,13 @@ Two options change the output:
   `loc`. Only the ESLint parser object asks for this; `toAST()` passes `null`,
   because its contract is that nodes carry `start` and `end` and nothing else.
 
-Both parsers' notion of a `Program`'s extent differs — `espree` trims it to the
-first and last token, `@typescript-eslint/parser` spans the whole text — so
-`buildAst()` adjusts it after decoding to match whichever dialect is in force.
+Both parsers' notion of a `Program`'s extent differs — `espree` trims it to its
+statements, `@typescript-eslint/parser` spans the whole text — and **`espree`'s
+answer is used in both dialects**, so the decoder does not adjust it at all.
+The buffer already holds that extent, written by `parseProgram()`. This is a
+deliberate deviation from `@typescript-eslint/parser`; see
+[`docs/deviations.md`](../../../docs/deviations.md) for why, and for how the
+TypeScript conformance comparisons stay total in spite of it.
 
 ## Invariants
 

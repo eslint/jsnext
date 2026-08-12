@@ -4,6 +4,7 @@
  */
 
 import {
+	TF_HAS_ESCAPE,
 	TF_NEWLINE_BEFORE,
 	buildAstBuffer,
 	buildTokenBuffer,
@@ -21,6 +22,7 @@ import {
 	TT_BLOCK_COMMENT,
 	TT_EOF,
 	TT_HASHBANG,
+	TT_IDENTIFIER,
 	TT_LINE_COMMENT,
 	TT_PRIVATE_IDENTIFIER,
 	TT_REGEXP,
@@ -30,6 +32,7 @@ import {
 	T_LINE_COMMENT,
 } from "./token-kinds.js";
 import { validateAst, type ValidationProblem } from "./validate.js";
+import { decodeEscapes } from "./values.js";
 
 export { ParseError } from "./errors.js";
 export { LineIndex } from "./locations.js";
@@ -240,28 +243,6 @@ function buildAst(
 	const program = decoder.node(reader.root)!;
 	const { tokens, comments } = decodeTokens(tokenReader, reader.source, lines);
 
-	/*
-	 * The two reference parsers disagree about a program's range: `espree`
-	 * trims it to the first and last token, while `@typescript-eslint/parser`
-	 * always spans the whole text.
-	 */
-	if (dialect === "ts") {
-		program.end = reader.source.length;
-
-		if ((program.body as unknown[]).length === 0) {
-			program.start = reader.source.length;
-		}
-	}
-
-	// The program's own extent may have just changed, so restamp it.
-	if (lines !== null) {
-		const start = program.start as number;
-		const end = program.end as number;
-
-		program.range = [start, end];
-		program.loc = lines.location(start, end);
-	}
-
 	program.sourceType = sourceType;
 	program.comments = comments;
 	program.tokens = tokens;
@@ -383,6 +364,16 @@ export function decodeTokens(
 		 */
 		if (kind === T_JSX_TEXT) {
 			value = decodeEntities(value);
+		} else if (
+			(type === TT_IDENTIFIER || type === TT_PRIVATE_IDENTIFIER) &&
+			(reader.flags(i) & TF_HAS_ESCAPE) !== 0
+		) {
+			/*
+			 * A name written with unicode escapes is reported by the name it
+			 * spells, not by the text that spells it, which is the same answer
+			 * the `Identifier` node gives.
+			 */
+			value = decodeEscapes(value, false);
 		}
 
 		const token = makeToken(

@@ -80,6 +80,7 @@ import {
 	T_AMP,
 	T_ARROW,
 	T_ASSIGN,
+	T_BIGINT,
 	T_BRACE_CLOSE,
 	T_BRACE_OPEN,
 	T_BRACKET_CLOSE,
@@ -144,6 +145,13 @@ import {
  * Adds the TypeScript type grammar to the parser.
  */
 export abstract class TypeParser extends ParserBase {
+	/**
+	 * Whether a conditional type is currently out of reach, which is true
+	 * inside the `extends` type of an enclosing conditional. It is what decides
+	 * who owns the `?` in `A extends infer B extends C ? D : E`.
+	 */
+	private noConditionalTypes = false;
+
 	//-------------------------------------------------------------------------
 	// Entry Points
 	//-------------------------------------------------------------------------
@@ -299,38 +307,53 @@ export abstract class TypeParser extends ParserBase {
 	parseType(): number {
 		const start = this.start;
 
-		if (this.atConstructorTypeStart() || this.atFunctionTypeStart()) {
-			return this.parseFunctionOrConstructorType();
-		}
-
-		const checkType = this.parseUnionType();
-
-		if (!this.at(T_extends) || this.newlineBefore) {
-			return checkType;
-		}
-
-		const node = this.writer.alloc(N_TSConditionalType, start);
-
-		this.next();
-		this.writer.set(node, NODE_A, checkType);
-
 		/*
-		 * The `extends` type is parsed without conditional types so that the
-		 * `?` belongs to this conditional rather than a nested one.
+		 * A conditional type may appear here, so an enclosing one no longer
+		 * has any claim on the next `?`.
 		 */
-		this.writer.set(
-			node,
-			NODE_B,
-			this.atConstructorTypeStart() || this.atFunctionTypeStart()
-				? this.parseFunctionOrConstructorType()
-				: this.parseUnionType(),
-		);
-		this.expect(T_QUESTION);
-		this.writer.set(node, NODE_C, this.parseType());
-		this.expect(T_COLON);
-		this.writer.set(node, NODE_D, this.parseType());
+		const outerNoConditionalTypes = this.noConditionalTypes;
 
-		return this.writer.finish(node, this.lastEnd);
+		this.noConditionalTypes = false;
+
+		try {
+			if (this.atConstructorTypeStart() || this.atFunctionTypeStart()) {
+				return this.parseFunctionOrConstructorType();
+			}
+
+			const checkType = this.parseUnionType();
+
+			if (!this.at(T_extends) || this.newlineBefore) {
+				return checkType;
+			}
+
+			const node = this.writer.alloc(N_TSConditionalType, start);
+
+			this.next();
+			this.writer.set(node, NODE_A, checkType);
+
+			/*
+			 * The `extends` type is parsed without conditional types so that
+			 * the `?` belongs to this conditional rather than a nested one.
+			 */
+			this.noConditionalTypes = true;
+			this.writer.set(
+				node,
+				NODE_B,
+				this.atConstructorTypeStart() || this.atFunctionTypeStart()
+					? this.parseFunctionOrConstructorType()
+					: this.parseUnionType(),
+			);
+			this.noConditionalTypes = false;
+
+			this.expect(T_QUESTION);
+			this.writer.set(node, NODE_C, this.parseType());
+			this.expect(T_COLON);
+			this.writer.set(node, NODE_D, this.parseType());
+
+			return this.writer.finish(node, this.lastEnd);
+		} finally {
+			this.noConditionalTypes = outerNoConditionalTypes;
+		}
 	}
 
 	//-------------------------------------------------------------------------
@@ -456,8 +479,10 @@ export abstract class TypeParser extends ParserBase {
 
 		/*
 		 * `infer T extends U` is only a constraint when it is not the
-		 * `extends` of an enclosing conditional type, which is the case when
-		 * a `?` follows the type.
+		 * `extends` of an enclosing conditional type, which is the case when a
+		 * `?` follows the type. Inside the `extends` type of a conditional the
+		 * enclosing `extends` has already been consumed, so the `?` belongs to
+		 * that conditional and the constraint stands.
 		 */
 		if (this.at(T_extends)) {
 			const state = this.tokenizer.save();
@@ -467,7 +492,7 @@ export abstract class TypeParser extends ParserBase {
 
 			const constraint = this.parseUnionType();
 
-			if (this.at(T_QUESTION)) {
+			if (!this.noConditionalTypes && this.at(T_QUESTION)) {
 				this.writer.rewind(snapshot);
 				this.tokenizer.restore(state);
 			} else {
@@ -592,6 +617,7 @@ export abstract class TypeParser extends ParserBase {
 
 			case T_STRING:
 			case T_NUMBER:
+			case T_BIGINT:
 			case T_true:
 			case T_false: {
 				const node = this.writer.alloc(N_TSLiteralType, start);
@@ -700,8 +726,12 @@ export abstract class TypeParser extends ParserBase {
 			this.at(T_STRING) ? this.parseLiteral() : this.parseType(),
 		);
 
+		/*
+		 * The import options are an object literal, not a type literal, even
+		 * though everything around them here is a type.
+		 */
 		if (this.eat(T_COMMA)) {
-			this.writer.set(node, NODE_D, this.parseType());
+			this.writer.set(node, NODE_D, this.parseAssignmentExpression());
 		}
 
 		this.expect(T_PAREN_CLOSE);

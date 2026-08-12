@@ -359,6 +359,7 @@ export type Statement =
 	| TryStatement
 	| TSDeclaration
 	| TSExportAssignment
+	| TSNamespaceExportDeclaration
 	| VariableDeclaration
 	| WhileStatement
 	| WithStatement;
@@ -2449,6 +2450,17 @@ export interface TSExportAssignment extends NodeBase {
 
 	/** What is being exported. */
 	expression: Expression;
+}
+
+/**
+ * An `export as namespace X` declaration, which names the global variable a
+ * UMD module is reachable through.
+ */
+export interface TSNamespaceExportDeclaration extends NodeBase {
+	type: "TSNamespaceExportDeclaration";
+
+	/** The global name the module is exported as. */
+	id: Identifier;
 }
 
 //-----------------------------------------------------------------------------

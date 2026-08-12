@@ -15,6 +15,10 @@
  * simply knew what to do.
  */
 
+import {
+	AFTER_JSX_ATTRIBUTE,
+	AFTER_JSX_CHILDREN,
+} from "./parser-base.js";
 import { ExpressionParser } from "./parser-expressions.js";
 import {
 	LIT_JSX_STRING,
@@ -61,55 +65,66 @@ import {
 export abstract class JsxParser extends ExpressionParser {
 	/**
 	 * Parses a JSX element or fragment starting at the current `<`.
-	 * @param inChildren Whether this element is itself a child of another
-	 *      element, which decides how the token after it is scanned.
+	 * @param after What surrounds the element, which decides how the token
+	 *      after it is scanned.
 	 * @returns The index of the `JSXElement` or `JSXFragment` node.
 	 * @throws {ParseError} When the element is malformed.
 	 */
-	protected parseJsxRoot(inChildren: boolean): number {
+	protected parseJsxRoot(after: number): number {
 		const start = this.start;
 
 		this.tokenizer.nextJsxName();
 
-		return this.parseJsxAfterOpenAngle(start, inChildren);
+		return this.parseJsxAfterOpenAngle(start, after);
 	}
 
 	/**
 	 * Parses the rest of an element or fragment once its `<` is consumed.
 	 * @param start The offset of the `<`.
-	 * @param inChildren Whether this element is a child of another element.
+	 * @param after What surrounds the element.
 	 * @returns The index of the `JSXElement` or `JSXFragment` node.
 	 * @throws {ParseError} When the element is malformed.
 	 */
-	private parseJsxAfterOpenAngle(
-		start: number,
-		inChildren: boolean,
-	): number {
+	private parseJsxAfterOpenAngle(start: number, after: number): number {
 		if (this.at(T_GT)) {
-			return this.parseJsxFragment(start, inChildren);
+			return this.parseJsxFragment(start, after);
 		}
 
-		return this.parseJsxElement(start, inChildren);
+		return this.parseJsxElement(start, after);
 	}
 
 	/**
 	 * Parses a named JSX element.
 	 * @param start The offset of the `<`.
-	 * @param inChildren Whether this element is a child of another element.
+	 * @param after What surrounds the element.
 	 * @returns The index of the `JSXElement` node.
 	 * @throws {ParseError} When the element is malformed.
 	 */
-	private parseJsxElement(start: number, inChildren: boolean): number {
+	private parseJsxElement(start: number, after: number): number {
 		const element = this.writer.alloc(N_JSXElement, start);
 		const opening = this.writer.alloc(N_JSXOpeningElement, start);
 
 		this.writer.set(opening, NODE_A, this.parseJsxElementName());
 
 		if (this.at(T_LT)) {
-			this.writer.set(opening, NODE_D, this.parseTypeArguments());
+			/*
+			 * The type grammar scans one token past the closing `>`, which in
+			 * `<Foo<T>/>` is the `/` that closes the tag. Marking the scanner
+			 * as being inside a tag keeps it from reading that as a regular
+			 * expression.
+			 */
+			const tokenizer = this.tokenizer;
+
+			tokenizer.inJsxTag = true;
+
+			try {
+				this.writer.set(opening, NODE_D, this.parseTypeArguments());
+			} finally {
+				tokenizer.inJsxTag = false;
+			}
 
 			// The type grammar leaves the scanner out of JSX mode.
-			this.tokenizer.reScanAsJsxName();
+			tokenizer.reScanAsJsxName();
 		}
 
 		this.writer.set(opening, NODE_B, this.parseJsxAttributes());
@@ -118,7 +133,9 @@ export abstract class JsxParser extends ExpressionParser {
 
 		if (selfClosing) {
 			this.writer.addFlags(opening, NF_SELF_CLOSING);
-			this.next();
+
+			// The `>` after the `/` is still inside the tag.
+			this.tokenizer.nextJsxName();
 		}
 
 		if (!this.at(T_GT)) {
@@ -131,7 +148,7 @@ export abstract class JsxParser extends ExpressionParser {
 		this.writer.set(element, NODE_A, opening);
 
 		if (selfClosing) {
-			this.advanceAfterJsx(inChildren);
+			this.advanceAfterJsx(after);
 
 			return this.writer.finish(element, openingEnd);
 		}
@@ -146,7 +163,7 @@ export abstract class JsxParser extends ExpressionParser {
 		this.writer.set(
 			element,
 			NODE_B,
-			this.parseJsxClosingElement(closingStart, inChildren, false),
+			this.parseJsxClosingElement(closingStart, after, false),
 		);
 
 		return this.writer.finish(element, this.lastEnd);
@@ -155,11 +172,11 @@ export abstract class JsxParser extends ExpressionParser {
 	/**
 	 * Parses a fragment, which is an element with no name.
 	 * @param start The offset of the `<`.
-	 * @param inChildren Whether this fragment is a child of another element.
+	 * @param after What surrounds the fragment.
 	 * @returns The index of the `JSXFragment` node.
 	 * @throws {ParseError} When the fragment is malformed.
 	 */
-	private parseJsxFragment(start: number, inChildren: boolean): number {
+	private parseJsxFragment(start: number, after: number): number {
 		const fragment = this.writer.alloc(N_JSXFragment, start);
 		const opening = this.writer.alloc(N_JSXOpeningFragment, start);
 
@@ -174,7 +191,7 @@ export abstract class JsxParser extends ExpressionParser {
 		this.writer.set(
 			fragment,
 			NODE_B,
-			this.parseJsxClosingElement(closingStart, inChildren, true),
+			this.parseJsxClosingElement(closingStart, after, true),
 		);
 
 		return this.writer.finish(fragment, this.lastEnd);
@@ -216,7 +233,10 @@ export abstract class JsxParser extends ExpressionParser {
 				}
 
 				this.writer.pushList(
-					this.parseJsxAfterOpenAngle(childStart, true),
+					this.parseJsxAfterOpenAngle(
+						childStart,
+						AFTER_JSX_CHILDREN,
+					),
 				);
 				continue;
 			}
@@ -228,14 +248,14 @@ export abstract class JsxParser extends ExpressionParser {
 	/**
 	 * Parses the closing tag of an element or fragment.
 	 * @param start The offset of the `<` that opened the closing tag.
-	 * @param inChildren Whether the element being closed is itself a child.
+	 * @param after What surrounds the element being closed.
 	 * @param isFragment Whether a fragment is being closed.
 	 * @returns The index of the closing node.
 	 * @throws {ParseError} When the closing tag is malformed.
 	 */
 	private parseJsxClosingElement(
 		start: number,
-		inChildren: boolean,
+		after: number,
 		isFragment: boolean,
 	): number {
 		const node = this.writer.alloc(
@@ -256,20 +276,27 @@ export abstract class JsxParser extends ExpressionParser {
 
 		const end = this.end;
 
-		this.advanceAfterJsx(inChildren);
+		this.advanceAfterJsx(after);
 
 		return this.writer.finish(node, end);
 	}
 
 	/**
-	 * Consumes the `>` that ends an element, staying in text mode when the
-	 * element sits inside another element's children.
-	 * @param inChildren Whether the element is a child of another element.
+	 * Consumes the `>` that ends an element, scanning what follows the way the
+	 * surrounding syntax requires.
+	 * @param after What surrounds the element.
 	 * @returns Nothing.
 	 */
-	private advanceAfterJsx(inChildren: boolean): void {
-		if (inChildren) {
+	private advanceAfterJsx(after: number): void {
+		if (after === AFTER_JSX_CHILDREN) {
 			this.tokenizer.nextJsxText();
+		} else if (after === AFTER_JSX_ATTRIBUTE) {
+			/*
+			 * The element was an attribute's value, so what follows is the
+			 * rest of the enclosing tag: another attribute, or the `/` or `>`
+			 * that closes it.
+			 */
+			this.tokenizer.nextJsxName();
 		} else {
 			this.next();
 		}
@@ -418,6 +445,16 @@ export abstract class JsxParser extends ExpressionParser {
 					node,
 					NODE_B,
 					this.parseJsxExpressionContainer(false),
+				);
+			} else if (this.at(T_LT)) {
+				/*
+				 * An element may stand as an attribute value without braces,
+				 * as in `<a b=<c/>/>`. Both reference parsers accept it.
+				 */
+				this.writer.set(
+					node,
+					NODE_B,
+					this.parseJsxRoot(AFTER_JSX_ATTRIBUTE),
 				);
 			} else {
 				throw this.error("Expected a JSX attribute value");

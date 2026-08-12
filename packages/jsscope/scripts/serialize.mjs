@@ -44,10 +44,11 @@ function esKey(node) {
 /**
  * Renders a node index from a `jsscope` analysis.
  *
- * The root gets special treatment in TypeScript mode for the same reason
- * `jsparse`'s decoder gives it special treatment: the two reference parsers
- * disagree about how far a `Program` reaches, so the binary record carries
- * `espree`'s answer and `@typescript-eslint/parser`'s is derived from it.
+ * The root gets special treatment in TypeScript mode because the two reference
+ * parsers disagree about how far a `Program` reaches. The binary record always
+ * carries `espree`'s answer — that is what `jsparse` reports in both dialects,
+ * see `docs/deviations.md` — so `@typescript-eslint/parser`'s is derived from
+ * it here, purely to compare against `@typescript-eslint/scope-manager`.
  * @param reader The reader over the AST buffer.
  * @param node The node index, or `0`.
  * @param tsProgramExtent Whether the root should span the whole source.

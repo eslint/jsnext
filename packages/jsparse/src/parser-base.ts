@@ -53,6 +53,21 @@ import {
 /**
  * Common state and helpers for every layer of the parser.
  */
+/*
+ * What sits around a JSX element decides how the token after its final `>` is
+ * scanned, and there is no way to recover from scanning it the wrong way: a
+ * `/` read as the start of a regular expression consumes the rest of the line.
+ */
+
+/** The element stands in an ordinary expression, so the next token is code. */
+export const AFTER_JSX_EXPRESSION = 0;
+
+/** The element is a child of another, so what follows is more child text. */
+export const AFTER_JSX_CHILDREN = 1;
+
+/** The element is an attribute's value, so what follows is the rest of the tag. */
+export const AFTER_JSX_ATTRIBUTE = 2;
+
 export abstract class ParserBase {
 	/** The scanner feeding this parser. */
 	readonly tokenizer: Tokenizer;

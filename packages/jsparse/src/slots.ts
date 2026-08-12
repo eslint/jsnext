@@ -100,6 +100,7 @@ import {
 	N_TSModuleBlock,
 	N_TSModuleDeclaration,
 	N_TSNamedTupleMember,
+	N_TSNamespaceExportDeclaration,
 	N_TSNonNullExpression,
 	N_TSOptionalType,
 	N_TSParameterProperty,
@@ -187,7 +188,12 @@ const L = SLOT_LIST;
 const D = SLOT_DATA;
 
 define([N_Program], [L]);
-define([N_Identifier], [D, N]);
+/*
+ * Slot C of every binding form holds the decorators a parameter was written
+ * with. A decorator without an accessibility modifier does not make a
+ * parameter property, so it has nowhere else to live.
+ */
+define([N_Identifier], [D, N, L]);
 define([N_Literal], [D, D]);
 define([N_TemplateLiteral, N_TSTemplateLiteralType], [L, L]);
 define([N_TaggedTemplateExpression], [N, N, N]);
@@ -222,6 +228,7 @@ define(
 		N_Decorator,
 		N_TSExportAssignment,
 		N_TSExternalModuleReference,
+		N_TSNamespaceExportDeclaration,
 		N_TSNonNullExpression,
 		N_YieldExpression,
 		N_BreakStatement,
@@ -243,7 +250,8 @@ define([N_SwitchStatement, N_SwitchCase], [N, L]);
 define([N_CatchClause, N_WhileStatement, N_DoWhileStatement], [N, N]);
 define([N_ForStatement], [N, N, N, N]);
 define([N_ForInStatement, N_ForOfStatement], [N, N, N]);
-define([N_VariableDeclarator, N_AssignmentPattern], [N, N]);
+define([N_VariableDeclarator], [N, N]);
+define([N_AssignmentPattern], [N, N, L]);
 define(
 	[
 		N_FunctionDeclaration,
@@ -265,10 +273,8 @@ define(
 	],
 	[N, N, L, N],
 );
-define(
-	[N_ArrayExpression, N_ArrayPattern, N_ObjectExpression, N_ObjectPattern],
-	[L, N],
-);
+define([N_ArrayExpression, N_ObjectExpression], [L, N]);
+define([N_ArrayPattern, N_ObjectPattern], [L, N, L]);
 define(
 	[
 		N_Property,
@@ -305,7 +311,7 @@ define(
 	[N, N, D],
 );
 define([N_CallExpression, N_NewExpression], [N, L, N]);
-define([N_RestElement], [N, N]);
+define([N_RestElement], [N, N, L]);
 define([N_ImportDeclaration], [L, N, L]);
 define([N_ExportNamedDeclaration], [N, L, N, L]);
 define([N_ExportAllDeclaration], [N, N, L]);

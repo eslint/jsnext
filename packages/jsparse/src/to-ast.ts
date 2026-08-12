@@ -166,6 +166,7 @@ import {
 	N_TSModuleBlock,
 	N_TSModuleDeclaration,
 	N_TSNamedTupleMember,
+	N_TSNamespaceExportDeclaration,
 	N_TSNonNullExpression,
 	N_TSOptionalType,
 	N_TSParameterProperty,
@@ -341,7 +342,7 @@ export class AstDecoder {
 				node.name = this.identifierName(index);
 
 				if (this.typescript) {
-					node.decorators = [];
+					this.addListIfPresent(node, "decorators", c);
 					node.optional = (flags & NF_OPTIONAL) !== 0;
 					node.typeAnnotation = this.node(b);
 				}
@@ -435,6 +436,10 @@ export class AstDecoder {
 			case N_TSExportAssignment:
 			case N_TSExternalModuleReference:
 				node.expression = this.node(a);
+				return;
+
+			case N_TSNamespaceExportDeclaration:
+				node.id = this.node(a);
 				return;
 
 			case N_LabeledStatement:
@@ -622,7 +627,7 @@ export class AstDecoder {
 			case N_ArrayPattern:
 				node.elements = this.list(a);
 				this.addOptional(node, "typeAnnotation", b);
-				this.addPatternModifiers(node, flags);
+				this.addPatternModifiers(node, flags, c);
 				return;
 
 			case N_ObjectExpression:
@@ -632,7 +637,7 @@ export class AstDecoder {
 			case N_ObjectPattern:
 				node.properties = this.list(a);
 				this.addOptional(node, "typeAnnotation", b);
-				this.addPatternModifiers(node, flags);
+				this.addPatternModifiers(node, flags, c);
 				return;
 
 			case N_Property:
@@ -714,7 +719,7 @@ export class AstDecoder {
 				this.addOptional(node, "typeAnnotation", b);
 
 				if (this.typescript) {
-					node.decorators = [];
+					this.addListIfPresent(node, "decorators", c);
 					node.optional = (flags & NF_OPTIONAL) !== 0;
 					node.value = null;
 				}
@@ -726,7 +731,7 @@ export class AstDecoder {
 				node.right = this.node(b);
 
 				if (this.typescript) {
-					node.decorators = [];
+					this.addListIfPresent(node, "decorators", c);
 					node.optional = (flags & NF_OPTIONAL) !== 0;
 					node.typeAnnotation = null;
 				}
@@ -1233,11 +1238,16 @@ export class AstDecoder {
 	 * Adds the properties that TypeScript puts on every destructuring pattern.
 	 * @param node The node object being built.
 	 * @param flags The node's flags word.
+	 * @param decorators The handle of the decorator list, or `0` for none.
 	 * @returns Nothing.
 	 */
-	private addPatternModifiers(node: EsNode, flags: number): void {
+	private addPatternModifiers(
+		node: EsNode,
+		flags: number,
+		decorators: number,
+	): void {
 		if (this.typescript) {
-			node.decorators = [];
+			this.addListIfPresent(node, "decorators", decorators);
 			node.optional = (flags & NF_OPTIONAL) !== 0;
 		}
 	}
@@ -1312,10 +1322,17 @@ export class AstDecoder {
 				node.value = decodeEntities(raw.slice(1, -1));
 				return;
 
-			case LIT_BIGINT:
-				node.value = BigInt(raw.slice(0, -1).replace(/_/gu, ""));
-				node.bigint = raw.slice(0, -1).replace(/_/gu, "");
+			case LIT_BIGINT: {
+				/*
+				 * `bigint` is the value written in decimal, whatever base the
+				 * source used, which is what both reference parsers report.
+				 */
+				const value = BigInt(raw.slice(0, -1).replace(/_/gu, ""));
+
+				node.value = value;
+				node.bigint = String(value);
 				return;
+			}
 
 			case LIT_REGEXP: {
 				const pattern = this.source.slice(start + 1, patternEnd);

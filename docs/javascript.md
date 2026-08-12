@@ -268,3 +268,4 @@ class MyClass {
 		console.log(this.#privateField);
 	}
 }
+```

@@ -2,6 +2,7 @@
  * @fileoverview The expression, pattern, function, and class grammar.
  */
 
+import { AFTER_JSX_EXPRESSION } from "./parser-base.js";
 import { TypeParser } from "./parser-types.js";
 import {
 	ACCESS_PRIVATE,
@@ -433,7 +434,7 @@ export abstract class ExpressionParser extends TypeParser {
 		let jsxError: unknown;
 
 		try {
-			element = this.parseJsxRoot(false);
+			element = this.parseJsxRoot(AFTER_JSX_EXPRESSION);
 		} catch (error) {
 			jsxError = error;
 			this.writer.rewind(snapshot);
@@ -512,11 +513,16 @@ export abstract class ExpressionParser extends TypeParser {
 	 * suffixes `!` and `<...>`.
 	 * @param noCalls Whether call expressions are disallowed, which is the
 	 *      case while parsing the callee of `new`.
+	 * @param atom An already-parsed expression to continue from, or `0`.
+	 * @param noComputed Whether `[...]` access is disallowed, which is the case
+	 *      in a decorator: `@a[b]` is not a decorator naming `a[b]`, it is a
+	 *      decorator naming `a` followed by something the grammar rejects.
 	 * @returns The index of the expression node.
 	 */
 	private parseCallOrMemberExpression(
 		noCalls: boolean,
 		atom = 0,
+		noComputed = false,
 	): number {
 		const start = atom === 0 ? this.start : this.writer.get(atom, NODE_START);
 		let expression = atom === 0 ? this.parsePrimaryExpression() : atom;
@@ -582,6 +588,10 @@ export abstract class ExpressionParser extends TypeParser {
 			}
 
 			if (kind === T_BRACKET_OPEN) {
+				if (noComputed) {
+					break;
+				}
+
 				this.next();
 
 				const property = this.parseExpression();
@@ -1697,7 +1707,26 @@ export abstract class ExpressionParser extends TypeParser {
 
 		const element = this.parseBindingElement();
 
-		if (!sawModifier && decorators === 0) {
+		if (!sawModifier) {
+			/*
+			 * A decorator alone does not make a parameter property. It belongs
+			 * to the binding form itself, whatever that turned out to be, and
+			 * does not widen it: the decorator sits outside the binding's own
+			 * range, which is what `@typescript-eslint/parser` reports.
+			 */
+			if (decorators !== 0) {
+				this.writer.set(element, NODE_C, decorators);
+
+				/*
+				 * A rest parameter is the one binding form whose range covers
+				 * its decorators, because TypeScript makes them children of
+				 * the parameter rather than of the `...` element inside it.
+				 */
+				if (this.writer.get(element, NODE_KIND) === N_RestElement) {
+					this.writer.set(element, NODE_START, start);
+				}
+			}
+
 			return element;
 		}
 
@@ -2017,7 +2046,7 @@ export abstract class ExpressionParser extends TypeParser {
 			this.writer.set(
 				node,
 				NODE_A,
-				this.parseCallOrMemberExpression(false),
+				this.parseCallOrMemberExpression(false, 0, true),
 			);
 			this.writer.pushList(this.writer.finish(node, this.lastEnd));
 		}
@@ -2515,10 +2544,11 @@ export abstract class ExpressionParser extends TypeParser {
 
 	/**
 	 * Parses a JSX element or fragment starting at the current `<`.
-	 * @param inChildren Whether the element is a child of another element.
+	 * @param after What surrounds the element, which decides how the token
+	 *      after it is scanned.
 	 * @returns The index of the element node.
 	 */
-	protected abstract parseJsxRoot(inChildren: boolean): number;
+	protected abstract parseJsxRoot(after: number): number;
 
 	/**
 	 * Parses a statement.

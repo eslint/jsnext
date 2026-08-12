@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { parse as tsParse } from "@typescript-eslint/parser";
 import { describe, expect, it } from "vitest";
 import { parse, toAST } from "../src/index.js";
-import { normalize } from "./helpers.js";
+import { asReferenceProgramExtent, normalize } from "./helpers.js";
 
 const samples: string[] = JSON.parse(
 	readFileSync(new URL("./fixtures/typescript.json", import.meta.url), "utf8"),
@@ -25,7 +25,9 @@ describe("typescript-eslint conformance", () => {
 				dialect: "ts",
 			}).ast;
 
-			expect(normalize(actual)).toEqual(normalize(expected));
+			expect(
+				normalize(asReferenceProgramExtent(actual, code)),
+			).toEqual(normalize(expected));
 		});
 	}
 });
@@ -57,7 +59,9 @@ describe("typescript-eslint conformance for JSX", () => {
 				jsx: true,
 			}).ast;
 
-			expect(normalize(actual)).toEqual(normalize(expected));
+			expect(
+				normalize(asReferenceProgramExtent(actual, code)),
+			).toEqual(normalize(expected));
 		});
 	}
 });

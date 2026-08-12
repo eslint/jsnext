@@ -7,8 +7,10 @@
  *
  * The reference parsers disagree about property order and about whether a
  * position is exposed as `range` or as `start`/`end`, so both are normalized
- * before comparison. `undefined` becomes `null`, which is the one documented
- * difference from `@typescript-eslint/parser`.
+ * before comparison. A property that is `null`, `undefined`, or absent is
+ * dropped, because this parser always spells "nothing here" as `null` while
+ * the reference parsers sometimes leave the property off entirely. That
+ * difference is deliberate and documented in `docs/deviations.md`.
  * @param value The value to normalize.
  * @returns A plain value whose JSON form can be compared directly.
  */
@@ -43,6 +45,11 @@ export function normalize(value: unknown): unknown {
 			continue;
 		}
 
+		// A property with no value compares the same as no property at all.
+		if (source[key] === null || source[key] === undefined) {
+			continue;
+		}
+
 		flat[key] = source[key];
 	}
 
@@ -73,4 +80,31 @@ export function normalizeTokens(
 	return tokens.map(
 		token => `${token.type}|${token.value}|${token.start}|${token.end}`,
 	);
+}
+
+/**
+ * Restates a `Program`'s extent the way `@typescript-eslint/parser` states it.
+ *
+ * Both dialects report `espree`'s extent here — the first and last statement,
+ * or the whole text for an empty program — while
+ * `@typescript-eslint/parser` runs a program to the end of the source. That is
+ * a deliberate deviation, documented in `docs/deviations.md`. Deriving the
+ * reference's answer from ours rather than dropping the field keeps the
+ * comparison total: an extent that is wrong for any other reason still fails.
+ * @param program The `Program` node this parser produced.
+ * @param code The source text it was parsed from.
+ * @returns A shallow copy carrying the reference parser's extent.
+ */
+export function asReferenceProgramExtent(
+	program: Record<string, unknown>,
+	code: string,
+): Record<string, unknown> {
+	return {
+		...program,
+		start:
+			(program.body as unknown[]).length === 0
+				? code.length
+				: program.start,
+		end: code.length,
+	};
 }

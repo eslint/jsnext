@@ -65,10 +65,13 @@ function walk(dir, out = [], depth = 0) {
 /**
  * Reduces a tree to a form two parsers can be compared in.
  *
- * Beyond sorting keys, this reconciles the three ways the two representations
- * differ without disagreeing: `undefined` becomes `null`, a `range` becomes
- * the `start` and `end` this parser emits, and the fields that exist only to
- * navigate the tree are dropped.
+ * Beyond sorting keys, this reconciles the ways the two representations differ
+ * without disagreeing: a `range` becomes the `start` and `end` this parser
+ * emits, the fields that exist only to navigate the tree are dropped, and a
+ * property that is `null`, `undefined`, or absent is dropped on both sides.
+ * That last one is deliberate. This parser always spells "nothing here" as
+ * `null` while the reference parsers sometimes leave the property off
+ * entirely; see `docs/deviations.md`.
  * @param value The node, list, or leaf value to reduce.
  * @returns The same value in the shared form.
  */
@@ -93,6 +96,11 @@ function stable(value) {
 
 	for (const key of Object.keys(value)) {
 		if (["tokens", "comments", "loc", "range", "parent"].includes(key)) {
+			continue;
+		}
+
+		// A property with no value compares the same as no property at all.
+		if (value[key] === null || value[key] === undefined) {
 			continue;
 		}
 
@@ -133,6 +141,28 @@ const files = walk(process.argv[2] ?? "../../node_modules").slice(
 	0,
 	Number(process.argv[3] ?? 400),
 );
+
+/**
+ * Restates a `Program`'s extent the way `@typescript-eslint/parser` states it.
+ *
+ * Both dialects report `espree`'s extent here — the first and last statement,
+ * or the whole text for an empty program. `@typescript-eslint/parser` instead
+ * runs a program to the end of the source. That is a deliberate deviation, so
+ * rather than dropping the field from the comparison this derives the
+ * reference's answer from ours: the conversion is exact, which keeps the diff
+ * total and would still catch a program whose extent is wrong for some other
+ * reason. See `docs/deviations.md`.
+ * @param program The `Program` node this parser produced.
+ * @param code The source text it was parsed from.
+ * @returns A shallow copy carrying the reference parser's extent.
+ */
+function asReferenceProgramExtent(program, code) {
+	return {
+		...program,
+		start: program.body.length === 0 ? code.length : program.start,
+		end: code.length,
+	};
+}
 
 let ok = 0;
 let mismatch = 0;
@@ -175,7 +205,7 @@ for (const file of files) {
 	}
 
 	const a = JSON.stringify(stable(expected));
-	const b = JSON.stringify(stable(actual));
+	const b = JSON.stringify(stable(asReferenceProgramExtent(actual, code)));
 
 	if (a === b) {
 		ok++;

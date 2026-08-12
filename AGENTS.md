@@ -61,6 +61,9 @@ before changing anything in them:
 - [`packages/jsscope/docs/architecture.md`](./packages/jsscope/docs/architecture.md)
   documents the walk, resolution, and the rule for reconciling the two scope
   analyzers it reproduces.
+- [`docs/deviations.md`](./docs/deviations.md) lists every place the output is
+  deliberately not what a reference implementation produces, and why. Anything
+  not in it is a bug.
 
 [`packages/jsparse/scripts/README.md`](./packages/jsparse/scripts/README.md)
 covers the six scripts behind `npm run conformance` and how they divide the
@@ -79,7 +82,7 @@ them takes `--workspace=@eslint/jsparse` or `--workspace=@eslint/jsscope` to
 narrow it.
 
 ```bash
-npm test           # vitest, ~470 tests
+npm test           # vitest, ~1100 tests
 npm run typecheck  # tsc --noEmit
 npm run lint       # builds first, then lints this repo with its own parser
 npm run build      # esbuild bundles + .d.ts files
@@ -117,6 +120,35 @@ enabled belongs in `validate.ts`, even if a reference parser throws for it.
 same buffers `parse()` produced and needs neither the validation problems nor
 the ESTree tree.
 
+## Two kinds of test, told apart by their extension
+
+`npm test` runs both kinds in one pass. Which one you are writing decides where
+the file goes and what it is allowed to import.
+
+| Kind | Name | Lives | Imports |
+| ---- | ---- | ----- | ------- |
+| Unit | `*.spec.ts` | `src/`, beside the module it covers | that one module |
+| Integration | `*.test.ts` | `tests/` | the package's public entry points |
+
+A **unit test** pins down one module's own behavior: the classification tables
+in `chars.ts`, the escape decoding in `values.ts`, the buffer layouts in
+`binary.ts`, what `resolveOptions()` fills in. It imports the module under test
+directly, so `entities.spec.ts` sits next to `entities.ts` and imports
+`./entities.js`. Reach for one when a function has edge cases that are tedious
+to provoke through a whole parse.
+
+An **integration test** goes through `parse()`, `toAST()`, `validate()`, or
+`analyze()` and checks what a consumer would see. The conformance suites are
+integration tests, and so is anything that needs a real AST.
+
+Two mechanical consequences of putting unit tests inside `src/`:
+
+- `tsconfig.build.json` excludes `src/**/*.spec.ts`, so no `.spec.d.ts` lands
+  in `dist/`. `tsconfig.json` does *not* exclude them, which is what
+  typechecks them.
+- `vitest.config.ts` lists both globs. A `.spec.ts` file under `tests/`, or a
+  `.test.ts` file under `src/`, is simply never run.
+
 ## Conformance is the real test suite
 
 `npm test` is the fast check. The differential corpus is what actually proves
@@ -125,17 +157,17 @@ through both packages and compares the result against the implementation each
 one replaces.
 
 ```
-files=1431 ok=1431 mismatch=0 threw=0   # jsparse AST vs espree
-ok=1431 bad=0                           # jsparse tokens and comments vs espree
-files=1219 ok=1219 mismatch=0 threw=0   # jsparse AST vs @typescript-eslint/parser
+files=1433 ok=1433 mismatch=0 threw=0   # jsparse AST vs espree
+ok=1433 bad=0                           # jsparse tokens and comments vs espree
+files=1232 ok=1232 mismatch=0 threw=0   # jsparse AST vs @typescript-eslint/parser
 
 problems=0 unseen=0                     # ast-types.ts vs the decoder's output
-identical=158 differ=0                  # ast-types.ts vs the fill() switch
+identical=159 differ=0                  # ast-types.ts vs the fill() switch
 
-binary files=1431 ok=1431 mismatch=0 threw=0   # jsscope vs eslint-scope
-tree   files=1431 ok=1431 mismatch=0 threw=0
-binary files=1219 ok=1219 mismatch=0 threw=0   # jsscope vs @typescript-eslint/scope-manager
-tree   files=1219 ok=1219 mismatch=0 threw=0
+binary files=1433 ok=1433 mismatch=0 threw=0   # jsscope vs eslint-scope
+tree   files=1433 ok=1433 mismatch=0 threw=0
+binary files=1232 ok=1232 mismatch=0 threw=0   # jsscope vs @typescript-eslint/scope-manager
+tree   files=1232 ok=1232 mismatch=0 threw=0
 ```
 
 `jsscope` is checked twice per file, once through each entry point. The tree
@@ -165,14 +197,32 @@ corpus — it is covered only by the `jsx.json` and `tsx.json` fixtures in each
 package, which are checked against both reference implementations. Pointing a
 conformance script at a React codebase is the way to close that gap.
 
+The fixture files in `packages/jsparse/tests/fixtures/` are the other half of
+that story: a list of source strings, each parsed and compared against the
+reference parser. They exist to reach the syntax the corpus does not, so they
+are derived from what `espree` and `@typescript-eslint/parser` test rather than
+from what real code happens to contain. `javascript.json` and `jsx.json` are
+checked against `espree`; `typescript.json` and `tsx.json` against
+`@typescript-eslint/parser`; `jsx.json` against both. **A candidate belongs
+here only if the reference parser accepts it**, since the test asserts the two
+agree, and one that both accept but that they disagree about is a bug to fix
+rather than a fixture to add.
+
 ## Output contracts
 
 These are verified by the corpus and by tests, so breaking one shows up
-immediately, but knowing them up front saves a debugging cycle:
+immediately, but knowing them up front saves a debugging cycle. Every
+deliberate departure from a reference implementation is listed in
+[`docs/deviations.md`](./docs/deviations.md) with the reason for it. **A
+difference that is not in that file is a bug**, so read it before you either
+add to it or "fix" an output to match a reference.
 
-- JavaScript output must match `espree` with `ecmaVersion: "latest"` exactly.
+- JavaScript output must match `espree` with `ecmaVersion: "latest"` exactly,
+  apart from the one entry `docs/deviations.md` records against it.
 - TypeScript output must match `@typescript-eslint/parser` exactly, except that
-  properties it leaves `undefined` are `null` here.
+  a property it leaves `undefined` — or omits entirely — is `null` here, and
+  that a `Program`'s extent follows `espree` in both dialects rather than
+  running to the end of the source.
 - **`toAST()` nodes carry `start` and `end` but never `range` or `loc`.** Only
   the ESLint parser object adds those, because ESLint refuses an AST without
   them. There is a test pinning this.
@@ -187,7 +237,8 @@ immediately, but knowing them up front saves a debugging cycle:
   `@typescript-eslint/scope-manager` for TypeScript. **Where the two disagree,
   `eslint-scope` wins.** The three disagreements that survive as options —
   `jsxPragma`, `jsxFragmentName`, and the TypeScript standard library — all
-  default to the `eslint-scope` answer.
+  default to the `eslint-scope` answer, and are written up in
+  [`docs/deviations.md`](./docs/deviations.md).
 - `jsscope`'s two entry points must produce the same graph for the same
   program, and `null` is the only spelling of "no node" above the accessor
   layer, whichever representation is underneath.

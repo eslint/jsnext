@@ -315,9 +315,10 @@ export const N_TSExternalModuleReference = 168;
 export const N_TSAbstractKeyword = 169;
 export const N_TSDeclareKeyword = 170;
 export const N_TSExportKeyword = 171;
+export const N_TSNamespaceExportDeclaration = 172;
 
 /** One past the largest defined node kind. */
-export const NODE_KIND_COUNT = 172;
+export const NODE_KIND_COUNT = 173;
 
 /**
  * ESTree `type` string for each node kind, indexed by kind. Empty strings mark
@@ -489,6 +490,7 @@ export const NODE_KIND_NAMES: readonly string[] = (() => {
 	names[N_TSAbstractKeyword] = "TSAbstractKeyword";
 	names[N_TSDeclareKeyword] = "TSDeclareKeyword";
 	names[N_TSExportKeyword] = "TSExportKeyword";
+	names[N_TSNamespaceExportDeclaration] = "TSNamespaceExportDeclaration";
 
 	return names;
 })();

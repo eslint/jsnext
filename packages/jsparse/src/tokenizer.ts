@@ -263,6 +263,17 @@ export class Tokenizer {
 	/** Whether a `/` at the current position begins a regular expression. */
 	exprAllowed = true;
 
+	/**
+	 * Whether the scanner is inside the angle brackets of a JSX tag, where a
+	 * `/` always closes the tag.
+	 *
+	 * Only the type arguments of `<Foo<T>/>` need this. They are read by the
+	 * ordinary type grammar, which scans one token past the closing `>` with
+	 * an expression allowed, and would otherwise read the `/` that closes the
+	 * tag as the start of a regular expression.
+	 */
+	inJsxTag = false;
+
 	/** Whether the parser is currently inside a generator function body. */
 	inGenerator = false;
 
@@ -1345,7 +1356,7 @@ export class Tokenizer {
 	 * @throws {ParseError} When a regular expression literal is unterminated.
 	 */
 	private scanSlash(): void {
-		if (this.exprAllowed) {
+		if (this.exprAllowed && !this.inJsxTag) {
 			this.scanRegExp();
 			return;
 		}
@@ -1440,6 +1451,12 @@ export class Tokenizer {
 
 		if (this.pos >= this.length || !isNameStart) {
 			this.finishSkippedToken(tokenFlags);
+
+			/*
+			 * A `>` inside a tag always closes it, so a run of them can never
+			 * be the shift operator the ordinary scanner just produced.
+			 */
+			this.reScanGreaterThan();
 			return;
 		}
 

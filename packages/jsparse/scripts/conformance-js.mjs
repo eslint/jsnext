@@ -88,6 +88,11 @@ function stable(value) {
 			continue;
 		}
 
+		// A property with no value compares the same as no property at all.
+		if (value[key] === null || value[key] === undefined) {
+			continue;
+		}
+
 		out[key] = stable(value[key]);
 	}
 

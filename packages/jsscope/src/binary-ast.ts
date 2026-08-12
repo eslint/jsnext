@@ -25,7 +25,7 @@ import {
 	T_ASSIGN,
 	type AstReader,
 } from "@eslint/jsparse";
-import { SLOT_B, type AstAccess } from "./ast-access.js";
+import { SLOT_B, SLOT_C, type AstAccess } from "./ast-access.js";
 
 /** No node ever has children this way, so one empty array is enough. */
 const NO_CHILDREN: readonly number[] = [];
@@ -237,9 +237,22 @@ export class BinaryAst implements AstAccess<number> {
 	 * @returns The decorator count.
 	 */
 	parameterDecoratorSize(node: number): number {
+		return this.listSize(node, this.parameterDecoratorSlot(node));
+	}
+
+	/**
+	 * Where a parameter's decorators sit.
+	 *
+	 * A parameter property keeps them beside its modifiers in slot B. Every
+	 * other binding form carries its own in slot C, because a decorator on its
+	 * own does not make a parameter property.
+	 * @param node The parameter node index.
+	 * @returns The slot holding the decorator list.
+	 */
+	private parameterDecoratorSlot(node: number): number {
 		return this.reader.kind(node) === N_TSParameterProperty
-			? this.listSize(node, SLOT_B)
-			: 0;
+			? SLOT_B
+			: SLOT_C;
 	}
 
 	/**
@@ -249,7 +262,7 @@ export class BinaryAst implements AstAccess<number> {
 	 * @returns The `Decorator` node index, or `null`.
 	 */
 	parameterDecoratorAt(node: number, index: number): number | null {
-		return this.listItem(node, SLOT_B, index);
+		return this.listItem(node, this.parameterDecoratorSlot(node), index);
 	}
 
 	/**
