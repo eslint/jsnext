@@ -82,7 +82,7 @@ them takes `--workspace=@eslint/jsparse` or `--workspace=@eslint/jsscope` to
 narrow it.
 
 ```bash
-npm test           # vitest, ~1100 tests
+npm test           # vitest, ~1300 tests
 npm run typecheck  # tsc --noEmit
 npm run lint       # builds first, then lints this repo with its own parser
 npm run build      # esbuild bundles + .d.ts files
@@ -200,8 +200,11 @@ conformance script at a React codebase is the way to close that gap.
 The fixture files in `packages/jsparse/tests/fixtures/` are the other half of
 that story: a list of source strings, each parsed and compared against the
 reference parser. They exist to reach the syntax the corpus does not, so they
-are derived from what `espree` and `@typescript-eslint/parser` test rather than
-from what real code happens to contain. `javascript.json` and `jsx.json` are
+are derived from what `espree` and `@typescript-eslint/parser` test, and from
+the examples in the TypeScript Handbook, rather than from what real code
+happens to contain. The handbook is worth revisiting when a new language
+version ships: its examples are chosen to demonstrate one construct each, which
+is exactly what a fixture wants to be. `javascript.json` and `jsx.json` are
 checked against `espree`; `typescript.json` and `tsx.json` against
 `@typescript-eslint/parser`; `jsx.json` against both. **A candidate belongs
 here only if the reference parser accepts it**, since the test asserts the two

@@ -41,5 +41,17 @@
  "const a = <B<C>></B>;",
  "const a = <B<C, D>>x</B>;",
  "const a = <B<C[]>/>;",
- "const a = <div>&#x1F600;</div>;"
+ "const a = <div>&#x1F600;</div>;",
+ "declare namespace JSX {\n  interface IntrinsicElements {\n    foo: any;\n  }\n}\n<foo />;",
+ "import MyComponent from \"./myComponent\";\n<MyComponent />;",
+ "interface FooProp {\n  name: string;\n  X: number;\n  Y: number;\n}\nfunction ComponentFoo(prop: FooProp) {\n  return <AnotherComponent name={prop.name} />;\n}\nconst Button = (prop: { value: string }, context: { color: string }) => (\n  <button />\n);",
+ "declare namespace JSX {\n  interface ElementClass {\n    render: any;\n  }\n}\nclass MyComponent {\n  render() {}\n}\n<MyComponent />;",
+ "declare namespace JSX {\n  interface IntrinsicElements {\n    foo: { bar?: boolean };\n  }\n}\n<foo bar />;",
+ "<foo requiredProp=\"bar\" />;\n<foo requiredProp=\"bar\" optionalProp={0} />;\n<foo requiredProp=\"bar\" some-unknown-prop />;",
+ "const props = { requiredProp: \"bar\" };\n<foo {...props} />;",
+ "<div>\n  <h1>Hello</h1>\n</div>;\n<div>\n  <h1>Hello</h1>\n  World\n</div>;",
+ "interface PropsType {\n  children: JSX.Element\n  name: string\n}\nclass Component extends React.Component<PropsType, {}> {\n  render() {\n    return (\n      <h2>\n        {this.props.children}\n      </h2>\n    )\n  }\n}",
+ "const a = (\n  <div>\n    {[\"foo\", \"bar\"].map((i) => (\n      <span>{i / 2}</span>\n    ))}\n  </div>\n);",
+ "const a = (\n  <div>\n    {[\"foo\", \"bar\"].map(function (i) {\n      return <span>{i / 2}</span>;\n    })}\n  </div>\n);",
+ "/// <reference path=\"react.d.ts\" />\ninterface Props {\n  foo: string;\n}\nclass MyComponent extends React.Component<Props, {}> {\n  render() {\n    return <span>{this.props.foo}</span>;\n  }\n}\n<MyComponent foo=\"bar\" />;"
 ]
