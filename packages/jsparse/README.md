@@ -96,12 +96,14 @@ and non-fatal problems can be reported through the same code path.
 | ------------ | ------------------------------------- | ---------- |
 | `sourceType` | `"script"`, `"module"`, `"commonjs"`  | `"module"` |
 | `dialect`    | `"js"`, `"ts"`                        | `"ts"`     |
+| `jsx`        | `true`, `false`                       | `false`    |
 
 It currently reports:
 
 - `import` and `export` outside a module
 - top-level `await` outside a module
 - a JSX closing tag whose name does not match its opening tag
+- JSX when the `jsx` option is off
 - TypeScript syntax when the dialect is `"js"`
 - `with` in strict mode, and octal literals in strict mode
 - strict-mode reserved words used as bindings
@@ -133,7 +135,7 @@ export default [
 ];
 ```
 
-It differs from `toAST()` in three ways, each because ESLint requires it:
+It differs from `toAST()` in four ways, each because ESLint requires it:
 
 - **Nodes, tokens, and comments carry `range` and `loc`.** ESLint refuses an
   AST without them. Everywhere else they are still left off.
@@ -145,6 +147,9 @@ It differs from `toAST()` in three ways, each because ESLint requires it:
   are parsed as JavaScript, so TypeScript syntax in them is reported rather
   than quietly accepted; everything else is parsed as TypeScript. Pass an
   explicit `dialect` in `parserOptions` to override that.
+- **JSX comes from the file name too.** `.jsx` and `.tsx` files accept JSX and
+  every other extension reports it, so neither needs configuring. Pass an
+  explicit `jsx` in `parserOptions` to override that.
 
 `sourceType` is taken from the `languageOptions.sourceType` that ESLint already
 resolves for you.
@@ -181,14 +186,23 @@ friends) are left off entirely, so the output is structurally identical to
 
 ## JSX
 
-JSX is always available; there is no flag to turn it on. Both dialects support
-it, and each produces the JSX nodes its reference parser produces.
+JSX is opt-in: pass `jsx: true` to `validate()` or `toAST()`. Both dialects
+support it, and each produces the JSX nodes its reference parser produces.
 
 ```js
-const { ast } = toAST(parse('<ul>{items.map(i => <li key={i}>{i}</li>)}</ul>;'));
+const { ast } = toAST(
+	parse('<ul>{items.map(i => <li key={i}>{i}</li>)}</ul>;'),
+	{ jsx: true },
+);
 ```
 
-Two things are worth knowing.
+`parse()` reads JSX whether or not the option is on, because which reading a
+`<` deserves is exactly the kind of question the text alone cannot answer.
+Leaving `jsx` off does not change the tree; it makes `validate()` report every
+JSX element and fragment as syntax that is not allowed here, one problem per
+outermost element rather than one per node.
+
+Two more things are worth knowing.
 
 **A `<` in expression position is read as JSX first.** If that fails, it is
 retried as an old-style `<T>value` type assertion, which is what keeps

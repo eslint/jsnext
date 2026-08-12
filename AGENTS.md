@@ -105,12 +105,13 @@ answer depends on context the text alone does not supply**.
   TypeScript allow.
 - `validate()` reports everything that is merely *not allowed here*: strict
   mode violations, redeclarations, `return` outside a function, TypeScript
-  syntax under `dialect: "js"`, a mismatched JSX closing tag.
+  syntax under `dialect: "js"`, JSX without `jsx: true`, a mismatched JSX
+  closing tag.
 
-So `sourceType` and `dialect` are options of phase 2, never phase 1. When
-adding a new diagnostic, decide which side of that line it falls on first. A
-check that needs to know the source type or dialect belongs in `validate.ts`,
-even if a reference parser throws for it.
+So `sourceType`, `dialect`, and `jsx` are options of phase 2, never phase 1.
+When adding a new diagnostic, decide which side of that line it falls on first.
+A check that needs to know the source type, the dialect, or whether JSX is
+enabled belongs in `validate.ts`, even if a reference parser throws for it.
 
 `jsscope` sits alongside phases 2 and 3 rather than after them: it reads the
 same buffers `parse()` produced and needs neither the validation problems nor

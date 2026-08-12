@@ -36,6 +36,7 @@ import {
 	N_Identifier,
 	N_ImportDeclaration,
 	N_JSXElement,
+	N_JSXFragment,
 	N_ObjectPattern,
 	N_Program,
 	N_Property,
@@ -98,6 +99,7 @@ interface Scope {
  * @param tokens The reader over the token buffer.
  * @param sourceType How the program should be interpreted.
  * @param dialect Whether TypeScript syntax is allowed.
+ * @param jsx Whether JSX syntax is allowed.
  * @returns Every problem found, in the order they were encountered.
  */
 export function validateAst(
@@ -105,8 +107,9 @@ export function validateAst(
 	tokens: TokenReader,
 	sourceType: "script" | "module" | "commonjs",
 	dialect: "js" | "ts",
+	jsx: boolean,
 ): ValidationProblem[] {
-	const validator = new Validator(reader, tokens, sourceType, dialect);
+	const validator = new Validator(reader, tokens, sourceType, dialect, jsx);
 
 	validator.run();
 
@@ -132,11 +135,21 @@ class Validator {
 	/** Whether TypeScript syntax is allowed. */
 	private readonly dialect: "js" | "ts";
 
+	/** Whether JSX syntax is allowed. */
+	private readonly jsx: boolean;
+
 	/** Whether strict mode rules currently apply. */
 	private strict: boolean;
 
 	/** Depth of enclosing functions; `0` means top level. */
 	private functionDepth = 0;
+
+	/**
+	 * Whether the walk is inside a JSX element or fragment, so that a
+	 * disallowed JSX tree is reported once at its root rather than once per
+	 * node it contains.
+	 */
+	private inJsx = false;
 
 	/** The innermost scope. */
 	private scope: Scope;
@@ -147,17 +160,20 @@ class Validator {
 	 * @param tokens The reader over the token buffer.
 	 * @param sourceType How the program should be interpreted.
 	 * @param dialect Whether TypeScript syntax is allowed.
+	 * @param jsx Whether JSX syntax is allowed.
 	 */
 	constructor(
 		reader: AstReader,
 		tokens: TokenReader,
 		sourceType: "script" | "module" | "commonjs",
 		dialect: "js" | "ts",
+		jsx: boolean,
 	) {
 		this.reader = reader;
 		this.tokens = tokens;
 		this.sourceType = sourceType;
 		this.dialect = dialect;
+		this.jsx = jsx;
 		this.strict = sourceType === "module";
 		this.scope = {
 			names: new Map(),
@@ -300,6 +316,21 @@ class Validator {
 				);
 				this.visitChildren(node, kind);
 				this.exitScope();
+				return;
+			}
+
+			/*
+			 * Everything below a JSX element or fragment is JSX too, so the
+			 * subtree is marked to keep `check()` from reporting a disallowed
+			 * tree again at every element nested inside it.
+			 */
+			case N_JSXElement:
+			case N_JSXFragment: {
+				const wasInJsx = this.inJsx;
+
+				this.inJsx = true;
+				this.visitChildren(node, kind);
+				this.inJsx = wasInJsx;
 				return;
 			}
 
@@ -698,6 +729,25 @@ class Validator {
 	//-------------------------------------------------------------------------
 
 	/**
+	 * Reports a JSX element or fragment written where JSX is not enabled.
+	 *
+	 * `parse()` reads JSX unconditionally, because whether it is allowed is
+	 * exactly the kind of question the text alone cannot answer. Only the
+	 * outermost element or fragment is reported, so a whole tree costs one
+	 * problem rather than one per node.
+	 * @param node The `JSXElement` or `JSXFragment` node index.
+	 * @returns Nothing.
+	 */
+	private checkJsxNotAllowed(node: number): void {
+		if (!this.jsx && !this.inJsx) {
+			this.report(
+				"JSX syntax is not allowed unless the jsx option is enabled.",
+				this.reader.start(node),
+			);
+		}
+	}
+
+	/**
 	 * Reports a closing tag whose name does not match its opening tag.
 	 *
 	 * A mismatched pair still forms a well-shaped tree, so it is reported here
@@ -778,7 +828,12 @@ class Validator {
 				return;
 
 			case N_JSXElement:
+				this.checkJsxNotAllowed(node);
 				this.checkJsxTagsMatch(node);
+				return;
+
+			case N_JSXFragment:
+				this.checkJsxNotAllowed(node);
 				return;
 
 			case N_ReturnStatement:

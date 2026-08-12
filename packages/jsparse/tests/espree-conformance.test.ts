@@ -60,6 +60,7 @@ describe("espree conformance for JSX", () => {
 			const actual = toAST(parse(code), {
 				sourceType: "module",
 				dialect: "js",
+				jsx: true,
 			}).ast;
 
 			expect(normalize(actual)).toEqual(normalize(expected));

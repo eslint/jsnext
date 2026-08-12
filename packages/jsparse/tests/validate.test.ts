@@ -105,6 +105,50 @@ describe("dialect", () => {
 	});
 });
 
+describe("jsx", () => {
+	it("rejects JSX by default", () => {
+		expect(messages("<div/>;")).toEqual([
+			expect.stringMatching(/JSX syntax is not allowed/u),
+		]);
+	});
+
+	it("rejects a fragment by default", () => {
+		expect(messages("<>text</>;")).toEqual([
+			expect.stringMatching(/JSX syntax is not allowed/u),
+		]);
+	});
+
+	it("allows JSX when the option is on", () => {
+		expect(messages("<div>{a}</div>;", { jsx: true })).toEqual([]);
+	});
+
+	it("rejects JSX in either dialect", () => {
+		expect(messages("<div/>;", { dialect: "js" })).toHaveLength(1);
+		expect(messages("<div/>;", { dialect: "ts" })).toHaveLength(1);
+	});
+
+	it("reports a whole tree once, at its root", () => {
+		const problems = validate(
+			parse("<div><span>{a}</span><br/></div>;"),
+			{},
+		);
+
+		expect(problems).toHaveLength(1);
+		expect(problems[0].column).toBe(1);
+	});
+
+	it("reports each JSX tree that stands on its own", () => {
+		expect(messages("<a/>; <b/>;")).toHaveLength(2);
+	});
+
+	it("still reports other problems inside a rejected tree", () => {
+		expect(messages("<div>{x}</span>;")).toEqual([
+			expect.stringMatching(/JSX syntax is not allowed/u),
+			expect.stringMatching(/is closed by/u),
+		]);
+	});
+});
+
 describe("declarations", () => {
 	it("reports a repeated lexical declaration", () => {
 		expect(messages("let a; let a;")).toEqual([

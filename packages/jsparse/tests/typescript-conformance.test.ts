@@ -54,6 +54,7 @@ describe("typescript-eslint conformance for JSX", () => {
 			const actual = toAST(parse(code), {
 				sourceType: "module",
 				dialect: "ts",
+				jsx: true,
 			}).ast;
 
 			expect(normalize(actual)).toEqual(normalize(expected));

@@ -122,6 +122,27 @@ describe("eslintParser.parse()", () => {
 		).toThrow(/dialect is "js"/u);
 	});
 
+	it("takes JSX from the file name", () => {
+		expect(() =>
+			eslintParser.parse("<div/>;", { filePath: "a.tsx" }),
+		).not.toThrow();
+		expect(() =>
+			eslintParser.parse("<div/>;", { filePath: "a.jsx" }),
+		).not.toThrow();
+		expect(() =>
+			eslintParser.parse("<div/>;", { filePath: "a.js" }),
+		).toThrow(/JSX syntax is not allowed/u);
+	});
+
+	it("lets an explicit jsx option win over the file name", () => {
+		expect(() =>
+			eslintParser.parse("<div/>;", { filePath: "a.js", jsx: true }),
+		).not.toThrow();
+		expect(() =>
+			eslintParser.parse("<div/>;", { filePath: "a.jsx", jsx: false }),
+		).toThrow(/JSX syntax is not allowed/u);
+	});
+
 	it("lets an explicit dialect win over the file name", () => {
 		expect(() =>
 			eslintParser.parse("let a: number;", {
@@ -163,6 +184,13 @@ describe("eslintParser inside ESLint", () => {
 
 		expect(messages[0].fatal).toBe(true);
 		expect(messages[0].message).toMatch(/dialect is "js"/u);
+	});
+
+	it("reports JSX in a file that is not a .jsx or .tsx file", () => {
+		const messages = lint("const a = <div/>;", "file.js");
+
+		expect(messages[0].fatal).toBe(true);
+		expect(messages[0].message).toMatch(/JSX syntax is not allowed/u);
 	});
 
 	it("reports what espree reports, down to the fix range", () => {

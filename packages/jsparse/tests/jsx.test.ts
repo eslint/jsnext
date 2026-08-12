@@ -14,6 +14,7 @@ function types(code: string): string[] {
 	const { ast } = toAST(parse(code), {
 		sourceType: "module",
 		dialect: "js",
+		jsx: true,
 	});
 
 	return (ast.tokens as { type: string; value: string }[]).map(
@@ -30,6 +31,7 @@ function firstExpression(code: string): Record<string, unknown> {
 	const { ast } = toAST(parse(code), {
 		sourceType: "module",
 		dialect: "js",
+		jsx: true,
 	});
 
 	return (ast.body as Record<string, unknown>[])[0]
@@ -175,7 +177,7 @@ describe("JSX parsing", () => {
 	});
 
 	it("reports a mismatched closing tag during validation", () => {
-		const problems = validate(parse("<div>{x}</span>;"));
+		const problems = validate(parse("<div>{x}</span>;"), { jsx: true });
 
 		expect(problems).toEqual([
 			{
@@ -187,7 +189,7 @@ describe("JSX parsing", () => {
 	});
 
 	it("accepts a matching pair", () => {
-		expect(validate(parse("<A.B>{x}</A.B>;"))).toEqual([]);
+		expect(validate(parse("<A.B>{x}</A.B>;"), { jsx: true })).toEqual([]);
 	});
 
 	it("falls back to a type assertion when JSX cannot fit", () => {

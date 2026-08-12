@@ -75,6 +75,12 @@ export interface ValidateOptions {
 
 	/** Whether TypeScript syntax is allowed. */
 	dialect?: "js" | "ts";
+
+	/**
+	 * Whether JSX syntax is allowed. Off unless asked for, because a `<` in
+	 * expression position means something else in a file that is not JSX.
+	 */
+	jsx?: boolean;
 }
 
 /**
@@ -167,6 +173,7 @@ export function validate(
 		new TokenReader(result.tokens),
 		options.sourceType ?? "module",
 		options.dialect ?? "ts",
+		options.jsx ?? false,
 	);
 
 	return locateProblems(problems, new LineIndex(result.lineStarts));
@@ -222,7 +229,13 @@ function buildAst(
 	const tokenReader = new TokenReader(result.tokens);
 	const sourceType = options.sourceType ?? "module";
 	const dialect = options.dialect ?? "ts";
-	const problems = validateAst(reader, tokenReader, sourceType, dialect);
+	const problems = validateAst(
+		reader,
+		tokenReader,
+		sourceType,
+		dialect,
+		options.jsx ?? false,
+	);
 	const decoder = new AstDecoder(reader, dialect === "ts", lines);
 	const program = decoder.node(reader.root)!;
 	const { tokens, comments } = decodeTokens(tokenReader, reader.source, lines);
@@ -412,6 +425,9 @@ export function tokenStartsLine(reader: TokenReader, index: number): boolean {
 /** File extensions that are JavaScript rather than TypeScript. */
 const JAVASCRIPT_FILE = /\.[cm]?jsx?$/iu;
 
+/** File extensions that carry JSX. */
+const JSX_FILE = /\.[jt]sx$/iu;
+
 /**
  * The options ESLint passes to a parser.
  *
@@ -430,6 +446,13 @@ export interface EslintParserOptions {
 	 */
 	dialect?: "js" | "ts";
 
+	/**
+	 * Whether JSX syntax is allowed. When omitted it is taken from the file's
+	 * extension, so `.jsx` and `.tsx` files lint without any configuration and
+	 * JSX elsewhere is reported as the mistake it is.
+	 */
+	jsx?: boolean;
+
 	/** The path of the file being linted. */
 	filePath?: string;
 }
@@ -447,6 +470,19 @@ function dialectFor(options: EslintParserOptions): "js" | "ts" {
 	return options.filePath && JAVASCRIPT_FILE.test(options.filePath)
 		? "js"
 		: "ts";
+}
+
+/**
+ * Decides whether a file ESLint asked to parse may contain JSX.
+ * @param options The options ESLint passed to the parser.
+ * @returns `true` when JSX syntax should be accepted.
+ */
+function jsxFor(options: EslintParserOptions): boolean {
+	if (options.jsx !== undefined) {
+		return options.jsx;
+	}
+
+	return options.filePath !== undefined && JSX_FILE.test(options.filePath);
 }
 
 /**
@@ -478,6 +514,7 @@ export const eslintParser = {
 			{
 				sourceType: options.sourceType ?? "module",
 				dialect: dialectFor(options),
+				jsx: jsxFor(options),
 			},
 			lines,
 		);

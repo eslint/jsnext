@@ -57,10 +57,10 @@ cannot be turned into tokens, or those tokens cannot be shaped into a tree.
 
 Everything that is merely *not allowed here* — `with` in strict mode, a
 redeclared binding, `return` outside a function, TypeScript syntax in a `.js`
-file, top-level `await` in a script — parses cleanly and is reported by
-`validate()`. That is what makes the source type and the dialect options of
-phase 2 rather than phase 1, and it means one parse can be validated several
-ways.
+file, JSX in a file that is not JSX, top-level `await` in a script — parses
+cleanly and is reported by `validate()`. That is what makes the source type,
+the dialect, and `jsx` options of phase 2 rather than phase 1, and it means one
+parse can be validated several ways.
 
 Phase 3 is where JavaScript objects finally get allocated. A tool that only
 needs to inspect part of a file can read the binary buffers directly with
@@ -373,6 +373,11 @@ which `parse()` does not have. So the parser tries JSX first, and on failure
 rewinds and tries a type assertion. JSX wins wherever both readings work, which
 is the `.tsx` choice. When both fail, the JSX diagnostic is preferred, since
 that is nearly always what the author meant.
+
+The `jsx` option does not enter into this. It belongs to phase 2, so a JSX
+element parses either way and `validate()` reports it when the option is off —
+once per outermost `JSXElement` or `JSXFragment`, which is what the `inJsx`
+flag in the walk is for.
 
 **A mismatched JSX closing tag.** `<div>{x}</span>` yields a perfectly
 well-shaped tree, so under the phase rule it is not a parse error. It is
