@@ -78,6 +78,7 @@ const BINDING_LEXICAL = 1;
 const BINDING_FUNCTION = 2;
 const BINDING_PARAM = 3;
 const BINDING_TYPE = 4;
+const BINDING_SIGNATURE = 5;
 
 /**
  * One lexical scope's bindings.
@@ -477,10 +478,22 @@ class Validator {
 					break;
 
 				case N_FunctionDeclaration:
-				case N_TSDeclareFunction:
 					this.declare(
 						reader.field(statement, NODE_A),
 						BINDING_FUNCTION,
+					);
+					break;
+
+				/*
+				 * A body-less function declaration is either a TypeScript
+				 * overload signature or an ambient one, and both merge with
+				 * the other declarations of the same name instead of
+				 * redeclaring it.
+				 */
+				case N_TSDeclareFunction:
+					this.declare(
+						reader.field(statement, NODE_A),
+						BINDING_SIGNATURE,
 					);
 					break;
 
@@ -653,6 +666,15 @@ class Validator {
 			return;
 		}
 
+		/*
+		 * A signature written after the implementation must not erase the
+		 * record of the implementation, or a second implementation would go
+		 * unreported.
+		 */
+		if (binding === BINDING_SIGNATURE && existing === BINDING_FUNCTION) {
+			return;
+		}
+
 		scope.names.set(name, binding);
 	}
 
@@ -681,8 +703,21 @@ class Validator {
 			return this.strict;
 		}
 
-		if (existing === BINDING_FUNCTION && incoming === BINDING_FUNCTION) {
-			return this.strict;
+		/*
+		 * Overload signatures merge with each other and with the
+		 * implementation they belong to, so only two implementations of the
+		 * same name are a redeclaration, under the same rule as plain
+		 * JavaScript.
+		 */
+		if (
+			(existing === BINDING_FUNCTION || existing === BINDING_SIGNATURE) &&
+			(incoming === BINDING_FUNCTION || incoming === BINDING_SIGNATURE)
+		) {
+			return (
+				this.strict &&
+				existing === BINDING_FUNCTION &&
+				incoming === BINDING_FUNCTION
+			);
 		}
 
 		return true;

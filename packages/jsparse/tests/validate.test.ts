@@ -202,3 +202,59 @@ describe("declarations", () => {
 		]);
 	});
 });
+
+describe("overload signatures", () => {
+	it("allows signatures followed by an implementation", () => {
+		expect(
+			messages(
+				"function f(a: string): void;\nfunction f(a: number): void;\nfunction f(a: any): void {}",
+			),
+		).toEqual([]);
+	});
+
+	it("allows exported signatures", () => {
+		expect(
+			messages(
+				"export function f(a: string): void;\nexport function f(a: any): void {}",
+			),
+		).toEqual([]);
+	});
+
+	it("allows ambient signatures with no implementation", () => {
+		expect(
+			messages(
+				"declare function f(a: string): void;\ndeclare function f(a: number): void;",
+			),
+		).toEqual([]);
+	});
+
+	it("allows signatures inside a namespace", () => {
+		expect(
+			messages(
+				"declare namespace N {\n\tfunction f(a: string): void;\n\tfunction f(a: number): void;\n}",
+			),
+		).toEqual([]);
+	});
+
+	it("allows signatures inside a block", () => {
+		expect(
+			messages(
+				"{\n\tfunction f(a: string): void;\n\tfunction f(a: any): void {}\n}",
+			),
+		).toEqual([]);
+	});
+
+	it("still reports two implementations of the same name", () => {
+		expect(
+			messages(
+				"function f(a: string): void;\nfunction f(a: any) {}\nfunction f(b: any) {}",
+			),
+		).toEqual([expect.stringMatching(/already been declared/u)]);
+	});
+
+	it("still reports a lexical binding that collides with a signature", () => {
+		expect(messages("function f(a: string): void;\nlet f;")).toEqual([
+			expect.stringMatching(/already been declared/u),
+		]);
+	});
+});
