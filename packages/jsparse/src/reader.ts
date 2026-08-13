@@ -48,8 +48,8 @@ export class AstReader {
 	/** Index of the root node. */
 	readonly root: number;
 
-	/** The source text the AST was produced from. */
-	readonly source: string;
+	/** The source text once resolved, or `null` until it is first asked for. */
+	private sourceText: string | null = null;
 
 	/**
 	 * Creates a reader over an AST buffer.
@@ -68,11 +68,32 @@ export class AstReader {
 		this.nodeWords = this.words[AST_HEADER_NODE_BYTES] / 4;
 		this.nodeCount = this.words[AST_HEADER_NODE_COUNT];
 		this.root = this.words[AST_HEADER_ROOT];
-		this.source = readSource(
-			buffer,
-			this.words[AST_HEADER_SOURCE_OFFSET],
-			this.words[AST_HEADER_SOURCE_LENGTH],
-		);
+	}
+
+	/**
+	 * The source text the AST was produced from.
+	 *
+	 * Resolved on first use rather than in the constructor, so that a consumer
+	 * reading only structure — kinds, extents, child slots — can walk a buffer
+	 * that carries no text at all. See
+	 * [`docs/embedded-source.md`](../docs/embedded-source.md).
+	 * @returns The source text.
+	 * @throws {TypeError} When the buffer was built without `embedSource` and
+	 *      this is not the process that parsed it, so the text is gone.
+	 */
+	get source(): string {
+		let text = this.sourceText;
+
+		if (text === null) {
+			text = readSource(
+				this.words.buffer,
+				this.words[AST_HEADER_SOURCE_OFFSET],
+				this.words[AST_HEADER_SOURCE_LENGTH],
+			);
+			this.sourceText = text;
+		}
+
+		return text;
 	}
 
 	/**

@@ -60,9 +60,21 @@ ast.type; // "Program"
 ast.body[0].declarations[0].id.typeAnnotation.type; // "TSTypeAnnotation"
 ```
 
-### `parse(code)`
+### `parse(code, options?)`
 
 Returns `{ ast, tokens, lineStarts }`.
+
+| Option | Default | Meaning |
+| ------ | ------- | ------- |
+| `embedSource` | `false` | Copy the source text into the AST buffer, so the buffer can be read in a process that did not parse it. |
+
+Reading text off a buffer works either way in the process that parsed, because
+the original string is cached against the buffer. Turn `embedSource` on when
+the buffer will be transferred to a worker, written to disk, or otherwise read
+elsewhere — it adds roughly a sixth to the buffer, so it is not carried unless
+it is asked for. Reading text off a transferred buffer that was parsed without
+it throws and says so. See
+[`docs/embedded-source.md`](./docs/embedded-source.md).
 
 Throws a `ParseError` for an invalid token or an invalid sequence of tokens.
 The error carries `index` (0-based offset), `lineNumber`, and `column` (both

@@ -30,6 +30,7 @@ export { decodeEscapes, decodeNumber } from "./values.js";
  */
 export { decodeTokens, parse, toAST, tokenStartsLine, validate } from "./api.js";
 export type {
+	ParseOptions,
 	ParseResult,
 	ToAstResult,
 	Token,

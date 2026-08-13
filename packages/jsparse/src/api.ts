@@ -110,15 +110,37 @@ export interface ToAstResult {
 }
 
 /**
+ * How the buffers `parse()` produces should be built.
+ *
+ * These describe the *encoding* of the output, never how the text is
+ * interpreted — that stays with `validate()`, per the phase split.
+ */
+export interface ParseOptions {
+	/**
+	 * Whether to copy the source text into the AST buffer, making the buffer
+	 * readable in a process that did not parse it.
+	 *
+	 * Defaults to `false`. Reading text in the parsing process works either
+	 * way, because the original string is cached against the buffer. Turn it
+	 * on when the buffer will be transferred to a worker, written to disk, or
+	 * otherwise read anywhere else — the text is roughly a sixth of the
+	 * buffer, so it is not carried unless it is asked for. See
+	 * [`docs/embedded-source.md`](../docs/embedded-source.md).
+	 */
+	embedSource?: boolean;
+}
+
+/**
  * Parses source text into binary buffers.
  *
  * Only problems that make the text impossible to tokenize or shape into a tree
  * are reported here; everything context-dependent is left to `validate()`.
  * @param code The JavaScript or TypeScript source to parse.
+ * @param options How the buffers should be built.
  * @returns The encoded AST, the encoded token stream, and the line offsets.
  * @throws {ParseError} When the source contains a syntax error.
  */
-export function parse(code: string): ParseResult {
+export function parse(code: string, options: ParseOptions = {}): ParseResult {
 	const parser = new Parser(code);
 	const root = parser.parseProgram();
 	const writer = parser.writer;
@@ -131,6 +153,7 @@ export function parse(code: string): ParseResult {
 			writer.lists,
 			root,
 			code,
+			options.embedSource ?? false,
 		),
 		tokens: buildTokenBuffer(tokenizer.records, tokenizer.count),
 		lineStarts: tokenizer.lineStarts.slice(0, tokenizer.lineCount),

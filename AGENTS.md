@@ -62,6 +62,10 @@ before changing anything in them:
   documents the tokenizer, the parser, and both binary formats field by field,
   the invariants that break subtly when violated, and a checklist for adding a
   node kind.
+- [`packages/jsparse/docs/embedded-source.md`](./packages/jsparse/docs/embedded-source.md)
+  explains `parse()`'s `embedSource` option — why an AST buffer can carry a copy
+  of the program text, why it does not by default, and the loud failure that
+  makes the default safe.
 - [`packages/jsparse/docs/types.md`](./packages/jsparse/docs/types.md) documents
   `src/ast-types.ts` — the hand-written ESTree declarations `toAST()` returns.
   **Read it before reaching for `@types/estree` or `@typescript-eslint/types`:**

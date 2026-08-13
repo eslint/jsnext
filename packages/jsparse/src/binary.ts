@@ -81,6 +81,15 @@ export const AST_HEADER_SOURCE_OFFSET = 7;
 export const AST_HEADER_SOURCE_LENGTH = 8;
 export const AST_HEADER_ROOT = 9;
 export const AST_HEADER_FLAGS = 10;
+
+/**
+ * `AST_HEADER_FLAGS` bit: the buffer carries its own copy of the source text.
+ *
+ * When it is clear, the source region has zero length and the text can only be
+ * recovered in the process that parsed it, from the cache below. See
+ * [`docs/embedded-source.md`](../docs/embedded-source.md).
+ */
+export const AST_FLAG_SOURCE_EMBEDDED = 1;
 export const AST_HEADER_RESERVED = 11;
 
 //-----------------------------------------------------------------------------
@@ -162,7 +171,27 @@ export class WordBuffer {
  * is cached against the buffer it was stored in and reused when the same
  * process converts the AST.
  */
-const sourceCache = new WeakMap<ArrayBufferLike, string>();
+/**
+ * Where a buffer's source text is parked for the process that produced it.
+ *
+ * This is a property of the buffer under a registry symbol rather than a
+ * `WeakMap`, because a `WeakMap` reaches only as far as one instance of this
+ * module and `@eslint/jsscope` bundles its own copy of it. A buffer parsed
+ * through `@eslint/jsparse` would miss a `WeakMap` living inside
+ * `@eslint/jsscope` and look exactly like a buffer that arrived from another
+ * process — which, with `embedSource` off, means an unreadable one.
+ * `Symbol.for()` is shared across every copy of the module in the realm, so
+ * the cache is as wide as the heap.
+ *
+ * An own property is also the right lifetime and the right boundary: it dies
+ * with the buffer, and it is carried by neither `slice()`,
+ * `structuredClone()`, nor a `postMessage` transfer — exactly the crossings
+ * after which the text really is gone.
+ */
+const SOURCE_KEY = Symbol.for("@eslint/jsparse.source");
+
+/** The buffer as something that may be carrying its source text. */
+type SourceCarrier = { [SOURCE_KEY]?: string };
 
 const UTF16_DECODER = new TextDecoder("utf-16le");
 
@@ -174,7 +203,10 @@ const UTF16_DECODER = new TextDecoder("utf-16le");
  * @returns Nothing.
  */
 export function cacheSource(buffer: ArrayBufferLike, source: string): void {
-	sourceCache.set(buffer, source);
+	Object.defineProperty(buffer, SOURCE_KEY, {
+		value: source,
+		configurable: true,
+	});
 }
 
 /**
@@ -189,17 +221,35 @@ export function readSource(
 	byteOffset: number,
 	length: number,
 ): string {
-	const cached = sourceCache.get(buffer);
+	const cached = (buffer as SourceCarrier)[SOURCE_KEY];
 
 	if (cached !== undefined) {
 		return cached;
+	}
+
+	/*
+	 * The cache reaches exactly as far as the heap that parsed. A miss on a
+	 * buffer with no embedded text means the text is simply gone — which is
+	 * only reachable by transferring or persisting a buffer parsed without
+	 * `embedSource`. Decoding the empty region would hand back a run of NUL
+	 * characters and let every name silently come back wrong, so this is the
+	 * one place that has to be loud.
+	 */
+	if (
+		(new Uint32Array(buffer, AST_HEADER_FLAGS * 4, 1)[0] &
+			AST_FLAG_SOURCE_EMBEDDED) ===
+		0
+	) {
+		throw new TypeError(
+			"This AST buffer carries no source text, and none is cached for it in this process. Re-parse with `{ embedSource: true }` before transferring or persisting a buffer whose text will be read elsewhere.",
+		);
 	}
 
 	const decoded = UTF16_DECODER.decode(
 		new Uint8Array(buffer, byteOffset, length * 2),
 	);
 
-	sourceCache.set(buffer, decoded);
+	cacheSource(buffer, decoded);
 
 	return decoded;
 }
@@ -274,10 +324,11 @@ export function buildAstBuffer(
 	lists: WordBuffer,
 	root: number,
 	source: string,
+	embedSource: boolean,
 ): ArrayBuffer {
 	const nodesBytes = nodeCount * NODE_BYTES;
 	const listBytes = lists.length * 4;
-	const sourceBytes = alignWords(source.length * 2);
+	const sourceBytes = embedSource ? alignWords(source.length * 2) : 0;
 
 	const nodesOffset = AST_HEADER_BYTES;
 	const listOffset = nodesOffset + nodesBytes;
@@ -294,7 +345,14 @@ export function buildAstBuffer(
 	view[AST_HEADER_LIST_OFFSET] = listOffset;
 	view[AST_HEADER_LIST_COUNT] = lists.length;
 	view[AST_HEADER_SOURCE_OFFSET] = sourceOffset;
+
+	/*
+	 * The length is recorded either way: it describes the program, not the
+	 * region, and a consumer can still learn how long the source was. The
+	 * flag is what says whether the characters are actually here.
+	 */
 	view[AST_HEADER_SOURCE_LENGTH] = source.length;
+	view[AST_HEADER_FLAGS] = embedSource ? AST_FLAG_SOURCE_EMBEDDED : 0;
 	view[AST_HEADER_ROOT] = root;
 
 	view.set(
@@ -303,12 +361,20 @@ export function buildAstBuffer(
 	);
 	view.set(lists.words.subarray(0, lists.length), listOffset / 4);
 
-	writeSource(
-		new Uint16Array(buffer, sourceOffset, source.length),
-		0,
-		source,
-	);
+	if (embedSource) {
+		writeSource(
+			new Uint16Array(buffer, sourceOffset, source.length),
+			0,
+			source,
+		);
+	}
 
+	/*
+	 * Cached whether or not the text was embedded: this is what lets a
+	 * consumer in the parsing process read names off a buffer that carries no
+	 * text of its own, which is the whole point of `embedSource` defaulting
+	 * to `false`.
+	 */
 	cacheSource(buffer, source);
 
 	return buffer;

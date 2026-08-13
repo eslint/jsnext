@@ -4,7 +4,9 @@
 
 import { describe, expect, it } from "vitest";
 import {
+	AST_FLAG_SOURCE_EMBEDDED,
 	AST_HEADER_BYTES,
+	AST_HEADER_FLAGS,
 	AST_HEADER_LIST_COUNT,
 	AST_HEADER_LIST_OFFSET,
 	AST_HEADER_MAGIC,
@@ -184,13 +186,15 @@ describe("buildAstBuffer()", () => {
 	 * Assembles an AST buffer from node words, list words, and source text.
 	 * @param nodeCount How many node records to claim, node 0 included.
 	 * @param listValues The words of the list region.
-	 * @param source The source text to embed.
+	 * @param source The source text.
+	 * @param embedSource Whether to copy the text into the buffer.
 	 * @returns The assembled buffer.
 	 */
 	function build(
 		nodeCount: number,
 		listValues: number[],
 		source: string,
+		embedSource = true,
 	): ArrayBuffer {
 		const nodes = new WordBuffer(64);
 
@@ -202,7 +206,14 @@ describe("buildAstBuffer()", () => {
 			lists.push(value);
 		}
 
-		return buildAstBuffer(nodes, nodeCount, lists, 1, source);
+		return buildAstBuffer(
+			nodes,
+			nodeCount,
+			lists,
+			1,
+			source,
+			embedSource,
+		);
 	}
 
 	it("writes a header identifying the buffer", () => {
@@ -295,6 +306,56 @@ describe("buildAstBuffer()", () => {
 		expect(
 			readSource(buffer.slice(0), view[AST_HEADER_SOURCE_OFFSET], 0),
 		).toBe("");
+	});
+
+	describe("without embedSource", () => {
+		it("records the flag and leaves the region empty", () => {
+			const source = "const a = 1;";
+			const embedded = new Uint32Array(build(2, [], source));
+			const bare = new Uint32Array(build(2, [], source, false));
+
+			expect(embedded[AST_HEADER_FLAGS] & AST_FLAG_SOURCE_EMBEDDED).toBe(
+				AST_FLAG_SOURCE_EMBEDDED,
+			);
+			expect(bare[AST_HEADER_FLAGS] & AST_FLAG_SOURCE_EMBEDDED).toBe(0);
+
+			// The length still describes the program; only the bytes are gone.
+			expect(bare[AST_HEADER_SOURCE_LENGTH]).toBe(source.length);
+			expect(bare.byteLength).toBeLessThan(embedded.byteLength);
+			expect(bare[AST_HEADER_SOURCE_OFFSET]).toBe(bare.byteLength);
+		});
+
+		it("still serves the text in the process that built it", () => {
+			const source = "const a = 1;";
+			const buffer = build(2, [], source, false);
+			const view = new Uint32Array(buffer);
+
+			expect(
+				readSource(
+					buffer,
+					view[AST_HEADER_SOURCE_OFFSET],
+					view[AST_HEADER_SOURCE_LENGTH],
+				),
+			).toBe(source);
+		});
+
+		it("refuses loudly rather than decoding an absent region", () => {
+			const source = "const a = 1;";
+			const buffer = build(2, [], source, false);
+			const view = new Uint32Array(buffer);
+
+			/*
+			 * A copy is a different object, so the cache misses — which is
+			 * exactly what a transferred or persisted buffer looks like.
+			 */
+			expect(() =>
+				readSource(
+					buffer.slice(0),
+					view[AST_HEADER_SOURCE_OFFSET],
+					view[AST_HEADER_SOURCE_LENGTH],
+				),
+			).toThrow(/carries no source text/u);
+		});
 	});
 });
 

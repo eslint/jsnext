@@ -451,13 +451,18 @@ Header (48 bytes, 12 words)
   word 7   sourceOffset   byte offset of the embedded source text
   word 8   sourceLength   length of the text, in UTF-16 code units
   word 9   root           index of the root node
-  word 10  flags          reserved, currently 0
+  word 10  flags          bit 0: AST_FLAG_SOURCE_EMBEDDED
   word 11  reserved       currently 0
 
 Node region     nodeCount * 48 bytes
 List region     listCount * 4 bytes
-Source region   sourceLength * 2 bytes, padded up to a word boundary
+Source region   sourceLength * 2 bytes, padded up to a word boundary,
+                or absent entirely when the source is not embedded
 ```
+
+`sourceLength` describes the *program*, not the region: it is recorded whether
+or not the text is present, and the flag in word 10 is what says whether the
+characters are actually there.
 
 ### Node records
 
@@ -557,15 +562,27 @@ Elements are node indices; a `0` element is an array hole, as in `[a, , b]`.
 
 ### The embedded source text
 
-The AST buffer carries a copy of the source as little-endian UTF-16 code units,
-so that `validate()` and `toAST()` need nothing but the parse result — no
-separate string argument to keep in sync, and the buffer is self-describing if
-transferred to a worker.
+The AST buffer *can* carry a copy of the source as little-endian UTF-16 code
+units, so that the buffer is self-describing when it is transferred to a worker
+or written to disk. It does not by default: the region is roughly a sixth of
+the buffer and costs about 4% of a parse, and a consumer that stays in the
+process that parsed never reads it.
 
-Decoding that copy back into a string costs a full pass, so `cacheSource()`
-records the original string against the buffer in a `WeakMap` when the buffer
-is built. `readSource()` returns the cached string when the same process reads
-the same buffer, and only decodes when the buffer arrived from somewhere else.
+`buildAstBuffer()` always calls `cacheSource()`, which parks the original
+string on the buffer under `Symbol.for("@eslint/jsparse.source")` — a registry
+symbol rather than a `WeakMap`, so that `jsscope`'s bundled copy of this module
+finds the same cache. `readSource()` returns that string when the same process
+reads the same buffer — so text works whether or not the region exists — and
+only falls through to decoding when the buffer arrived from somewhere else. On that path it checks `AST_FLAG_SOURCE_EMBEDDED`
+first and throws rather than decoding an absent region into a run of NUL
+characters.
+
+`AstReader#source` resolves lazily for the same reason: a consumer reading only
+kinds, extents, and child slots can walk a transferred buffer that carries no
+text at all.
+
+**[`embedded-source.md`](./embedded-source.md) covers the option, when to turn
+it on, and what it costs.**
 
 ### Reading a buffer
 
