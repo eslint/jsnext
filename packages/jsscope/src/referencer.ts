@@ -125,32 +125,18 @@ import {
 	type AstAccess,
 } from "./ast-access.js";
 import {
-	catchClauseDefinition,
-	classNameDefinition,
-	enumMemberDefinition,
-	enumNameDefinition,
-	functionNameDefinition,
-	importBindingDefinition,
-	moduleNameDefinition,
-	parameterDefinition,
-	typeDefinition,
-	variableDefinition,
-} from "./definition.js";
-import {
 	READ_WRITE,
 	SCOPE_CONDITIONAL_TYPE,
 	SCOPE_FUNCTION_TYPE,
 	SCOPE_MAPPED_TYPE,
 	WRITE,
 } from "./kinds.js";
-import type { MaybeImplicitGlobal } from "./reference.js";
 import {
 	isPatternKind,
 	PatternVisitor,
 	type PatternCallback,
 } from "./pattern-visitor.js";
-import type { Scope } from "./scope.js";
-import type { ScopeManager } from "./scope-manager.js";
+import type { ScopeBuilder } from "./scope-builder.js";
 
 /**
  * Builds the scope graph for one program.
@@ -158,8 +144,8 @@ import type { ScopeManager } from "./scope-manager.js";
  * @template TNode How one node is represented.
  */
 export class Referencer<TNode> {
-	/** The manager collecting the scopes. */
-	private readonly scopeManager: ScopeManager<TNode>;
+	/** The graph being built. */
+	private readonly builder: ScopeBuilder<TNode>;
 
 	/** How to read the program. */
 	private readonly ast: AstAccess<TNode>;
@@ -187,13 +173,13 @@ export class Referencer<TNode> {
 
 	/**
 	 * Creates a referencer.
-	 * @param scopeManager The manager collecting the scopes.
+	 * @param builder The graph being built.
 	 */
-	constructor(scopeManager: ScopeManager<TNode>) {
-		const options = scopeManager.options;
+	constructor(builder: ScopeBuilder<TNode>) {
+		const options = builder.options;
 
-		this.scopeManager = scopeManager;
-		this.ast = scopeManager.ast;
+		this.builder = builder;
+		this.ast = builder.ast;
 		this.typescript = options.dialect === "ts";
 		this.jsx = options.jsx;
 		this.ignoreEval = options.ignoreEval;
@@ -206,25 +192,18 @@ export class Referencer<TNode> {
 	//-------------------------------------------------------------------------
 
 	/**
-	 * The scope currently being filled in.
-	 * @returns The innermost open scope.
-	 */
-	private get scope(): Scope<TNode> {
-		return this.scopeManager.currentScope!;
-	}
-
-	/**
 	 * Closes every scope a node opened.
 	 * @param node The node the scopes were opened for.
 	 * @returns Nothing.
 	 */
 	private close(node: TNode): void {
+		const builder = this.builder;
+
 		while (
-			this.scopeManager.currentScope !== null &&
-			node === this.scopeManager.currentScope.block
+			builder.currentScope() !== -1 &&
+			node === builder.currentBlock()
 		) {
-			this.scopeManager.currentScope =
-				this.scopeManager.currentScope.close();
+			builder.closeCurrent();
 		}
 	}
 
@@ -313,14 +292,14 @@ export class Referencer<TNode> {
 	 * Records the writes that a pattern's default values perform.
 	 * @param pattern The `Identifier` node being bound.
 	 * @param assignments The defaults enclosing it.
-	 * @param maybeImplicitGlobal Where an undeclared assignment happened.
+	 * @param implicitNode The undeclared assignment's statement, or `null`.
 	 * @param init Whether the writes initialize a declaration.
 	 * @returns Nothing.
 	 */
 	private referencingDefaultValue(
 		pattern: TNode,
 		assignments: TNode[],
-		maybeImplicitGlobal: MaybeImplicitGlobal<TNode> | null,
+		implicitNode: TNode | null,
 		init: boolean,
 	): void {
 		if (assignments.length === 0) {
@@ -333,12 +312,12 @@ export class Referencer<TNode> {
 		for (let i = 0; i < assignments.length; i++) {
 			const assignment = assignments[i];
 
-			this.scope.referenceValue(
+			this.builder.referenceValue(
 				pattern,
 				name,
 				WRITE,
 				ast.child(assignment, SLOT_B),
-				maybeImplicitGlobal,
+				implicitNode,
 				pattern !== ast.child(assignment, SLOT_A),
 				init,
 			);
@@ -364,7 +343,7 @@ export class Referencer<TNode> {
 
 		switch (kind) {
 			case N_Identifier:
-				this.scope.referenceValue(node, ast.name(node));
+				this.builder.referenceRead(node, ast.name(node));
 				this.visitType(ast.child(node, SLOT_B));
 				return;
 
@@ -373,7 +352,7 @@ export class Referencer<TNode> {
 				return;
 
 			case N_BlockStatement:
-				this.scopeManager.nestBlockScope(node);
+				this.builder.nestBlockScope(node);
 				this.visitList(node, SLOT_A);
 				this.close(node);
 				return;
@@ -431,14 +410,14 @@ export class Referencer<TNode> {
 
 			case N_SwitchStatement:
 				this.visit(ast.child(node, SLOT_A));
-				this.scopeManager.nestSwitchScope(node);
+				this.builder.nestSwitchScope(node);
 				this.visitList(node, SLOT_B);
 				this.close(node);
 				return;
 
 			case N_WithStatement:
 				this.visit(ast.child(node, SLOT_A));
-				this.scopeManager.nestWithScope(node);
+				this.builder.nestWithScope(node);
 				this.visit(ast.child(node, SLOT_B));
 				this.close(node);
 				return;
@@ -454,7 +433,7 @@ export class Referencer<TNode> {
 				return;
 
 			case N_ThisExpression:
-				this.scope.variableScope.detectThis();
+				this.builder.detectThis();
 				return;
 
 			case N_LabeledStatement:
@@ -510,7 +489,7 @@ export class Referencer<TNode> {
 
 					// `this` in a JSX name is the keyword, not a variable.
 					if (name !== "this") {
-						this.scope.referenceValue(node, name);
+						this.builder.referenceRead(node, name);
 					}
 				}
 
@@ -571,7 +550,7 @@ export class Referencer<TNode> {
 				return;
 
 			case N_StaticBlock:
-				this.scopeManager.nestClassStaticBlockScope(node);
+				this.builder.nestClassStaticBlockScope(node);
 				this.visitList(node, SLOT_A);
 				this.close(node);
 				return;
@@ -591,25 +570,25 @@ export class Referencer<TNode> {
 	 * @returns Nothing.
 	 */
 	private visitProgram(node: TNode): void {
-		const scopeManager = this.scopeManager;
+		const builder = this.builder;
 
-		scopeManager.nestGlobalScope(node);
+		builder.nestGlobalScope(node);
 
 		/*
 		 * A CommonJS module runs inside a function, so `return` is legal at
 		 * the top level and the global scope itself is never strict.
 		 */
-		if (scopeManager.isGlobalReturn()) {
-			this.scope.isStrict = false;
-			scopeManager.nestFunctionScope(node, false);
+		if (builder.isGlobalReturn()) {
+			builder.setStrict(false);
+			builder.nestFunctionScope(node, false);
 		}
 
-		if (scopeManager.isModule()) {
-			scopeManager.nestModuleScope(node);
+		if (builder.isModule()) {
+			builder.nestModuleScope(node);
 		}
 
-		if (scopeManager.isImpliedStrict()) {
-			this.scope.isStrict = true;
+		if (builder.isImpliedStrict()) {
+			builder.setStrict(true);
 		}
 
 		this.visitList(node, SLOT_A);
@@ -625,7 +604,9 @@ export class Referencer<TNode> {
 		const ast = this.ast;
 		const kindName = ast.declarationKind(node);
 		const target =
-			kindName === "var" ? this.scope.variableScope : this.scope;
+			kindName === "var"
+				? this.builder.currentVariableScope()
+				: this.builder.currentScope();
 		const size = ast.listSize(node, SLOT_A);
 
 		for (let index = 0; index < size; index++) {
@@ -643,16 +624,14 @@ export class Referencer<TNode> {
 				(pattern, info) => {
 					const name = ast.name(pattern);
 
-					target.define(
+					this.builder.defineVariable(
+						target,
 						pattern,
 						name,
-						variableDefinition(
-							pattern,
-							declarator,
-							node,
-							index,
-							kindName,
-						),
+						declarator,
+						node,
+						index,
+						kindName,
 					);
 
 					this.referencingDefaultValue(
@@ -663,7 +642,7 @@ export class Referencer<TNode> {
 					);
 
 					if (init !== null) {
-						this.scope.referenceValue(
+						this.builder.referenceValue(
 							pattern,
 							name,
 							WRITE,
@@ -704,22 +683,22 @@ export class Referencer<TNode> {
 						 * name creates a global, so the global scope has to
 						 * hear about it even though nothing declared it.
 						 */
-						const maybeImplicitGlobal = this.scope.isStrict
+						const implicitNode = this.builder.isStrict()
 							? null
-							: { pattern, node };
+							: node;
 
 						this.referencingDefaultValue(
 							pattern,
 							info.assignments,
-							maybeImplicitGlobal,
+							implicitNode,
 							false,
 						);
-						this.scope.referenceValue(
+						this.builder.referenceValue(
 							pattern,
 							name,
 							WRITE,
 							right,
-							maybeImplicitGlobal,
+							implicitNode,
 							!info.topLevel,
 							false,
 						);
@@ -727,11 +706,14 @@ export class Referencer<TNode> {
 					true,
 				);
 			} else if (ast.kind(left) === N_Identifier) {
-				this.scope.referenceValue(
+				this.builder.referenceValue(
 					left,
 					ast.name(left),
 					READ_WRITE,
 					right,
+					null,
+					false,
+					false,
 				);
 			}
 		} else {
@@ -751,11 +733,14 @@ export class Referencer<TNode> {
 		const argument = this.expressionTarget(ast.child(node, SLOT_A));
 
 		if (argument !== null && ast.kind(argument) === N_Identifier) {
-			this.scope.referenceValue(
+			this.builder.referenceValue(
 				argument,
 				ast.name(argument),
 				READ_WRITE,
 				null,
+				null,
+				false,
+				false,
 			);
 		} else {
 			this.visit(argument);
@@ -804,16 +789,12 @@ export class Referencer<TNode> {
 		const ast = this.ast;
 		const param = ast.child(node, SLOT_A);
 
-		this.scopeManager.nestCatchScope(node);
+		this.builder.nestCatchScope(node);
 
 		this.visitPattern(
 			param,
 			(pattern, info) => {
-				this.scope.define(
-					pattern,
-					ast.name(pattern),
-					catchClauseDefinition(pattern, node),
-				);
+				this.builder.defineCatchClause(pattern, ast.name(pattern), node);
 				this.referencingDefaultValue(
 					pattern,
 					info.assignments,
@@ -839,7 +820,7 @@ export class Referencer<TNode> {
 		const init = ast.child(node, SLOT_A);
 
 		if (init !== null && isLexicalDeclaration(ast, init)) {
-			this.scopeManager.nestForScope(node);
+			this.builder.nestForScope(node);
 		}
 
 		this.visit(init);
@@ -863,7 +844,7 @@ export class Referencer<TNode> {
 			left !== null && ast.kind(left) === N_VariableDeclaration;
 
 		if (isDeclaration && isLexicalDeclaration(ast, left)) {
-			this.scopeManager.nestForScope(node);
+			this.builder.nestForScope(node);
 		}
 
 		if (isDeclaration) {
@@ -873,7 +854,7 @@ export class Referencer<TNode> {
 
 			if (first !== null) {
 				this.visitPattern(ast.child(first, SLOT_A), pattern => {
-					this.scope.referenceValue(
+					this.builder.referenceValue(
 						pattern,
 						ast.name(pattern),
 						WRITE,
@@ -888,22 +869,22 @@ export class Referencer<TNode> {
 			this.visitPattern(
 				left,
 				(pattern, info) => {
-					const maybeImplicitGlobal = this.scope.isStrict
+					const implicitNode = this.builder.isStrict()
 						? null
-						: { pattern, node };
+						: node;
 
 					this.referencingDefaultValue(
 						pattern,
 						info.assignments,
-						maybeImplicitGlobal,
+						implicitNode,
 						false,
 					);
-					this.scope.referenceValue(
+					this.builder.referenceValue(
 						pattern,
 						ast.name(pattern),
 						WRITE,
 						right,
-						maybeImplicitGlobal,
+						implicitNode,
 						true,
 						false,
 					);
@@ -938,7 +919,7 @@ export class Referencer<TNode> {
 			ast.kind(callee) === N_Identifier &&
 			ast.name(callee) === "eval"
 		) {
-			this.scope.variableScope.detectEval();
+			this.builder.detectEval();
 		}
 
 		this.visit(callee);
@@ -970,19 +951,11 @@ export class Referencer<TNode> {
 		 */
 		if (kind === N_FunctionExpression) {
 			if (id !== null) {
-				this.scopeManager.nestFunctionExpressionNameScope(node);
-				this.scope.define(
-					id,
-					ast.name(id),
-					functionNameDefinition(id, node),
-				);
+				this.builder.nestFunctionExpressionNameScope(node);
+				this.builder.defineFunctionName(id, ast.name(id), node);
 			}
 		} else if (id !== null && kind !== N_ArrowFunctionExpression) {
-			this.scope.define(
-				id,
-				ast.name(id),
-				functionNameDefinition(id, node),
-			);
+			this.builder.defineFunctionName(id, ast.name(id), node);
 		}
 
 		/*
@@ -995,7 +968,7 @@ export class Referencer<TNode> {
 			this.visitParameterDecorators(node);
 		}
 
-		this.scopeManager.nestFunctionScope(node, isMethod);
+		this.builder.nestFunctionScope(node, isMethod);
 		this.visitParameters(node, !isMethod);
 		this.visitType(ast.child(node, SLOT_E));
 		this.visitType(ast.child(node, SLOT_D));
@@ -1038,10 +1011,12 @@ export class Referencer<TNode> {
 			this.visitPattern(
 				param,
 				(pattern, info) => {
-					this.scope.define(
+					this.builder.defineParameter(
 						pattern,
 						ast.name(pattern),
-						parameterDefinition(pattern, node, index, info.rest),
+						node,
+						index,
+						info.rest,
 					);
 					this.referencingDefaultValue(
 						pattern,
@@ -1133,14 +1108,14 @@ export class Referencer<TNode> {
 		const id = ast.child(node, SLOT_A);
 
 		if (kind === N_ClassDeclaration && id !== null) {
-			this.scope.define(id, ast.name(id), classNameDefinition(id, node));
+			this.builder.defineClassName(id, ast.name(id), node);
 		}
 
 		this.visitList(node, SLOT_G);
-		this.scopeManager.nestClassScope(node);
+		this.builder.nestClassScope(node);
 
 		if (id !== null) {
-			this.scope.define(id, ast.name(id), classNameDefinition(id, node));
+			this.builder.defineClassName(id, ast.name(id), node);
 		}
 
 		this.visit(ast.child(node, SLOT_B));
@@ -1202,7 +1177,7 @@ export class Referencer<TNode> {
 				return;
 
 			case N_StaticBlock:
-				this.scopeManager.nestClassStaticBlockScope(member);
+				this.builder.nestClassStaticBlockScope(member);
 				this.visitList(member, SLOT_A);
 				this.close(member);
 				return;
@@ -1263,7 +1238,7 @@ export class Referencer<TNode> {
 
 		if (value !== null) {
 			if (hasInitializerScope) {
-				this.scopeManager.nestClassFieldInitializerScope(value);
+				this.builder.nestClassFieldInitializerScope(value);
 			}
 
 			this.visit(value);
@@ -1324,10 +1299,11 @@ export class Referencer<TNode> {
 				continue;
 			}
 
-			this.scope.define(
+			this.builder.defineImportBinding(
 				local,
 				ast.name(local),
-				importBindingDefinition(local, specifier, node),
+				specifier,
+				node,
 			);
 		}
 	}
@@ -1411,14 +1387,14 @@ export class Referencer<TNode> {
 		const name = this.ast.name(local);
 
 		if (!this.typescript) {
-			this.scope.referenceValue(local, name);
+			this.builder.referenceRead(local, name);
 			return;
 		}
 
 		if (typeOnly) {
-			this.scope.referenceType(local, name);
+			this.builder.referenceType(local, name);
 		} else {
-			this.scope.referenceDualValueType(local, name);
+			this.builder.referenceDualValueType(local, name);
 		}
 	}
 
@@ -1525,20 +1501,7 @@ export class Referencer<TNode> {
 	 * @returns `true` when some scope declared the name.
 	 */
 	private referenceInSomeUpperScope(name: string): boolean {
-		let scope: Scope<TNode> | null = this.scopeManager.currentScope;
-
-		while (scope !== null) {
-			const variable = scope.set.get(name);
-
-			if (variable !== undefined) {
-				scope.referenceValue(variable.identifiers[0], name);
-				return true;
-			}
-
-			scope = scope.upper;
-		}
-
-		return false;
+		return this.builder.referenceIfDeclared(name);
 	}
 
 	//-------------------------------------------------------------------------
@@ -1556,10 +1519,10 @@ export class Referencer<TNode> {
 		const id = ast.child(node, SLOT_A);
 
 		if (id !== null) {
-			this.scope.define(id, ast.name(id), enumNameDefinition(id, node));
+			this.builder.defineEnumName(id, ast.name(id), node);
 		}
 
-		this.scopeManager.nestTSEnumScope(node);
+		this.builder.nestTSEnumScope(node);
 
 		const body = ast.child(node, SLOT_B);
 
@@ -1593,15 +1556,12 @@ export class Referencer<TNode> {
 			const kind = ast.kind(id);
 
 			if (kind === N_Identifier) {
-				this.scope.define(
-					id,
-					ast.name(id),
-					enumMemberDefinition(id, member),
-				);
+				this.builder.defineEnumMember(id, ast.name(id), member);
 			} else if (kind === N_Literal) {
-				this.scope.defineLiteral(
+				this.builder.defineEnumMemberLiteral(
 					ast.literalString(id),
-					enumMemberDefinition(id, member),
+					id,
+					member,
 				);
 			}
 		}
@@ -1627,10 +1587,10 @@ export class Referencer<TNode> {
 			ast.kind(id) === N_Identifier &&
 			!ast.isGlobalModule(node)
 		) {
-			this.scope.define(id, ast.name(id), moduleNameDefinition(id, node));
+			this.builder.defineModuleName(id, ast.name(id), node);
 		}
 
-		this.scopeManager.nestTSModuleScope(node);
+		this.builder.nestTSModuleScope(node);
 		this.visit(ast.child(node, SLOT_B));
 		this.close(node);
 	}
@@ -1645,11 +1605,7 @@ export class Referencer<TNode> {
 		const id = ast.child(node, SLOT_A);
 
 		if (id !== null) {
-			this.scope.define(
-				id,
-				ast.name(id),
-				importBindingDefinition(id, node, node),
-			);
+			this.builder.defineImportBinding(id, ast.name(id), node, node);
 		}
 
 		let reference = ast.child(node, SLOT_B);
@@ -1675,7 +1631,7 @@ export class Referencer<TNode> {
 		const expression = ast.child(node, SLOT_A);
 
 		if (expression !== null && ast.kind(expression) === N_Identifier) {
-			this.scope.referenceDualValueType(expression, ast.name(expression));
+			this.builder.referenceDualValueType(expression, ast.name(expression));
 			return;
 		}
 
@@ -1716,7 +1672,7 @@ export class Referencer<TNode> {
 
 		switch (kind) {
 			case N_Identifier:
-				this.scope.referenceType(node, ast.name(node));
+				this.builder.referenceType(node, ast.name(node));
 				return;
 
 			case N_MemberExpression:
@@ -1850,7 +1806,7 @@ export class Referencer<TNode> {
 	): void {
 		const ast = this.ast;
 
-		this.scopeManager.nestFunctionTypeScope(node);
+		this.builder.nestFunctionTypeScope(node);
 		this.visitType(ast.child(node, typeParametersSlot));
 
 		const size = ast.listSize(node, paramsSlot);
@@ -1865,10 +1821,12 @@ export class Referencer<TNode> {
 			let visitedAnnotation = false;
 
 			this.visitPattern(param, (pattern, info) => {
-				this.scope.define(
+				this.builder.defineParameter(
 					pattern,
 					ast.name(pattern),
-					parameterDefinition(pattern, node, index, info.rest),
+					node,
+					index,
+					info.rest,
 				);
 
 				const annotation = typeAnnotationOf(ast, pattern);
@@ -1898,7 +1856,7 @@ export class Referencer<TNode> {
 	private visitConditionalType(node: TNode): void {
 		const ast = this.ast;
 
-		this.scopeManager.nestConditionalTypeScope(node);
+		this.builder.nestConditionalTypeScope(node);
 		this.visitType(ast.child(node, SLOT_A));
 		this.visitType(ast.child(node, SLOT_B));
 		this.visitType(ast.child(node, SLOT_C));
@@ -1915,10 +1873,15 @@ export class Referencer<TNode> {
 		const ast = this.ast;
 		const key = ast.mappedTypeKey(node);
 
-		this.scopeManager.nestMappedTypeScope(node);
+		this.builder.nestMappedTypeScope(node);
 
 		if (key !== null) {
-			this.scope.define(key, ast.name(key), typeDefinition(key, node));
+			this.builder.defineType(
+				this.builder.currentScope(),
+				key,
+				ast.name(key),
+				node,
+			);
 		}
 
 		this.visitType(ast.mappedTypeConstraint(node));
@@ -1941,7 +1904,8 @@ export class Referencer<TNode> {
 		}
 
 		const name = ast.child(typeParameter, SLOT_A);
-		let scope = this.scope;
+		const builder = this.builder;
+		let scope = builder.currentScope();
 
 		/*
 		 * An `infer` inside a function or mapped type nested in a conditional
@@ -1949,21 +1913,23 @@ export class Referencer<TNode> {
 		 * can be referred to from.
 		 */
 		if (
-			scope.type === SCOPE_FUNCTION_TYPE ||
-			scope.type === SCOPE_MAPPED_TYPE
+			builder.scopeType(scope) === SCOPE_FUNCTION_TYPE ||
+			builder.scopeType(scope) === SCOPE_MAPPED_TYPE
 		) {
-			let current = scope.upper;
+			let current = builder.upperOf(scope);
 
-			while (current !== null) {
+			while (current !== -1) {
+				const type = builder.scopeType(current);
+
 				if (
-					current.type === SCOPE_FUNCTION_TYPE ||
-					current.type === SCOPE_MAPPED_TYPE
+					type === SCOPE_FUNCTION_TYPE ||
+					type === SCOPE_MAPPED_TYPE
 				) {
-					current = current.upper;
+					current = builder.upperOf(current);
 					continue;
 				}
 
-				if (current.type === SCOPE_CONDITIONAL_TYPE) {
+				if (type === SCOPE_CONDITIONAL_TYPE) {
 					scope = current;
 				}
 
@@ -1972,11 +1938,7 @@ export class Referencer<TNode> {
 		}
 
 		if (name !== null) {
-			scope.define(
-				name,
-				ast.name(name),
-				typeDefinition(name, typeParameter),
-			);
+			builder.defineType(scope, name, ast.name(name), typeParameter);
 		}
 
 		this.visitType(ast.child(typeParameter, SLOT_B));
@@ -1992,7 +1954,12 @@ export class Referencer<TNode> {
 		const name = ast.child(node, SLOT_A);
 
 		if (name !== null) {
-			this.scope.define(name, ast.name(name), typeDefinition(name, node));
+			this.builder.defineType(
+				this.builder.currentScope(),
+				name,
+				ast.name(name),
+				node,
+			);
 		}
 
 		this.visitType(ast.child(node, SLOT_B));
@@ -2010,12 +1977,17 @@ export class Referencer<TNode> {
 		const typeParameters = ast.child(node, SLOT_C);
 
 		if (id !== null) {
-			this.scope.define(id, ast.name(id), typeDefinition(id, node));
+			this.builder.defineType(
+				this.builder.currentScope(),
+				id,
+				ast.name(id),
+				node,
+			);
 		}
 
 		// The scope exists only to hold type parameters, so it is optional.
 		if (typeParameters !== null) {
-			this.scopeManager.nestTypeScope(node);
+			this.builder.nestTypeScope(node);
 			this.visitType(typeParameters);
 		}
 
@@ -2038,11 +2010,16 @@ export class Referencer<TNode> {
 		const typeParameters = ast.child(node, SLOT_C);
 
 		if (id !== null) {
-			this.scope.define(id, ast.name(id), typeDefinition(id, node));
+			this.builder.defineType(
+				this.builder.currentScope(),
+				id,
+				ast.name(id),
+				node,
+			);
 		}
 
 		if (typeParameters !== null) {
-			this.scopeManager.nestTypeScope(node);
+			this.builder.nestTypeScope(node);
 			this.visitType(typeParameters);
 		}
 
@@ -2100,7 +2077,7 @@ export class Referencer<TNode> {
 		}
 
 		if (entityName !== null && ast.kind(entityName) === N_Identifier) {
-			this.scope.referenceValue(entityName, ast.name(entityName));
+			this.builder.referenceRead(entityName, ast.name(entityName));
 		}
 
 		this.visitType(ast.child(node, SLOT_B));
@@ -2119,7 +2096,7 @@ export class Referencer<TNode> {
 			parameterName !== null &&
 			ast.kind(parameterName) !== N_TSThisType
 		) {
-			this.scope.referenceValue(parameterName, ast.name(parameterName));
+			this.builder.referenceRead(parameterName, ast.name(parameterName));
 		}
 
 		this.visitType(ast.child(node, SLOT_B));

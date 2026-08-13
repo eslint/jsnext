@@ -18,7 +18,7 @@ import { parse as parseReference } from "@typescript-eslint/parser";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "@eslint/jsparse";
-import { analyze, analyzeTree } from "../dist/jsscope.js";
+import { analyze, analyzeTree, toScopeManager } from "../dist/jsscope.js";
 import {
 	firstDifference,
 	serializeBinary,
@@ -188,11 +188,19 @@ for (const file of files) {
 		continue;
 	}
 
-	check("binary", file, expected, () =>
-		serializeBinary(analyze(parse(code), options), BINARY_FLAGS),
-	);
+	check("binary", file, expected, () => {
+		const parsed = parse(code);
+
+		return serializeBinary(
+			toScopeManager(analyze(parsed, options), parsed),
+			BINARY_FLAGS,
+		);
+	});
 	check("tree", file, expected, () =>
-		serializeReference(analyzeTree(tree, options), FLAGS),
+		serializeReference(
+			toScopeManager(analyzeTree(tree, options), tree),
+			FLAGS,
+		),
 	);
 }
 

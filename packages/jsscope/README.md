@@ -16,9 +16,20 @@ There are two ways in, and they share one implementation:
 | `analyze()` | [`@eslint/jsparse`](../jsparse)'s binary buffers | The source is yours to parse. Nothing is ever decoded into ESTree objects, which is where the speed comes from. |
 | `analyzeTree()` | An ordinary ESTree tree | You already have an AST, from `espree`, `@typescript-eslint/parser`, or anything else ESLint-compatible. |
 
-Both run the same walk and produce the same scope graph. The two entry points
-pull in separate adapters and this package is marked `sideEffects: false`, so a
-bundler drops whichever one you do not import.
+Both run the same walk and return the same thing: one `ArrayBuffer` in a
+compact binary scope format, where every binding has a stable symbol ID and
+every node reference is an integer handle into the program that was analyzed.
+Three consumers read that buffer, each shaped for a different job:
+
+| Consumer | Returns | Use it when |
+| -------- | ------- | ----------- |
+| `toScopeManager()` | The escope-compatible object graph | You have code written against `eslint-scope`, including `@eslint-community/eslint-utils`. |
+| `new Scopes()` | Point queries straight off the buffer | You want one answer — *is this the global `Symbol`?* — without building the graph. |
+| `toScopeTree()` | A plain JSON-serializable tree | You are debugging, diffing, or writing golden files. |
+
+The two entry points pull in separate adapters and this package is marked
+`sideEffects: false`, so a bundler drops whichever one you do not import. The
+buffer consumers accept either representation and therefore import both.
 
 ## Install
 
@@ -34,7 +45,7 @@ npm install @eslint/jsscope
 
 ```js
 import * as espree from "espree";
-import { analyzeTree } from "@eslint/jsscope";
+import { analyzeTree, toScopeManager } from "@eslint/jsscope";
 
 const tree = espree.parse("const answer = 42; answer;", {
 	ecmaVersion: "latest",
@@ -42,11 +53,12 @@ const tree = espree.parse("const answer = 42; answer;", {
 	range: true,
 });
 
-const scopeManager = analyzeTree(tree, {
+const scopes = analyzeTree(tree, {
 	sourceType: "module",
 	dialect: "js",
-});
+}); // an ArrayBuffer
 
+const scopeManager = toScopeManager(scopes, tree);
 const moduleScope = scopeManager.scopes[1];
 const [variable] = moduleScope.variables;
 
@@ -55,27 +67,29 @@ variable.references.length; // 2 — the initializer's write and the later read
 variable.identifiers[0]; // the very Identifier node espree produced
 ```
 
-Every node in the result is the tree's own object, so it compares by identity
-with the nodes you already hold.
+Every consumer takes the buffer *and the program it was produced from* — the
+same `tree` here — and hands back the tree's own node objects, so they compare
+by identity with the nodes you already hold.
 
 ### From source text
 
 ```js
 import { parse } from "@eslint/jsparse";
-import { analyze } from "@eslint/jsscope";
+import { analyze, toScopeManager } from "@eslint/jsscope";
 
-const scopeManager = analyze(parse("const answer = 42; answer;"), {
+const result = parse("const answer = 42; answer;");
+const scopes = analyze(result, {
 	sourceType: "module",
 	dialect: "ts",
-});
+}); // an ArrayBuffer
+
+const scopeManager = toScopeManager(scopes, result);
 ```
 
 This is the fast path. Here a node is an **index into the binary buffer** — an
 integer — because no tree is ever built. `null` means there is no node.
 
 ```js
-import { NODE_KIND_NAMES } from "@eslint/jsparse";
-
 const scope = scopeManager.scopes[1];
 
 scopeManager.nodeType(scope.block); // "Program"
@@ -87,6 +101,62 @@ scopeManager.reader.text(scope.variables[0].identifiers[0]); // "answer"
 
 `nodeType()` and `nodeRange()` work on either representation, so code written
 against them runs unchanged on both.
+
+### Querying the buffer directly
+
+`Scopes` answers the questions lint rules most often ask without building the
+object graph at all. It is an exploratory API — a way to find out what the
+binary format can answer well — so expect it to move.
+
+```js
+import { parse } from "@eslint/jsparse";
+import { analyze, Scopes } from "@eslint/jsscope";
+
+const result = parse("console.log(missing);");
+const scopes = new Scopes(
+	analyze(result, { globals: ["console"] }),
+	result,
+);
+
+// The single most common question rules ask, one call:
+scopes.isGlobalReference(node); // SourceCode#isGlobalReference() semantics
+
+// Every use of a global name, resolved and unresolved:
+scopes.getGlobalReferences("console"); // reference IDs
+
+// no-undef is one loop:
+for (const ref of scopes.getUnresolvedReferences(scopes.globalScope)) {
+	scopes.referenceName(ref); // "missing"
+	scopes.referenceIdentifier(ref); // the node
+}
+
+// Declaration node → bindings, with read/write flags on each reference:
+for (const symbol of scopes.getDeclaredSymbols(declarationNode)) {
+	for (const ref of scopes.getReferences(symbol)) {
+		scopes.referenceIsWrite(ref);
+	}
+}
+
+// The eslintUsed protocol lives beside the immutable buffer:
+scopes.markSymbolAsUsed(symbol);
+scopes.isSymbolUsed(symbol); // true
+```
+
+Scopes, symbols, and references are all stable integer IDs, assigned when the
+buffer is written and never renumbered. A `Variable` rehydrated by
+`toScopeManager()` carries its ID as `variable.symbolId`, and passing the
+`Scopes` view to `toScopeManager(scopes, result, { scopes })` makes
+`variable.eslintUsed` read and write that view's usage marks.
+
+### A JSON view for debugging
+
+```js
+import { toScopeTree } from "@eslint/jsscope";
+
+const tree = toScopeTree(scopes, result);
+
+JSON.stringify(tree, null, 2); // fully self-contained; nodes are {type, start, end}
+```
 
 ### Options
 
@@ -110,17 +180,23 @@ A host's built-ins are not in the source, so nothing declares them. Pass them
 in and the references that were waiting for them resolve:
 
 ```js
-const scopeManager = analyze(parse("console.log(x);"), {
-	globals: ["console"],
-});
+const result = parse("console.log(x);");
+const scopeManager = toScopeManager(
+	analyze(result, { globals: ["console"] }),
+	result,
+);
 
 scopeManager.globalScope.set.get("console").references.length; // 1
 scopeManager.globalScope.through.map(reference => reference.name); // ["x"]
 ```
 
-`scopeManager.addGlobals(names)` does the same thing after the fact.
+`scopeManager.addGlobals(names)` does the same thing after the fact, on the
+object graph only — the buffer it was rehydrated from does not change.
 
 ## The scope graph
+
+What `toScopeManager()` returns, shaped exactly the way `eslint-scope` shapes
+it.
 
 ### `ScopeManager`
 
@@ -212,11 +288,15 @@ npm run conformance
 ```
 
 ```
-binary files=1431 ok=1431 mismatch=0 threw=0   # vs eslint-scope
-tree   files=1431 ok=1431 mismatch=0 threw=0
-binary files=1219 ok=1219 mismatch=0 threw=0   # vs @typescript-eslint/scope-manager
-tree   files=1219 ok=1219 mismatch=0 threw=0
+binary files=1433 ok=1433 mismatch=0 threw=0   # vs eslint-scope
+tree   files=1433 ok=1433 mismatch=0 threw=0
+binary files=1255 ok=1255 mismatch=0 threw=0   # vs @typescript-eslint/scope-manager
+tree   files=1255 ok=1255 mismatch=0 threw=0
 ```
+
+Both entry points are compared *through the buffer*: the corpus serializes,
+rehydrates with `toScopeManager()`, and diffs the result against the
+reference, so a field the format dropped or reordered cannot pass.
 
 `node_modules` contains no `.jsx` or `.tsx` files, so JSX is covered by
 `tests/fixtures/jsx.json` and `tsx.json` instead, which are checked against
@@ -236,26 +316,31 @@ npm run bench
 
 Analysis alone, with the parse hoisted out of the measured region. Every
 contender in a row is handed the same work, and `analyzeTree()` and the
-reference analyzer are handed the same tree object:
+reference analyzer are handed the same tree object. The comparison is not
+quite like for like — the reference analyzers stop at an object graph, while
+both entry points here deliver the finished scope buffer — and it is the
+buffer side that wins anyway:
 
 | Suite | `analyze()` | `analyzeTree()` | Reference |
 | ----- | ----------- | --------------- | --------- |
-| JavaScript | **1.4×** | 0.86× | `eslint-scope` |
-| TypeScript | **3.9×** | 1.6× | `@typescript-eslint/scope-manager` |
-| JSX | **1.5×** | 0.85× | `eslint-scope` |
+| JavaScript | **1.8×** | 0.2× | `eslint-scope` |
+| TypeScript | **2.6×** | 0.2× | `@typescript-eslint/scope-manager` |
+| JSX | **1.5×** | 0.2× | `eslint-scope` |
 
-Reading the binary format is what buys the speed. `analyzeTree()` does the same
-work through property lookups driven by a table, which costs it roughly what
-`eslint-scope`'s hand-written property access saves — it is a little slower
-than `eslint-scope` on JavaScript and comfortably faster than the TypeScript
-analyzer, which is the trade for having one walk instead of two.
+The speed comes from never materializing the graph: the walk records scopes,
+symbols, and references straight into growable word buffers — no object per
+scope, per variable, or per reference — and `finish()` compacts those words
+into the buffer. `analyzeTree()` runs the same walk but pays for reading
+someone else's tree through table-driven property lookups, plus the up-front
+enumeration that gives every tree node a stable handle. It is the
+compatibility path, priced accordingly.
 
 Parsing and analysis together, which is what a tool actually asks for:
 
 | Suite | `jsparse` + `analyze()` | Reference |
 | ----- | ----------------------- | --------- |
-| JavaScript | **2.9×** | `espree` + `eslint-scope` |
-| TypeScript | **20×** | `@typescript-eslint/*` |
+| JavaScript | **2.5×** | `espree` + `eslint-scope` |
+| TypeScript | **14×** | `@typescript-eslint/*` |
 
 Numbers move a lot with machine temperature, and not evenly: `jsscope`
 allocates far less than the reference analyzers, so a throttled machine slows

@@ -62,6 +62,12 @@ export class Reference<TNode> {
 	/** Where an undeclared assignment happened, or `null`. */
 	readonly maybeImplicitGlobal: MaybeImplicitGlobal<TNode> | null;
 
+	/**
+	 * The reference's ID in the scope buffer, assigned when one is written or
+	 * read; `-1` until then. IDs are creation order and never change.
+	 */
+	referenceId = -1;
+
 	/** The read/write mode, one of `READ`, `WRITE`, or `READ_WRITE`. */
 	private readonly flag: number;
 

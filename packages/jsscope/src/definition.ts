@@ -62,6 +62,12 @@ export class Definition<TNode> {
 	readonly isVariableDefinition: boolean;
 
 	/**
+	 * The definition's ID in the scope buffer, assigned when one is written
+	 * or read; `-1` until then.
+	 */
+	definitionId = -1;
+
+	/**
 	 * Creates a definition.
 	 * @param type Which kind of declaration introduced the name.
 	 * @param name The `Identifier` node that spells the name.

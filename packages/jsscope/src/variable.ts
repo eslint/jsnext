@@ -40,6 +40,14 @@ export class Variable<TNode> {
 	eslintUsed = false;
 
 	/**
+	 * The variable's ID in the scope buffer it was rehydrated from, or `-1`
+	 * on a variable the walk built directly. IDs are assigned when the buffer
+	 * is written and never change, so this is the stable way to correlate a
+	 * rehydrated variable with `Scopes` queries over the same buffer.
+	 */
+	symbolId = -1;
+
+	/**
 	 * Creates a variable.
 	 * @param name The name as written in the source.
 	 * @param scope The scope the name is bound in.

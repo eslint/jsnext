@@ -10,13 +10,15 @@ import { parse, toAST } from "@eslint/jsparse";
 import {
 	analyze,
 	analyzeTree,
+	toScopeManager,
 	type EsTreeNode,
 	type Scope,
 	type ScopeManager,
 } from "../src/index.js";
 
 /**
- * Analyzes source text.
+ * Analyzes source text and rehydrates the escope-compatible graph, which is
+ * the view this file's assertions are written against.
  * @param code The source text.
  * @param options How the program should be interpreted.
  * @returns The scope graph.
@@ -24,8 +26,13 @@ import {
 function scopesOf(
 	code: string,
 	options: Parameters<typeof analyze>[1] = {},
-): ScopeManager {
-	return analyze(parse(code), { sourceType: "module", ...options });
+): ScopeManager<number> {
+	const parsed = parse(code);
+
+	return toScopeManager(
+		analyze(parsed, { sourceType: "module", ...options }),
+		parsed,
+	);
 }
 
 /**
@@ -414,11 +421,14 @@ describe("analyzeTree", () => {
 
 		return {
 			tree,
-			scopeManager: analyzeTree(tree, {
-				sourceType: "module",
-				dialect: "js",
-				...options,
-			}),
+			scopeManager: toScopeManager(
+				analyzeTree(tree, {
+					sourceType: "module",
+					dialect: "js",
+					...options,
+				}),
+				tree,
+			),
 		};
 	}
 
@@ -469,10 +479,10 @@ describe("analyzeTree", () => {
 		 * reports them only as `start` and `end` has to work too.
 		 */
 		for (const tree of [withRange, withoutRange]) {
-			const scopeManager = analyzeTree(tree, {
-				sourceType: "module",
-				dialect: "js",
-			});
+			const scopeManager = toScopeManager(
+				analyzeTree(tree, { sourceType: "module", dialect: "js" }),
+				tree,
+			);
 			const functionScope = scopeManager.scopes[2];
 			const read = functionScope.references.find(
 				reference => reference.name === "x" && reference.isRead(),
@@ -487,14 +497,15 @@ describe("analyzeTree", () => {
 		const code =
 			"import a from 'm'; export const b = a; class C extends a { m() { return b; } }";
 		const result = parse(code);
-		const binary = analyze(result, {
-			sourceType: "module",
-			dialect: "ts",
-		});
-		const tree = analyzeTree(
-			toAST(result, { sourceType: "module", dialect: "ts" })
-				.ast as unknown as EsTreeNode,
-			{ sourceType: "module", dialect: "ts" },
+		const binary = toScopeManager(
+			analyze(result, { sourceType: "module", dialect: "ts" }),
+			result,
+		);
+		const program = toAST(result, { sourceType: "module", dialect: "ts" })
+			.ast as unknown as EsTreeNode;
+		const tree = toScopeManager(
+			analyzeTree(program, { sourceType: "module", dialect: "ts" }),
+			program,
 		);
 
 		expect(tree.scopes.map(scope => scope.type)).toEqual(
@@ -528,10 +539,10 @@ describe("analyzeTree", () => {
 
 		(tree.body as EsTreeNode[]).push(invented);
 
-		const scopeManager = analyzeTree(tree, {
-			sourceType: "module",
-			dialect: "js",
-		});
+		const scopeManager = toScopeManager(
+			analyzeTree(tree, { sourceType: "module", dialect: "js" }),
+			tree,
+		);
 
 		expect(scopeManager.scopes[1].through.map(ref => ref.name)).toEqual([
 			"missing",

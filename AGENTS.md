@@ -16,10 +16,15 @@ JavaScript, TypeScript, and JSX syntax. TypeScript source, bundled with
 `jsscope` has **two entry points over one walk**: `analyze()` reads the binary
 buffers and `analyzeTree()` reads an ordinary ESTree tree. Neither is a
 separate implementation — the walk goes through the `AstAccess` interface and
-each representation supplies an adapter. A change to scope semantics belongs in
-`referencer.ts` and lands on both; a change to how a node is *read* belongs in
-`binary-ast.ts` or `estree-ast.ts` and must be made in both, answering the same
-question the same way.
+each representation supplies an adapter. Both return an `ArrayBuffer` in the
+binary scope format; the escope-compatible object graph comes back through
+`toScopeManager(buffer, program)`, point queries through `Scopes`, and a JSON
+debugging view through `toScopeTree()`. The format is specified in
+[`packages/jsscope/docs/architecture.md`](./packages/jsscope/docs/architecture.md). A change to the walk's decisions belongs
+in `referencer.ts`, a change to binding/resolution semantics in
+`scope-builder.ts`, and either lands on both representations; a change to how
+a node is *read* belongs in `binary-ast.ts` or `estree-ast.ts` and must be
+made in both, answering the same question the same way.
 
 Two consequences worth knowing before you touch it:
 

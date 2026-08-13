@@ -16,7 +16,7 @@ import { analyze as analyzeReference } from "eslint-scope";
 import * as espree from "espree";
 import { describe, expect, it } from "vitest";
 import { parse } from "@eslint/jsparse";
-import { analyze, analyzeTree } from "../src/index.js";
+import { analyze, analyzeTree, toScopeManager } from "../src/index.js";
 import {
 	serializeBinary,
 	serializeReference,
@@ -72,12 +72,17 @@ function compare(
 		FLAGS,
 	);
 
-	expect(serializeBinary(analyze(parse(code), options), FLAGS)).toEqual(
-		expected,
-	);
-	expect(serializeReference(analyzeTree(tree, options), FLAGS)).toEqual(
-		expected,
-	);
+	const parsed = parse(code);
+
+	expect(
+		serializeBinary(toScopeManager(analyze(parsed, options), parsed), FLAGS),
+	).toEqual(expected);
+	expect(
+		serializeReference(
+			toScopeManager(analyzeTree(tree, options), tree),
+			FLAGS,
+		),
+	).toEqual(expected);
 
 	return true;
 }
@@ -106,11 +111,15 @@ describe("eslint-scope conformance for JSX", () => {
 	}
 
 	it("creates no reference when JSX support is off", () => {
-		const scopeManager = analyze(parse("const a = <Component />;"), {
-			sourceType: "module",
-			dialect: "js",
-			jsx: false,
-		});
+		const parsed = parse("const a = <Component />;");
+		const scopeManager = toScopeManager(
+			analyze(parsed, {
+				sourceType: "module",
+				dialect: "js",
+				jsx: false,
+			}),
+			parsed,
+		);
 		const moduleScope = scopeManager.scopes[1];
 
 		expect(moduleScope.through).toHaveLength(0);

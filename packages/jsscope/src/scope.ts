@@ -115,6 +115,12 @@ export class Scope<TNode> {
 	 */
 	left: Reference<TNode>[] | null = [];
 
+	/**
+	 * The scope's ID in the scope buffer, assigned when one is written or
+	 * read; `-1` until then. IDs are creation order and never change.
+	 */
+	scopeId = -1;
+
 	/** The manager that owns this scope. */
 	private readonly scopeManager: ScopeManager<TNode>;
 
@@ -129,6 +135,9 @@ export class Scope<TNode> {
 	 * @param block The node of the syntax that opened the scope.
 	 * @param isMethodDefinition Whether the scope is a method body, which is
 	 *      strict no matter what encloses it.
+	 * @param knownStrict Whether the scope is strict, when the caller already
+	 *      knows — `toScopeManager()` rehydrating a scope buffer does, and
+	 *      passing it skips re-deriving the answer from the AST.
 	 */
 	constructor(
 		scopeManager: ScopeManager<TNode>,
@@ -136,6 +145,7 @@ export class Scope<TNode> {
 		upper: Scope<TNode> | null,
 		block: TNode,
 		isMethodDefinition: boolean,
+		knownStrict?: boolean,
 	) {
 		this.scopeManager = scopeManager;
 		this.ast = scopeManager.ast;
@@ -146,7 +156,9 @@ export class Scope<TNode> {
 		this.variableScope = isVariableScopeType(type)
 			? this
 			: upper!.variableScope;
-		this.isStrict = isStrictScope(this.ast, this, block, isMethodDefinition);
+		this.isStrict =
+			knownStrict ??
+			isStrictScope(this.ast, this, block, isMethodDefinition);
 		this.implicit =
 			type === SCOPE_GLOBAL
 				? { set: new Map(), variables: [], left: [] }
@@ -703,11 +715,14 @@ function isStrictScope<TNode>(
 
 /**
  * Reports whether a statement list opens with a `"use strict"` directive.
+ *
+ * Exported for `ScopeBuilder`, which makes the same strictness decision over
+ * its own storage; the prologue scan itself must not drift between the two.
  * @param ast How to read the program.
  * @param body The `Program` or `BlockStatement` node.
  * @returns `true` when the directive is present in the prologue.
  */
-function hasUseStrictDirective<TNode>(
+export function hasUseStrictDirective<TNode>(
 	ast: AstAccess<TNode>,
 	body: TNode,
 ): boolean {

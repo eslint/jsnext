@@ -163,6 +163,19 @@ export class ScopeManager<TNode> {
 	}
 
 	/**
+	 * Every node that declares variables, with the variables it declares.
+	 *
+	 * This exists for the serializer: the declared-variables map is built
+	 * incrementally during the walk and cannot be reproduced from the rest of
+	 * the graph without re-deriving its ordering, so it is read out here and
+	 * stored in the buffer as its own index.
+	 * @returns One entry per declaring node, in insertion order.
+	 */
+	declaredVariableEntries(): [TNode, Variable<TNode>[]][] {
+		return [...this.declaredVariables.entries()];
+	}
+
+	/**
 	 * The scope a node opened.
 	 *
 	 * A node can open more than one — a `Program` opens the global scope and,

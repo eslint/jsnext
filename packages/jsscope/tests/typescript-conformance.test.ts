@@ -12,7 +12,7 @@ import { analyze as analyzeReference } from "@typescript-eslint/scope-manager";
 import { parse as parseReference } from "@typescript-eslint/parser";
 import { describe, expect, it } from "vitest";
 import { parse } from "@eslint/jsparse";
-import { analyze, analyzeTree } from "../src/index.js";
+import { analyze, analyzeTree, toScopeManager } from "../src/index.js";
 import {
 	serializeBinary,
 	serializeReference,
@@ -76,12 +76,20 @@ function compare(code: string, jsx: boolean): void {
 		FLAGS,
 	);
 
+	const parsed = parse(code);
+
 	expect(
-		serializeBinary(analyze(parse(code), options), BINARY_FLAGS),
+		serializeBinary(
+			toScopeManager(analyze(parsed, options), parsed),
+			BINARY_FLAGS,
+		),
 	).toEqual(expected);
-	expect(serializeReference(analyzeTree(tree, options), FLAGS)).toEqual(
-		expected,
-	);
+	expect(
+		serializeReference(
+			toScopeManager(analyzeTree(tree, options), tree),
+			FLAGS,
+		),
+	).toEqual(expected);
 }
 
 describe("typescript-eslint scope-manager conformance", () => {

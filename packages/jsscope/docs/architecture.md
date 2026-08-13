@@ -29,6 +29,12 @@ machinery behind it.
   - [Dynamic scopes](#dynamic-scopes)
   - [Implicit globals](#implicit-globals)
   - [The two resolution rules that are not lexical](#the-two-resolution-rules-that-are-not-lexical)
+- [The binary scope format](#the-binary-scope-format)
+  - [IDs](#ids)
+  - [Node handles](#node-handles)
+  - [Layout](#layout)
+  - [What is stored and what is re-derived](#what-is-stored-and-what-is-re-derived)
+  - [The consumers](#the-consumers)
 - [Reproducing two implementations at once](#reproducing-two-implementations-at-once)
 - [Invariants](#invariants)
 - [Adding a node kind](#adding-a-node-kind)
@@ -50,25 +56,57 @@ every name it binds known. A reference the scope cannot satisfy is handed to
 the enclosing scope, which repeats the process. That is why a `var` declared at
 the bottom of a function still resolves a reference from the top of it.
 
+The walk materializes no graph. It records everything into `ScopeBuilder` —
+a scope is thirteen words in a growable buffer, a reference is its eight
+format words plus one side word, every list is a chain of `[value, next]`
+cells in a shared pool — and resolution at scope close runs over those words.
+`finish()` compacts them into one `ArrayBuffer` in the binary scope format
+described [below](#the-binary-scope-format), and that buffer is the result.
+There is no `Scope`, `Variable`, `Reference`, or `Definition` object anywhere
+in the analysis; the classes with those names exist on the other side of the
+buffer, in `toScopeManager()`, which rehydrates the escope-compatible graph
+on demand. The conformance suites go through that rehydration, so the whole
+build–emit–rehydrate pipeline is checked against both reference
+implementations on every corpus file.
+
 ## Source layout
 
 ```text
 src/
-  ast-access.ts       the narrow view of an AST that the walk needs
-  binary-ast.ts       that view over @eslint/jsparse's binary buffers
-  estree-ast.ts       that view over an ordinary ESTree tree
-  slot-names.ts       what each slot is called in an ESTree tree
-  kinds.ts            scope types, definition types, reference flags
-  options.ts          the options an analysis runs with
-  definition.ts       a declaring occurrence, and the factories for each kind
-  variable.ts         a bound name
-  reference.ts        an occurrence of a name
-  scope.ts            one lexical scope, and what happens when it closes
-  scope-manager.ts    the collection of scopes and the maps over them
-  pattern-visitor.ts  the walk over a destructuring pattern
-  referencer.ts       the main walk
-  index.ts            the public API: analyze() and analyzeTree()
+  ast-access.ts            the narrow view of an AST that the walk needs
+  binary-ast.ts            that view over @eslint/jsparse's binary buffers
+  estree-ast.ts            that view over an ordinary ESTree tree
+  slot-names.ts            what each slot is called in an ESTree tree
+  kinds.ts                 scope types, definition types, reference flags
+  options.ts               the options an analysis runs with
+  pattern-visitor.ts       the walk over a destructuring pattern
+  referencer.ts            the main walk
+  scope-builder.ts         the graph in binary form: recording, resolution, emission
+  scope-buffer.ts          the binary scope format: layout constants, enum codes
+  scope-buffer-reader.ts   the low-level reads every consumer goes through
+  handles.ts               node handle arithmetic for the binary path
+  tree-nodes.ts            the deterministic enumeration behind tree handles
+  node-source.ts           turning stored handles back into nodes, both paths
+  scopes.ts                Scopes: point queries straight off the buffer
+  to-scope-manager.ts      rehydrates the escope-compatible object graph
+  to-scope-tree.ts         renders the buffer as a plain JSON tree
+  definition.ts            the rehydrated view: a declaring occurrence
+  variable.ts              the rehydrated view: a bound name
+  reference.ts             the rehydrated view: an occurrence of a name
+  scope.ts                 the rehydrated view: one lexical scope
+  scope-manager.ts         the rehydrated view: the collection of scopes
+  index.ts                 the public API: analyze(), analyzeTree(), the consumers
 ```
+
+The last five are what `toScopeManager()` builds and what anything written
+against `eslint-scope` consumes. `scope.ts` still carries the object
+implementation of closing and resolution, but the entry points no longer
+execute it — the one piece both implementations share is
+`hasUseStrictDirective()`, which the builder imports rather than restating.
+**Scope semantics have one home: the walk's decisions live in
+`referencer.ts`, and what happens as scopes bind, resolve, and close lives
+in `scope-builder.ts`.** The object methods in `scope.ts` are kept for the
+rehydrated API's completeness, not as a second implementation to update.
 
 ## Two representations, one walk
 
@@ -301,6 +339,118 @@ Both rules run in every dialect. In JavaScript the second one cannot fire,
 because every reference is a value reference and every definition contributes a
 value binding.
 
+## The binary scope format
+
+What `analyze()` and `analyzeTree()` return: one `ArrayBuffer` of
+little-endian 32-bit words, emitted by `ScopeBuilder#finish()` and read
+back by `scope-buffer-reader.ts`. The format exists so that scope data can be
+kept, passed, and queried without materializing an object per scope, variable,
+and reference; the requirements it answers to — which queries had to be cheap,
+and why — are recorded in [`requirements.md`](./requirements.md).
+
+### IDs
+
+Every scope, symbol (the format's name for a variable), reference, and
+definition is identified by its zero-based index into its record section.
+IDs are assigned once, when the buffer is written, and are never renumbered:
+
+- **Scopes** are numbered in creation order.
+- **References** are numbered in the order the walk recorded them. A scope's
+  own reference list still reads in per-scope order — the list is stored,
+  not derived from the IDs.
+- **Symbols** are numbered scope by scope in binding order, with the global
+  scope's implicit variables at the end. That grouping is what lets an
+  implicit variable a supplied global replaced simply not be emitted.
+- **Definitions** follow their symbols.
+
+Where a record field holds an *optional* ID or index, it is stored as
+`value + 1` so that `0` can mean "none".
+
+### Node handles
+
+The buffer never contains a node; it contains **handles**. On the binary path
+a handle is the byte offset of the node's record in the AST buffer
+(`handles.ts` holds the arithmetic both directions). On the tree path it is
+the node's one-based position in the deterministic enumeration
+`tree-nodes.ts` produces — a pure depth-first walk over own properties,
+`parent` skipped — which `analyzeTree()` runs to assign handles and every
+consumer re-runs on the same tree to get the very same objects back. Handle
+`0` means "no node" on both paths, and a header flag records which scheme a
+buffer uses so a consumer handed the wrong program fails loudly instead of
+resolving nonsense.
+
+### Layout
+
+```text
+header               24 words: magic "JSSC", version, flags, counts, section
+                     bases, the options the analysis ran with
+scope records        9 words each: type, flags, block, upper+1, variableScope,
+                     variables, references, through, implicit
+symbol records       6 words each: name, scope, flags, identifiers,
+                     definitions, references
+reference records    8 words each: identifier, name, from, resolved+1, flags,
+                     writeExpr, implicit-global pattern and node
+definition records   7 words each: type, name, node, parent, index+1, kind+1,
+                     flags
+pool                 every variable-length list, as [count, items...]; a
+                     record's list field holds a pool handle, 0 = empty
+node-scope index     sorted (block handle, scope ID) pairs — acquire()
+declared index       sorted (node handle, pool handle) pairs —
+                     getDeclaredVariables()
+ident-ref index      sorted (identifier handle, reference ID) pairs —
+                     resolving one identifier
+string table         offsets, then UTF-8 bytes; names and definition kinds,
+                     interned once
+```
+
+The three pair sections are the point-query indexes: each is sorted by key,
+answered by binary search. They cover the three lookups rules do most —
+node to scope, declaration to bindings, identifier to reference — without
+scanning a record section.
+
+Names live in the buffer's own string table rather than being re-read from
+the AST, for two reasons: some symbols have no identifier to read a name from
+(`arguments`, every configured global), and interning makes name comparison
+an integer comparison. This is the one deliberate duplication between the two
+buffers.
+
+The enum code tables in `scope-buffer.ts` — scope types, definition types —
+are part of the format, and their order is **append-only**: repositioning an
+entry changes what every previously written buffer means.
+
+### What is stored and what is re-derived
+
+Serialization keeps exactly what cannot be recomputed and drops what can.
+Stored: every flag the walk decided (`isStrict`, `dynamic`, taint, `stack`),
+every list in its final order, the `through` lists, the declared-variables
+index (its per-node order is walk order, not derivable from the records), and
+the options. Re-derived on rehydration: `childScopes` and the node-to-scope
+map (both fall out of creating scopes in stored order), `implicit.left` (a
+copy of the global `through`), and the `arguments` taint on non-arrow
+function scopes (set at scope creation, before any resolution). The `Scope`
+constructor accepts the stored strictness so rehydration does not re-scan
+directive prologues.
+
+### The consumers
+
+Three views read the buffer, all through `ScopeBufferReader`, all taking the
+buffer plus the program it was produced from:
+
+- **`Scopes`** answers point queries straight off the words — the exploratory
+  API for finding out what the format can do, shaped by the rule survey in
+  `requirements.md`. `markSymbolAsUsed()` keeps its marks in a side bitset
+  beside the immutable buffer.
+- **`toScopeManager()`** rebuilds the object graph out of the very classes
+  the walk uses, so a rehydrated graph is indistinguishable from a freshly
+  built one — including for `@eslint-community/eslint-utils`. Passing the
+  `Scopes` view via its options bridges `Variable#eslintUsed` to that view's
+  bitset. Each `Variable` carries its buffer ID as `symbolId`.
+- **`toScopeTree()`** renders a nested, self-contained JSON tree for
+  debugging, with nodes spelled `{type, start, end}`.
+
+The consumers accept either representation and therefore import both
+adapters; only the two entry points are split for tree shaking.
+
 ## Reproducing two implementations at once
 
 `eslint-scope` and `@typescript-eslint/scope-manager` are the same design with
@@ -322,9 +472,10 @@ are always present here.
 
 Things that will break subtly if violated:
 
-1. **A scope's queue is consumed exactly once.** `close()` sets `left` to
-   `null`, and `isClosed()` reads that. Referencing a closed scope loses the
-   reference silently.
+1. **A scope's queue is consumed exactly once.** The builder clears a
+   scope's `left` chain as `closeCurrent()` finishes with it — and the object
+   implementation sets `left` to `null`, which `isClosed()` reads.
+   Referencing a closed scope loses the reference silently.
 2. **`close(node)` loops.** One node can open several scopes; popping one is a
    correct-looking bug that misplaces every later scope.
 3. **Reference order is part of the contract.** Rules read
@@ -341,6 +492,20 @@ Things that will break subtly if violated:
 7. **The two adapters answer identically.** Anything the walk asks is a
    question about the program, not about how the program is stored. A method
    that only one of them can answer honestly belongs somewhere else.
+8. **The enum code tables are append-only.** A scope type or definition type's
+   position in `scope-buffer.ts` is its meaning in every buffer ever written;
+   new entries go at the end.
+9. **IDs are never renumbered.** A symbol ID is the record's index, assigned
+   at write time; everything from `Reference#resolved` to the `eslintUsed`
+   bitset keys off it. Any pass that reordered records would silently corrupt
+   every cross-reference.
+10. **Tree enumeration is pure.** `collectTreeNodes()` must visit the same
+    tree the same way every time, because `analyzeTree()` and the consumers
+    each run it independently and rely on getting the same numbering. Nothing
+    in it may depend on anything but the tree's own objects.
+11. **The writer and the reader are the only modules that know the layout.**
+    Every consumer reads through `ScopeBufferReader`; a field offset used
+    anywhere else is a bug waiting for the next format change.
 
 ## Adding a node kind
 
