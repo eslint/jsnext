@@ -43,6 +43,10 @@ Two things that are easy to miss when matching the surrounding code:
 - The existing classes in `packages/jsparse` use TypeScript's `private`
   modifier rather than `#` fields. New code should follow the style guide, but
   do not churn existing files to match.
+  
+## Performance
+
+This project is meant to be highly-performant. When writing code, follow the guidelines in [`performance.md`](./docs/performance.md).
 
 ## Architecture
 
