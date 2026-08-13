@@ -35,6 +35,7 @@ import {
 	N_ArrowFunctionExpression,
 	N_Identifier,
 	N_ImportDeclaration,
+	N_ImportSpecifier,
 	N_JSXElement,
 	N_JSXFragment,
 	N_ObjectPattern,
@@ -43,7 +44,7 @@ import {
 	N_RestElement,
 	N_ReturnStatement,
 	N_StaticBlock,
-	N_SwitchCase,
+	N_SwitchStatement,
 	N_TSDeclareFunction,
 	N_TSEmptyBodyFunctionExpression,
 	N_TSEnumDeclaration,
@@ -72,23 +73,47 @@ export interface ValidationProblem {
 	start: number;
 }
 
-/** How a binding was introduced, which decides what may shadow it. */
+/**
+ * How a binding was introduced, which decides what may shadow it.
+ *
+ * `BINDING_VAR` never appears in a scope's `names`; a `var` is recorded in
+ * `varNames` instead, because it is the only kind that binds somewhere other
+ * than where it is written.
+ */
 const BINDING_VAR = 0;
 const BINDING_LEXICAL = 1;
 const BINDING_FUNCTION = 2;
 const BINDING_PARAM = 3;
 const BINDING_TYPE = 4;
 const BINDING_SIGNATURE = 5;
+const BINDING_CATCH = 6;
 
 /**
  * One lexical scope's bindings.
  */
 interface Scope {
-	/** Names bound in this scope, mapped to how they were introduced. */
+	/** Names bound where they are written, mapped to how they were introduced. */
 	names: Map<string, number>;
 
-	/** Whether this scope is a function or program scope. */
+	/**
+	 * Names `var`-declared in this scope or in any scope below it that a
+	 * `var` climbs out of. A lexical declaration collides with one of these
+	 * however the two are ordered, which is what makes `{ var a; let a; }`
+	 * and `{ let a; var a; }` alike.
+	 */
+	varNames: Set<string>;
+
+	/** Whether `var` declarations stop climbing here. */
 	isFunctionScope: boolean;
+
+	/**
+	 * Whether a function declaration written directly in this scope binds
+	 * here rather than in the nearest function scope. That is true of a
+	 * block and of a module's top level, and false of a script's top level
+	 * and of a function body — which is why `function a(){} var a;` is a
+	 * redeclaration in a module and not in a script.
+	 */
+	functionsAreLexical: boolean;
 
 	/** The enclosing scope, or `null` for the program scope. */
 	parent: Scope | null;
@@ -178,7 +203,9 @@ class Validator {
 		this.strict = sourceType === "module";
 		this.scope = {
 			names: new Map(),
+			varNames: new Set(),
 			isFunctionScope: true,
+			functionsAreLexical: sourceType === "module",
 			parent: null,
 		};
 	}
@@ -290,32 +317,99 @@ class Validator {
 				return;
 
 			case N_BlockStatement:
+				this.enterScope(false);
+				this.hoist(reader.field(node, NODE_A));
+				this.visitChildren(node, kind);
+				this.exitScope();
+				return;
+
+			/*
+			 * A `var` cannot escape a static block or a namespace body, so
+			 * both stop the climb the way a function body does, and a
+			 * function declared in either one binds there.
+			 */
 			case N_StaticBlock:
 			case N_TSModuleBlock:
-			case N_SwitchCase:
-				this.enterScope(false);
-				this.hoist(
-					reader.field(node, kind === N_SwitchCase ? NODE_B : NODE_A),
-				);
+				this.enterScope(true);
+				this.hoist(reader.field(node, NODE_A));
 				this.visitChildren(node, kind);
 				this.exitScope();
 				return;
 
+			/*
+			 * Every case shares the switch's one block scope, so a lexical
+			 * declaration in one case collides with the same name in
+			 * another.
+			 */
+			case N_SwitchStatement: {
+				const cases = reader.field(node, NODE_B);
+				const size = reader.listSize(cases);
+
+				this.enterScope(false);
+
+				for (let i = 0; i < size; i++) {
+					this.hoist(reader.field(reader.listItem(cases, i), NODE_B));
+				}
+
+				this.visitChildren(node, kind);
+				this.exitScope();
+				return;
+			}
+
+			/*
+			 * A `let` or `const` in the head binds in a scope of its own, so
+			 * that a `var` of the same name in the body is a redeclaration
+			 * while a `let` is not.
+			 */
 			case N_ForStatement:
 			case N_ForInStatement:
-			case N_ForOfStatement:
+			case N_ForOfStatement: {
+				const head = reader.field(node, NODE_A);
+
 				this.enterScope(false);
+
+				if (head !== 0 && reader.kind(head) === N_VariableDeclaration) {
+					// Only a C-style head has a place to put an initializer.
+					this.declareVariableDeclaration(
+						head,
+						kind === N_ForStatement,
+					);
+				}
+
 				this.visitChildren(node, kind);
 				this.exitScope();
 				return;
+			}
 
+			/*
+			 * The clause and its block share one scope, because a lexical
+			 * declaration in the block collides with the parameter even
+			 * though the block is a scope of its own everywhere else.
+			 */
 			case N_CatchClause: {
+				const param = reader.field(node, NODE_A);
+				const body = reader.field(node, NODE_B);
+
 				this.enterScope(false);
+
+				/*
+				 * A `var` may reuse the name of a simple parameter but not of
+				 * one picked out of a pattern, so only the simple one gets a
+				 * binding kind that a `var` passes through.
+				 */
 				this.declarePattern(
-					reader.field(node, NODE_A),
-					BINDING_LEXICAL,
+					param,
+					param !== 0 && reader.kind(param) === N_Identifier
+						? BINDING_CATCH
+						: BINDING_LEXICAL,
 				);
-				this.visitChildren(node, kind);
+				this.visit(param);
+
+				if (body !== 0) {
+					this.hoist(reader.field(body, NODE_A));
+					this.visitList(reader.field(body, NODE_A));
+				}
+
 				this.exitScope();
 				return;
 			}
@@ -431,7 +525,9 @@ class Validator {
 	private enterScope(isFunctionScope: boolean): void {
 		this.scope = {
 			names: new Map(),
+			varNames: new Set(),
 			isFunctionScope,
+			functionsAreLexical: !isFunctionScope,
 			parent: this.scope,
 		};
 	}
@@ -474,13 +570,19 @@ class Validator {
 
 			switch (kind) {
 				case N_VariableDeclaration:
-					this.declareVariableDeclaration(statement);
+					this.declareVariableDeclaration(statement, true);
+					break;
+
+				case N_ImportDeclaration:
+					this.declareImportDeclaration(statement);
 					break;
 
 				case N_FunctionDeclaration:
 					this.declare(
 						reader.field(statement, NODE_A),
-						BINDING_FUNCTION,
+						this.scope.functionsAreLexical
+							? BINDING_FUNCTION
+							: BINDING_VAR,
 					);
 					break;
 
@@ -493,7 +595,9 @@ class Validator {
 				case N_TSDeclareFunction:
 					this.declare(
 						reader.field(statement, NODE_A),
-						BINDING_SIGNATURE,
+						this.scope.functionsAreLexical
+							? BINDING_SIGNATURE
+							: BINDING_VAR,
 					);
 					break;
 
@@ -520,9 +624,14 @@ class Validator {
 	/**
 	 * Declares every name introduced by a variable declaration.
 	 * @param node The `VariableDeclaration` node index.
+	 * @param checkInitializer Whether a `const` here needs an initializer,
+	 *      which a `for...in` or `for...of` head does not.
 	 * @returns Nothing.
 	 */
-	private declareVariableDeclaration(node: number): void {
+	private declareVariableDeclaration(
+		node: number,
+		checkInitializer: boolean,
+	): void {
 		const reader = this.reader;
 		const flags = reader.flags(node);
 		const declarationKind = (flags & DECL_MASK) >>> DECL_SHIFT;
@@ -537,6 +646,7 @@ class Validator {
 			this.declarePattern(reader.field(declarator, NODE_A), binding);
 
 			if (
+				checkInitializer &&
 				declarationKind === DECL_CONST &&
 				reader.field(declarator, NODE_B) === 0 &&
 				(reader.flags(declarator) & (1 << 15)) === 0 &&
@@ -547,6 +657,36 @@ class Validator {
 					reader.start(declarator),
 				);
 			}
+		}
+	}
+
+	/**
+	 * Declares the local name of every specifier of an import declaration.
+	 * @param node The `ImportDeclaration` node index.
+	 * @returns Nothing.
+	 */
+	private declareImportDeclaration(node: number): void {
+		const reader = this.reader;
+		const specifiers = reader.field(node, NODE_A);
+		const size = reader.listSize(specifiers);
+
+		for (let i = 0; i < size; i++) {
+			const specifier = reader.listItem(specifiers, i);
+
+			/*
+			 * A named specifier carries the imported name first and the local
+			 * one second; a default or namespace specifier has only the local
+			 * name.
+			 */
+			this.declare(
+				reader.field(
+					specifier,
+					reader.kind(specifier) === N_ImportSpecifier
+						? NODE_B
+						: NODE_A,
+				),
+				BINDING_LEXICAL,
+			);
 		}
 	}
 
@@ -629,38 +769,26 @@ class Validator {
 		}
 
 		const name = reader.text(identifier);
+		const start = reader.start(identifier);
 
-		this.checkReservedBinding(name, reader.start(identifier));
-
-		/*
-		 * `var` climbs to the nearest function scope; everything else binds
-		 * where it is written.
-		 */
-		let scope = this.scope;
+		this.checkReservedBinding(name, start);
 
 		if (binding === BINDING_VAR) {
-			while (!scope.isFunctionScope && scope.parent !== null) {
-				const existing = scope.names.get(name);
-
-				if (existing === BINDING_LEXICAL) {
-					this.report(
-						`Identifier '${name}' has already been declared.`,
-						reader.start(identifier),
-					);
-
-					return;
-				}
-
-				scope = scope.parent;
-			}
+			this.declareVar(name, start);
+			return;
 		}
 
+		const scope = this.scope;
 		const existing = scope.names.get(name);
 
-		if (existing !== undefined && this.conflicts(existing, binding)) {
+		if (
+			existing !== undefined
+				? this.conflicts(existing, binding)
+				: scope.varNames.has(name) && !this.tolerantOfVar(binding)
+		) {
 			this.report(
 				`Identifier '${name}' has already been declared.`,
-				reader.start(identifier),
+				start,
 			);
 
 			return;
@@ -679,6 +807,49 @@ class Validator {
 	}
 
 	/**
+	 * Binds a name that climbs to the nearest function scope, recording it in
+	 * every scope it passes through so that a lexical declaration written
+	 * later in any of them is still caught.
+	 * @param name The name being bound.
+	 * @param start The offset of the identifier.
+	 * @returns Nothing.
+	 */
+	private declareVar(name: string, start: number): void {
+		let scope = this.scope;
+
+		for (;;) {
+			const existing = scope.names.get(name);
+
+			if (existing !== undefined && !this.tolerantOfVar(existing)) {
+				this.report(
+					`Identifier '${name}' has already been declared.`,
+					start,
+				);
+
+				return;
+			}
+
+			scope.varNames.add(name);
+
+			if (scope.isFunctionScope || scope.parent === null) {
+				return;
+			}
+
+			scope = scope.parent;
+		}
+	}
+
+	/**
+	 * Determines whether a binding may share its scope with a `var` of the
+	 * same name.
+	 * @param binding How the name was introduced.
+	 * @returns `true` when the two may coexist.
+	 */
+	private tolerantOfVar(binding: number): boolean {
+		return binding !== BINDING_LEXICAL && binding !== BINDING_FUNCTION;
+	}
+
+	/**
 	 * Determines whether two bindings of the same name may coexist.
 	 * @param existing How the name was first introduced.
 	 * @param incoming How the name is being introduced now.
@@ -690,15 +861,6 @@ class Validator {
 			return false;
 		}
 
-		// Repeated `var` declarations of the same name are allowed.
-		if (existing === BINDING_VAR && incoming === BINDING_VAR) {
-			return false;
-		}
-
-		if (existing === BINDING_PARAM && incoming === BINDING_VAR) {
-			return false;
-		}
-
 		if (existing === BINDING_PARAM && incoming === BINDING_PARAM) {
 			return this.strict;
 		}
@@ -706,8 +868,9 @@ class Validator {
 		/*
 		 * Overload signatures merge with each other and with the
 		 * implementation they belong to, so only two implementations of the
-		 * same name are a redeclaration, under the same rule as plain
-		 * JavaScript.
+		 * same name are a redeclaration — and then only where a function
+		 * declaration binds lexically, since two of them in a function scope
+		 * are as legal as two `var`s.
 		 */
 		if (
 			(existing === BINDING_FUNCTION || existing === BINDING_SIGNATURE) &&

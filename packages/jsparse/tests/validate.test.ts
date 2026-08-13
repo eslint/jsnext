@@ -201,6 +201,123 @@ describe("declarations", () => {
 			expect.stringMatching(/reserved word/u),
 		]);
 	});
+
+	it("reports a var that a lexical declaration later shadows", () => {
+		expect(messages("{ var a; let a; }")).toHaveLength(1);
+	});
+
+	it("reports a lexical declaration a nested var reaches", () => {
+		expect(messages("{ { var a; } let a; }")).toHaveLength(1);
+	});
+
+	it("reports a repeated import binding", () => {
+		expect(messages("import a from 'x'; let a;")).toHaveLength(1);
+	});
+
+	it("reports a lexical redeclaration across switch cases", () => {
+		expect(messages("switch (q) { case 1: let a; case 2: let a; }")).toHaveLength(1);
+	});
+
+	it("allows the same name in separate blocks of one switch case", () => {
+		expect(
+			messages("switch (q) { case 1: { let a; } case 2: { let a; } }"),
+		).toEqual([]);
+	});
+
+	it("reports a var in the body that a for head already binds", () => {
+		expect(messages("for (let a of q) { var a; }")).toHaveLength(1);
+	});
+
+	it("allows a let in the body that a for head binds with var", () => {
+		expect(messages("for (var a of q) { let a; }")).toEqual([]);
+	});
+
+	it("does not require an initializer in a for-of head", () => {
+		expect(messages("for (const a of q) { a; }")).toEqual([]);
+	});
+});
+
+describe("function declarations", () => {
+	it("allows a var alongside a function at the top level of a script", () => {
+		expect(
+			messages("function a(){} var a;", { sourceType: "script" }),
+		).toEqual([]);
+		expect(
+			messages("var a; function a(){}", { sourceType: "script" }),
+		).toEqual([]);
+	});
+
+	it("reports a var alongside a function at the top level of a module", () => {
+		expect(messages("function a(){} var a;")).toHaveLength(1);
+		expect(messages("var a; function a(){}")).toHaveLength(1);
+	});
+
+	it("allows a var alongside a function in a function body", () => {
+		expect(messages("function g(){ function a(){} var a; }")).toEqual([]);
+	});
+
+	it("allows a function that reuses a parameter name", () => {
+		expect(messages("function g(a){ function a(){} }")).toEqual([]);
+	});
+
+	it("allows repeated functions in a function scope, even in strict mode", () => {
+		expect(messages("function g(){ function a(){} function a(){} }")).toEqual(
+			[],
+		);
+	});
+
+	it("reports repeated functions at the top level of a module", () => {
+		expect(messages("function a(){} function a(){}")).toHaveLength(1);
+	});
+
+	it("allows repeated functions in a sloppy block but not a strict one", () => {
+		expect(
+			messages("{ function a(){} function a(){} }", {
+				sourceType: "script",
+			}),
+		).toEqual([]);
+		expect(messages("{ function a(){} function a(){} }")).toHaveLength(1);
+	});
+
+	it("reports a var that a block-scoped function shadows", () => {
+		expect(messages("{ function a(){} var a; }")).toHaveLength(1);
+		expect(messages("{ var a; function a(){} }")).toHaveLength(1);
+	});
+
+	it("allows a function in a block beside a var outside it", () => {
+		expect(messages("var a; { function a(){} }")).toEqual([]);
+		expect(messages("{ function a(){} } var a;")).toEqual([]);
+	});
+
+	// A static block is a variable scope. See docs/deviations.md.
+	it("treats a static block as a variable scope", () => {
+		expect(messages("class C { static { var a; function a(){} } }")).toEqual(
+			[],
+		);
+		expect(
+			messages("class C { static { function a(){} function a(){} } }"),
+		).toEqual([]);
+	});
+});
+
+describe("catch clauses", () => {
+	it("allows a var that reuses a simple parameter name", () => {
+		expect(messages("try {} catch (a) { var a; }")).toEqual([]);
+		expect(messages("try {} catch (a) { { var a; } }")).toEqual([]);
+	});
+
+	it("reports a var that reuses a destructured parameter name", () => {
+		expect(messages("try {} catch ([a]) { var a; }")).toHaveLength(1);
+	});
+
+	it("reports a lexical declaration that reuses a parameter name", () => {
+		expect(messages("try {} catch (a) { let a; }")).toHaveLength(1);
+		expect(messages("try {} catch (a) { function a(){} }")).toHaveLength(1);
+	});
+
+	it("allows the same name in a nested block", () => {
+		expect(messages("try {} catch (a) { { let a; } }")).toEqual([]);
+	});
 });
 
 describe("overload signatures", () => {

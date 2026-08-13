@@ -137,6 +137,33 @@ behavior directly.
 extent — the decoder was the only thing that adjusted it — so the scope graph
 never saw the other rule.
 
+### Function declarations in a class static block
+
+**Reference:** `espree` treats a function declaration at the top level of a
+class static block as a *lexical* declaration, so it rejects all three of
+these.
+
+```js
+class C { static { var a; function a(){} } }
+class C { static { function a(){} var a; } }
+class C { static { function a(){} function a(){} } }
+```
+
+**Here:** all three are accepted. A static block is a variable scope, so a
+function declared directly in it binds the way one declared at the top of a
+function body does.
+
+**Why:** `acorn` is wrong here, and V8 agrees. `ClassStaticBlockBody` is
+specified with `TopLevelVarDeclaredNames` and `TopLevelLexicallyDeclaredNames`,
+exactly as a function body is, which puts a top-level function declaration
+among the *var*-declared names. `node --input-type=module -e` accepts all three.
+Reproducing the reference would mean rejecting valid code, which is the worse
+of the two failure modes, so the specification wins.
+
+**How conformance absorbs it:** it does not have to. This is a `validate()`
+diagnostic, and the differential corpus compares parser output, not
+diagnostics. `packages/jsparse/tests/validate.test.ts` pins the behavior.
+
 ---
 
 ## Scope analysis
