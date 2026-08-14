@@ -1,0 +1,40 @@
+{
+	"name": "@eslint/jsflow",
+	"version": "0.0.0",
+	"description": "A fast control flow graph builder for JavaScript and TypeScript, over @eslint/jsparse's binary AST.",
+	"type": "module",
+	"main": "./dist/jsflow.js",
+	"module": "./dist/jsflow.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/jsflow.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"sideEffects": false,
+	"scripts": {
+		"build": "node scripts/build.js && tsc -p tsconfig.build.json",
+		"pretest": "npm run build --workspace=@eslint/jsparse && npm run build --workspace=@eslint/jsscope",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"typecheck": "npm run build --workspace=@eslint/jsparse && npm run build --workspace=@eslint/jsscope && tsc --noEmit"
+	},
+	"keywords": [
+		"control-flow",
+		"cfg",
+		"code-path",
+		"javascript",
+		"typescript",
+		"eslint"
+	],
+	"author": "",
+	"license": "Apache-2.0",
+	"dependencies": {
+		"@eslint/jsparse": "^0.0.0",
+		"@eslint/jsscope": "^0.0.0"
+	}
+}

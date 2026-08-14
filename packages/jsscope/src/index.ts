@@ -49,6 +49,14 @@ export { toScopeManager } from "./to-scope-manager.js";
 export type { ToScopeManagerOptions } from "./to-scope-manager.js";
 export { toScopeTree } from "./to-scope-tree.js";
 export { ScopeBufferReader } from "./scope-buffer-reader.js";
+
+/*
+ * The binary scope format itself — header words, record fields, flag bits,
+ * enum code tables. Exported so that a tool consuming the buffer another way
+ * (`@eslint/jsflow` stores byte offsets into it) reads the layout from the
+ * one module that defines it instead of restating magic numbers.
+ */
+export * from "./scope-buffer.js";
 export * from "./ast-access.js";
 export * from "./kinds.js";
 export type { AnalyzeOptions, ResolvedOptions } from "./options.js";

@@ -8,10 +8,25 @@ JavaScript, TypeScript, and JSX syntax. TypeScript source, bundled with
 | ------- | ---- | ------------ |
 | `packages/jsparse` | `@eslint/jsparse` | Parser. Source text in, binary AST and token buffers out, ESTree on request. |
 | `packages/jsscope` | `@eslint/jsscope` | Scope analyzer. Reproduces `eslint-scope` and `@typescript-eslint/scope-manager`. |
+| `packages/jsflow` | `@eslint/jsflow` | Control flow analyzer. Binary AST and scope buffers in, basic-block graph out. |
 
-`jsscope` depends on `jsparse`, so **`jsparse` must be built before anything in
-`jsscope` runs**. Its own scripts take care of that; a bare `npx vitest` inside
-`packages/jsscope` will use a stale `dist/` or fail outright.
+`jsscope` depends on `jsparse`, and `jsflow` depends on both, so **the
+upstream packages must be built before anything downstream runs**. Each
+package's own scripts take care of that; a bare `npx vitest` inside
+`packages/jsscope` or `packages/jsflow` will use a stale `dist/` or fail
+outright.
+
+`jsflow`'s `createGraph()` reads the two binary buffers directly and returns
+a binary control flow graph; `toGraphTree()` is its JSON debugging view and
+`FlowBufferReader` its point-query reader. It stores byte offsets into both
+input buffers, which is why it accepts scope buffers only from `analyze()`,
+never `analyzeTree()`, and why `@eslint/jsscope` exports its `scope-buffer.ts`
+layout constants. The format is specified in
+[`packages/jsflow/docs/architecture.md`](./packages/jsflow/docs/architecture.md),
+along with the four places it deliberately trades precision for simplicity.
+It has no differential conformance suite — there is no reference
+implementation to diff against — so its integration tests in
+`packages/jsflow/tests/` are the contract.
 
 `jsscope` has **two entry points over one walk**: `analyze()` reads the binary
 buffers and `analyzeTree()` reads an ordinary ESTree tree. Neither is a
