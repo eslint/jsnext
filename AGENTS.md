@@ -9,6 +9,7 @@ JavaScript, TypeScript, and JSX syntax. TypeScript source, bundled with
 | `packages/jsparse` | `@eslint/jsparse` | Parser. Source text in, binary AST and token buffers out, ESTree on request. |
 | `packages/jsscope` | `@eslint/jsscope` | Scope analyzer. Reproduces `eslint-scope` and `@typescript-eslint/scope-manager`. |
 | `packages/jsflow` | `@eslint/jsflow` | Control flow analyzer. Binary AST and scope buffers in, basic-block graph out. |
+| `packages/jsinspect` | `@eslint/jsinspect` | Web app (Astro + React) that runs the other three in the browser: code in a left-hand editor, AST/scope/flow trees in tabs on the right. Its `dev`/`build`/`typecheck` scripts build the upstream packages first. |
 
 `jsscope` depends on `jsparse`, and `jsflow` depends on both, so **the
 upstream packages must be built before anything downstream runs**. Each

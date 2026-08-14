@@ -1,0 +1,20 @@
+---
+import Inspector from "../components/Inspector";
+import "../styles/global.css";
+---
+
+<!doctype html>
+<html lang="en" class="h-full">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta
+			name="description"
+			content="Inspect how @eslint/jsparse, @eslint/jsscope, and @eslint/jsflow see a program."
+		/>
+		<title>jsinspect</title>
+	</head>
+	<body class="h-full">
+		<Inspector client:only="react" />
+	</body>
+</html>

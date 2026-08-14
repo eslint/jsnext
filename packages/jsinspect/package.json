@@ -1,0 +1,47 @@
+{
+	"name": "@eslint/jsinspect",
+	"version": "0.0.0",
+	"description": "A web app for inspecting how @eslint/jsparse, @eslint/jsscope, and @eslint/jsflow see a program.",
+	"type": "module",
+	"private": true,
+	"scripts": {
+		"predev": "npm run build --workspace=@eslint/jsparse && npm run build --workspace=@eslint/jsscope && npm run build --workspace=@eslint/jsflow",
+		"dev": "astro dev",
+		"prebuild": "npm run build --workspace=@eslint/jsparse && npm run build --workspace=@eslint/jsscope && npm run build --workspace=@eslint/jsflow",
+		"build": "astro build",
+		"preview": "astro preview",
+		"pretypecheck": "npm run build --workspace=@eslint/jsparse && npm run build --workspace=@eslint/jsscope && npm run build --workspace=@eslint/jsflow",
+		"typecheck": "tsc --noEmit"
+	},
+	"keywords": [
+		"ast",
+		"scope",
+		"control-flow",
+		"javascript",
+		"typescript",
+		"eslint"
+	],
+	"author": "",
+	"license": "Apache-2.0",
+	"dependencies": {
+		"@astrojs/react": "^4.2.0",
+		"@codemirror/lang-javascript": "^6.2.2",
+		"@codemirror/theme-one-dark": "^6.1.2",
+		"@eslint/jsflow": "^0.0.0",
+		"@eslint/jsparse": "^0.0.0",
+		"@eslint/jsscope": "^0.0.0",
+		"@radix-ui/react-tabs": "^1.1.2",
+		"@tailwindcss/vite": "^4.0.0",
+		"astro": "^5.2.0",
+		"clsx": "^2.1.1",
+		"codemirror": "^6.0.1",
+		"react": "^19.0.0",
+		"react-dom": "^19.0.0",
+		"tailwind-merge": "^3.0.1",
+		"tailwindcss": "^4.0.0"
+	},
+	"devDependencies": {
+		"@types/react": "^19.0.0",
+		"@types/react-dom": "^19.0.0"
+	}
+}

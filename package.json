@@ -45,6 +45,9 @@
 	},
 	"allowScripts": {
 		"esbuild@0.24.2": true,
-		"esbuild@0.21.5": true
+		"esbuild@0.21.5": true,
+		"esbuild@0.25.12": true,
+		"esbuild@0.27.7": true,
+		"sharp@0.34.5": true
 	}
 }
