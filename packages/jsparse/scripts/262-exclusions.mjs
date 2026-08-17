@@ -26,19 +26,19 @@
  * using` are implemented.
  */
 export const UNSUPPORTED_FEATURES = new Set([
-	/*
-	 * `import source x from "m"` and `import.source(...)`. The declaration
-	 * form is not recognized at all.
-	 */
-	"source-phase-imports",
-	"source-phase-imports-module-source",
+  /*
+   * `import source x from "m"` and `import.source(...)`. The declaration
+   * form is not recognized at all.
+   */
+  "source-phase-imports",
+  "source-phase-imports-module-source",
 
-	/*
-	 * `import defer * as ns from "m"`. The `defer` is read as an ordinary
-	 * specifier, so the declaration parses into the wrong tree rather than
-	 * failing outright, which is worse than not parsing.
-	 */
-	"import-defer",
+  /*
+   * `import defer * as ns from "m"`. The `defer` is read as an ordinary
+   * specifier, so the declaration parses into the wrong tree rather than
+   * failing outright, which is worse than not parsing.
+   */
+  "import-defer",
 ]);
 
 /**
@@ -56,26 +56,40 @@ export const KNOWN_OVERZEALOUS = 0;
  * The families of early error that are not implemented, largest first. This is
  * the list to read before deciding what to implement next.
  *
+ * Nearly all of it belongs to `validate()` rather than to `parse()`, and the
+ * reason is the phase rule: `parse()` already built a tree for every one of
+ * these files, so by definition the tokens *could* be shaped into one and the
+ * complaint is a static-semantics rule about the tree. The exceptions are the
+ * lexical family and the two grammar ones — `import(...spread)`, `a ?? b || c`
+ * — where no tree should have been built at all, and those are the parser's.
+ *
+ * The run reports which phase catches what it does catch, so the balance is
+ * visible: today it is 966 from `parse()` against 301 from `validate()`.
+ *
  * Counts are approximate: a test usually violates one rule but the families
  * overlap at the edges, and the authority on the totals is
  * `262-baseline.json`. They are here to say what implementing one would be
  * worth, not to be summed.
  *
- * - **Assignment and destructuring targets** (~870). `1 = 2`, `(a + b) = c`,
+ * - **Assignment and destructuring targets** (~880, `validate()`). `1 = 2`, `(a + b) = c`,
  *   `[...a, b] = c`, a rest element that is not last, a destructuring pattern
  *   whose target is not simple. `validate()` never asks whether the left side
  *   of an assignment can be assigned to.
- * - **Declared early errors of classes, functions, and parameters** (~870).
+ * - **Private names** (~560, `validate()`).
+ *   A `#x` referenced where no enclosing class declares it, `#x` as a
+ *   duplicate member name, `delete this.#x`. Resolving one needs the stack of
+ *   enclosing class bodies, which the walk does not keep.
+ * - **Parameter lists, getters, and setters** (~280, `validate()`).
  *   Duplicate parameter names where they are banned, a non-simple parameter
  *   list under a `"use strict"` directive, a trailing comma after a rest
  *   parameter, a getter with a parameter, a setter without one, `constructor`
  *   used as a generator or field name, a private name never declared.
- * - **Regular expression pattern grammar** (~360). The pattern between the
+ * - **Regular expression pattern grammar** (~360, `validate()`). The pattern between the
  *   slashes is not parsed at all, so nothing in it is ever an error: an
  *   unmatched `)`, a duplicate group name, an invalid property escape, a `v`
  *   flag set operation that is not well formed. This is the one family that
  *   needs a new parser rather than a new check.
- * - **`yield` and `await` as identifiers** (~290). Which of the two is a
+ * - **`yield` and `await` as identifiers** (~300, `validate()`). Which of the two is a
  *   keyword depends on the enclosing function, and neither may be a binding
  *   name where it is. `validate()` tracks strict mode and function depth but
  *   not generator or async context. `await` in a module is the sharp edge:
@@ -83,24 +97,24 @@ export const KNOWN_OVERZEALOUS = 0;
  *   the places it is not — `function f() { await.x; }` and `({ await })` in
  *   module code, where the word is reserved but is only checked when it is
  *   *bound*, never when it is merely referenced.
- * - **`import()` call shape** (~280). No argument, three arguments, a rest
+ * - **`import()` call shape** (~45, `parse()`). No argument, three arguments, a rest
  *   argument, `new import(x)`, an escape in the `import` keyword.
- * - **Literals, escapes, and identifiers** (~170). A numeric separator in a
+ * - **Lexical grammar** (~170, `parse()`). A numeric separator in a
  *   position that does not admit one, a legacy octal escape in a template, a
  *   keyword written with a unicode escape, a line terminator where automatic
  *   semicolon insertion does not reach.
- * - **Declaration and redeclaration** (~110). `let let`, a lexical
+ * - **Declaration and redeclaration** (~110, `validate()`). `let let`, a lexical
  *   declaration as the body of an `if`, a function declaration where only a
  *   statement is allowed, `const` without an initializer in a `for-in` head.
- * - **Statement placement** (~100). `break` and `continue` with no enclosing
+ * - **Statement placement** (~105, mostly `validate()`). `break` and `continue` with no enclosing
  *   iteration or label, a duplicate label, `return` in module code.
- * - **`for` statement heads** (~70). `for (let x = 1 of y)`, an initializer on
+ * - **`for` statement heads** (~70, mostly `validate()`). `for (let x = 1 of y)`, an initializer on
  *   a `for-in` head outside sloppy Annex B, `let` as the target of a `for-of`.
- * - **`eval` and `arguments` in strict code** (~65). Neither may be a binding
+ * - **`eval` and `arguments` in strict code** (~80, `validate()`). Neither may be a binding
  *   name or an assignment target under strict mode.
- * - **Expression-level shapes** (~65). `a ?? b || c` without parentheses,
+ * - **Expression-level grammar** (~20, `parse()`). `a ?? b || c` without parentheses,
  *   `-a ** b`, `this++`, `delete x` in strict mode, `#x in obj` outside a
  *   class body, an update expression on an optional chain.
- * - **`new.target`, `import.meta`, and `super`** (~16). Each is legal only
+ * - **`new.target`, `import.meta`, and `super`** (~30, `validate()`). Each is legal only
  *   inside a particular kind of body.
  */

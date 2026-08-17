@@ -61,6 +61,16 @@ npm run conformance:262 -- ./test262
 `/test262` at the repository root is the default path and is gitignored, so a
 clone there needs no argument.
 
+Every count is a count of files. A test with neither a `module` nor a
+strictness flag has to hold up read both ways, so it is run twice, but it is
+still one test and counts once.
+
+`invalid` carries the split of **which phase** did the rejecting. That is the
+number to watch when working on early errors: `parse()` catches what cannot be
+tokenized or shaped into a tree, and everything else has to come from
+`validate()`, so a split that stays lopsided means the early-error work is not
+landing where it belongs.
+
 Two counts come out of it and they are not equally bad:
 
 - **overzealous** — a valid program the parser rejects. This breaks working
@@ -81,7 +91,7 @@ implemented at all, and groups the missed early errors into families with rough
 counts — which is the list to read before deciding what to implement next.
 
 ```
-files=52095 valid=91051 invalid=2350 skipped=536 missed=3143 overzealous=0
+files=52095 valid=47149 invalid=1267 (parse=966 validate=301) skipped=536 missed=3143 overzealous=0
 baseline unchanged
 ```
 

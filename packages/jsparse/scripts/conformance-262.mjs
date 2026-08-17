@@ -202,7 +202,15 @@ const root = positional[0] ?? "../../test262";
 const cap = Number(positional[1] ?? Infinity);
 const files = walk(join(root, "test")).sort().slice(0, cap);
 
-const counts = { valid: 0, invalid: 0, skipped: 0, missed: 0, overzealous: 0 };
+const counts = {
+	valid: 0,
+	invalid: 0,
+	skipped: 0,
+	missed: 0,
+	overzealous: 0,
+	parse: 0,
+	validate: 0,
+};
 const problems = [];
 const byFeature = new Map();
 const observed = {};
@@ -238,34 +246,60 @@ for (const file of files) {
 		meta.negative.type === "SyntaxError";
 	const name = relative(root, file).split(sep).join("/");
 
+	/*
+	 * A test with neither `module` nor a strictness flag has to hold up read
+	 * both ways, so it is run twice — but it is still one test, and every
+	 * count here is a count of files. The first run that goes wrong is the
+	 * one reported, and the rest are not run.
+	 */
+	let failure = null;
+	let caughtBy = null;
+
 	for (const run of runsFor(meta.flags)) {
 		const why = rejection(run.prologue + code, run.sourceType);
 
-		if (mustReject ? why !== null : why === null) {
-			counts[mustReject ? "invalid" : "valid"]++;
-			continue;
+		if (mustReject ? why === null : why !== null) {
+			failure = [run.label, why];
+			break;
 		}
 
-		const kind = mustReject ? "missed" : "overzealous";
+		caughtBy ??= why === null ? null : why.slice(0, why.indexOf(":"));
+	}
 
-		counts[kind]++;
-		observed[area(name)] = (observed[area(name)] ?? 0) + 1;
-		problems.push([name, run.label, kind, why ?? "accepted"]);
+	if (failure === null) {
+		counts[mustReject ? "invalid" : "valid"]++;
 
-		for (const feature of meta.features.length > 0
-			? meta.features
-			: ["(none)"]) {
-			byFeature.set(feature, (byFeature.get(feature) ?? 0) + 1);
+		/*
+		 * Which phase rejected it. `parse()` doing all the work would mean
+		 * `validate()` is not being exercised by this corpus at all, so the
+		 * split is worth watching rather than inferring.
+		 */
+		if (caughtBy !== null) {
+			counts[caughtBy]++;
 		}
 
-		break;
+		continue;
+	}
+
+	const [label, why] = failure;
+	const kind = mustReject ? "missed" : "overzealous";
+
+	counts[kind]++;
+	observed[area(name)] = (observed[area(name)] ?? 0) + 1;
+	problems.push([name, label, kind, why ?? "accepted"]);
+
+	for (const feature of meta.features.length > 0
+		? meta.features
+		: ["(none)"]) {
+		byFeature.set(feature, (byFeature.get(feature) ?? 0) + 1);
 	}
 }
 
 console.log(
-	`files=${files.length} valid=${counts.valid} invalid=${counts.invalid} ` +
-		`skipped=${counts.skipped} missed=${counts.missed} ` +
-		`overzealous=${counts.overzealous}`,
+	`files=${files.length} valid=${counts.valid} ` +
+		`invalid=${counts.invalid} (parse=${counts.parse} ` +
+		`validate=${counts.validate}) skipped=${counts.skipped} ` +
+		`missed=${counts.missed} overzealous=${counts.overzealous}`,
 );
 
 if (flags.has("--update")) {
