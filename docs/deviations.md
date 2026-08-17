@@ -166,6 +166,35 @@ diagnostics. `packages/jsparse/tests/validate.test.ts` pins the behavior.
 
 ---
 
+### A call as an assignment target in sloppy code
+
+**Reference:** `espree` rejects all of these outright.
+
+```js
+f() = 1;
+f()++;
+for (f() of x);
+```
+
+**Here:** they are accepted in sloppy code and reported in strict code, so the
+same three inside a module, or after a `"use strict"` directive, are errors.
+
+**Why:** the specification says so, in as many words. `AssignmentTargetType` of
+a `CallExpression` returns `~web-compat~` — not `~invalid~` — when the call is
+not strict and the host supports Runtime Errors for Function Call Assignment
+Targets, which every browser does. The result is a `ReferenceError` when the
+assignment runs, not a `SyntaxError` before it does. `acorn` does not implement
+the carve-out; test262 asserts it, in
+`test/annexB/language/expressions/assignmenttargettype/`. Reproducing the
+reference would mean rejecting seven programs the specification calls valid,
+and rejecting working code is the worse of the two failure modes.
+
+**How conformance absorbs it:** it does not have to, for the same reason as
+above — this is a `validate()` diagnostic. The test262 run is what covers it,
+and `packages/jsparse/tests/test262.test.ts` pins both halves.
+
+---
+
 ## Scope analysis
 
 `jsscope` reproduces two analyzers that disagree with each other in three
@@ -239,11 +268,10 @@ The last one comes from test262, which is the only corpus that tests what the
 parser *rejects*. No valid program is rejected — that count is zero and has to
 stay there — so what is left is invalid programs accepted in silence.
 
-- **Most of ECMAScript's early errors.** Around 3,140 test262 files are invalid
-  programs that both phases accept: an assignment to something that cannot be
-  assigned to, a duplicate parameter name where it is banned, `yield` as a
-  binding name inside a generator, anything at all wrong inside a regular
-  expression pattern. The families are enumerated with rough counts in
+- **Most of ECMAScript's early errors.** Around 2,180 test262 files are invalid
+  programs that both phases accept: `yield` as a binding name inside a
+  generator, `eval` assigned to in strict code, anything at all wrong inside a
+  regular expression pattern. The families are enumerated with rough counts in
   [`packages/jsparse/scripts/262-exclusions.mjs`](../packages/jsparse/scripts/262-exclusions.mjs),
   and the per-directory counts are pinned in `262-baseline.json` so that the
   number cannot quietly grow.

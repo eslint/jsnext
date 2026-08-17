@@ -17,12 +17,24 @@ import {
 	NODE_A,
 	NODE_B,
 	NODE_C,
+	MKIND_GET,
+	MKIND_MASK,
+	MKIND_SET,
+	MKIND_SHIFT,
+	NF_COMPUTED,
+	NF_METHOD,
+	NF_STATIC,
 	TS_FIRST,
 	N_ArrayPattern,
+	N_AssignmentExpression,
 	N_AssignmentPattern,
+	N_BinaryExpression,
 	N_BlockStatement,
+	N_CallExpression,
+	N_ChainExpression,
 	N_CatchClause,
 	N_ClassDeclaration,
+	N_ClassExpression,
 	N_ExportAllDeclaration,
 	N_ExportDefaultDeclaration,
 	N_ExportNamedDeclaration,
@@ -53,15 +65,29 @@ import {
 	N_TSTypeAliasDeclaration,
 	N_VariableDeclaration,
 	N_VariableDeclarator,
+	N_MemberExpression,
+	N_MethodDefinition,
+	N_PrivateIdentifier,
+	N_TSAbstractMethodDefinition,
+	N_TSAsExpression,
+	N_TSNonNullExpression,
+	N_TSSatisfiesExpression,
+	N_TSTypeAssertion,
+	N_UnaryExpression,
+	N_UpdateExpression,
 	N_WithStatement,
 } from "./node-kinds.js";
 import { AstReader, TokenReader } from "./reader.js";
+import { decodeEscapes } from "./values.js";
 import { SLOT_COUNT, SLOT_LIST, SLOT_NODE, SLOT_TABLE } from "./slots.js";
 import {
 	KEYWORD_FIRST,
 	KEYWORD_LAST,
 	KIND_KEYWORD_FLAGS,
 	KW_STRICT_RESERVED,
+	T_ASSIGN,
+	T_delete,
+	T_in,
 	lookupKeyword,
 	hashChar,
 } from "./token-kinds.js";
@@ -178,6 +204,31 @@ class Validator {
 
 	/** The innermost scope. */
 	private scope: Scope;
+
+	/**
+	 * Whether the parameter list being declared may not repeat a name.
+	 *
+	 * Sloppy code lets a plain function repeat a *simple* parameter —
+	 * `function f(a, a) {}` is legal and the last one wins. Every other
+	 * combination bans it: strict code, any non-simple list, a method, and an
+	 * arrow function.
+	 */
+	private uniqueParams = false;
+
+	/**
+	 * Whether the function being visited is a method, which its own node does
+	 * not record — the method-ness belongs to the `MethodDefinition` or
+	 * `Property` above it, and only reaches the function through here.
+	 */
+	private inMethod = false;
+
+	/**
+	 * The private names each enclosing class declares, outermost first.
+	 *
+	 * Empty at the top level, which is what makes a `#x` outside any class an
+	 * error rather than an unresolved name.
+	 */
+	private readonly privateNames: Set<string>[] = [];
 
 	/**
 	 * Creates a validator.
@@ -414,6 +465,62 @@ class Validator {
 			}
 
 			/*
+			 * A method's parameters may never repeat a name, however sloppy
+			 * the surrounding code is, and an accessor's list has a fixed
+			 * shape. Neither fact is recorded on the function itself, so both
+			 * are settled here and the first is handed down for the value
+			 * alone — a computed key holding a function is not a method.
+			 */
+			case N_MethodDefinition:
+			case N_TSAbstractMethodDefinition:
+			case N_Property: {
+				const flags = reader.flags(node);
+				const accessor = (flags & MKIND_MASK) >>> MKIND_SHIFT;
+				const value = reader.field(node, NODE_B);
+
+				if (accessor === MKIND_GET || accessor === MKIND_SET) {
+					this.checkAccessorParameters(value, accessor);
+				}
+
+				this.visit(reader.field(node, NODE_A));
+
+				const wasMethod = this.inMethod;
+
+				this.inMethod =
+					kind !== N_Property ||
+					(flags & NF_METHOD) !== 0 ||
+					accessor === MKIND_GET ||
+					accessor === MKIND_SET;
+				this.visit(value);
+				this.inMethod = wasMethod;
+				this.visitList(reader.field(node, NODE_C));
+				return;
+			}
+
+			/*
+			 * A class opens a private environment that covers its body and
+			 * nothing else. The heritage clause is deliberately visited before
+			 * the push, because the specification evaluates it in the *outer*
+			 * environment: `class C extends this.#x { #x; }` does not resolve.
+			 */
+			case N_ClassDeclaration:
+			case N_ClassExpression: {
+				const body = reader.field(node, NODE_C);
+
+				this.visit(reader.field(node, NODE_A));
+				this.visit(reader.field(node, NODE_B));
+
+				if (body === 0) {
+					return;
+				}
+
+				this.privateNames.push(this.collectPrivateNames(body));
+				this.visitChildren(body, reader.kind(body));
+				this.privateNames.pop();
+				return;
+			}
+
+			/*
 			 * Everything below a JSX element or fragment is JSX too, so the
 			 * subtree is marked to keep `check()` from reporting a disallowed
 			 * tree again at every element nested inside it.
@@ -474,27 +581,68 @@ class Validator {
 	private visitFunction(node: number): void {
 		const reader = this.reader;
 		const previousStrict = this.strict;
+		const previousUnique = this.uniqueParams;
+		const isMethod = this.inMethod;
 		const body = reader.field(node, NODE_C);
 
+		/*
+		 * Method-ness reaches exactly one function, the one it was set for.
+		 * A function nested inside a method is an ordinary function again.
+		 */
+		this.inMethod = false;
 		this.functionDepth++;
 		this.enterScope(true);
 
-		if (
-			!this.strict &&
+		const directive =
 			body !== 0 &&
 			reader.kind(body) === N_BlockStatement &&
-			this.hasUseStrictDirective(body)
-		) {
+			this.hasUseStrictDirective(body);
+
+		if (directive) {
 			this.strict = true;
 		}
 
 		const params = reader.field(node, NODE_B);
 		const size = reader.listSize(params);
+		const simple = this.hasSimpleParameters(params, size);
 
-		for (let i = 0; i < size; i++) {
-			this.declarePattern(reader.listItem(params, i), BINDING_PARAM);
+		/*
+		 * A `"use strict"` directive cannot make strict something the engine
+		 * would have to evaluate to know — a default expression runs in the
+		 * function's own scope, so whether *it* is strict would depend on the
+		 * directive it precedes. The language sidesteps the question by
+		 * banning the combination outright.
+		 */
+		if (directive && !simple) {
+			this.report(
+				"Illegal 'use strict' directive in a function with a non-simple parameter list.",
+				reader.start(node),
+			);
 		}
 
+		this.uniqueParams =
+			this.strict ||
+			!simple ||
+			isMethod ||
+			reader.kind(node) === N_ArrowFunctionExpression;
+
+		for (let i = 0; i < size; i++) {
+			const param = reader.listItem(params, i);
+
+			if (
+				reader.kind(param) === N_RestElement &&
+				i !== size - 1
+			) {
+				this.report(
+					"A rest parameter must be the last parameter.",
+					reader.start(param),
+				);
+			}
+
+			this.declarePattern(param, BINDING_PARAM);
+		}
+
+		this.uniqueParams = previousUnique;
 		this.visit(reader.field(node, NODE_A));
 		this.visitList(params);
 
@@ -510,6 +658,78 @@ class Validator {
 		this.exitScope();
 		this.functionDepth--;
 		this.strict = previousStrict;
+	}
+
+	/**
+	 * Determines whether every parameter is a plain binding identifier.
+	 *
+	 * That is the specification's `IsSimpleParameterList`, and it decides two
+	 * separate things: whether the list may repeat a name in sloppy code, and
+	 * whether the body may open with a `"use strict"` directive.
+	 * @param params The parameter list handle.
+	 * @param size How many parameters it holds.
+	 * @returns `true` when no parameter is a pattern, a default, or a rest.
+	 */
+	private hasSimpleParameters(params: number, size: number): boolean {
+		for (let i = 0; i < size; i++) {
+			if (
+				this.reader.kind(this.reader.listItem(params, i)) !==
+				N_Identifier
+			) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Reports an accessor whose parameter list is not the shape it must be.
+	 *
+	 * A getter takes nothing and a setter takes exactly one thing, and neither
+	 * may collect a rest — the two are called with a fixed shape by the
+	 * property machinery, so there is nothing for the extra parameters to be.
+	 * @param value The function node index, or `0`.
+	 * @param accessor The packed method kind.
+	 * @returns Nothing.
+	 */
+	private checkAccessorParameters(value: number, accessor: number): void {
+		if (value === 0) {
+			return;
+		}
+
+		const reader = this.reader;
+		const params = reader.field(value, NODE_B);
+		const size = reader.listSize(params);
+
+		if (accessor === MKIND_GET) {
+			if (size > 0) {
+				this.report(
+					"A getter must have no parameters.",
+					reader.start(reader.listItem(params, 0)),
+				);
+			}
+
+			return;
+		}
+
+		if (size !== 1) {
+			this.report(
+				"A setter must have exactly one parameter.",
+				reader.start(size === 0 ? value : reader.listItem(params, 1)),
+			);
+
+			return;
+		}
+
+		const only = reader.listItem(params, 0);
+
+		if (reader.kind(only) === N_RestElement) {
+			this.report(
+				"A setter cannot have a rest parameter.",
+				reader.start(only),
+			);
+		}
 	}
 
 	//-------------------------------------------------------------------------
@@ -861,7 +1081,7 @@ class Validator {
 		}
 
 		if (existing === BINDING_PARAM && incoming === BINDING_PARAM) {
-			return this.strict;
+			return this.uniqueParams;
 		}
 
 		/*
@@ -983,6 +1203,378 @@ class Validator {
 	}
 
 	//-------------------------------------------------------------------------
+	// Private Names
+	//-------------------------------------------------------------------------
+
+	/*
+	 * A `#x` is not a property name but a binding, and the thing it binds in is
+	 * the class body — one private environment per class, nested inside the
+	 * environments of any enclosing classes. A reference resolves against that
+	 * whole stack, which is what lets an inner class reach an outer class's
+	 * `#x`, and what makes a reference with no class around it an error.
+	 *
+	 * Two things make this unlike the ordinary scope walk. A class may refer to
+	 * a name declared *later* in its own body, so every name has to be
+	 * collected before any member is visited. And the heritage clause is
+	 * outside its own class's environment — `class C extends this.#x { #x; }`
+	 * does not resolve — which is why `extends` is visited before the push.
+	 */
+
+	/**
+	 * Collects the private names a class body declares, reporting the ones it
+	 * may not declare twice.
+	 *
+	 * A name may appear twice only as a getter/setter pair on the same side of
+	 * `static`, so what is remembered per name is enough to tell that pair from
+	 * every other repeat.
+	 * @param body The `ClassBody` node index.
+	 * @returns The names it declares.
+	 */
+	private collectPrivateNames(body: number): Set<string> {
+		const reader = this.reader;
+		const members = reader.field(body, NODE_A);
+		const size = reader.listSize(members);
+		const names = new Set<string>();
+
+		/** What has been seen for a name so far, to allow one getter/setter pair. */
+		const seen = new Map<string, number>();
+
+		for (let i = 0; i < size; i++) {
+			const member = reader.listItem(members, i);
+			const key = reader.field(member, NODE_A);
+
+			if (
+				key === 0 ||
+				reader.kind(key) !== N_PrivateIdentifier ||
+				(reader.flags(member) & NF_COMPUTED) !== 0
+			) {
+				continue;
+			}
+
+			const name = this.privateName(key);
+
+			if (name === "#constructor") {
+				this.report(
+					"Classes may not have a private element named '#constructor'.",
+					reader.start(key),
+				);
+				continue;
+			}
+
+			names.add(name);
+
+			/*
+			 * A getter and a setter pair up only with each other. Encoding the
+			 * accessor kind and the `static` side in one number makes "have I
+			 * already seen something this cannot sit beside?" a single lookup.
+			 */
+			const flags = reader.flags(member);
+			const accessor = (flags & MKIND_MASK) >>> MKIND_SHIFT;
+			const isStatic = (flags & NF_STATIC) !== 0;
+			const descriptor =
+				accessor === MKIND_GET || accessor === MKIND_SET
+					? accessor | (isStatic ? 4 : 0)
+					: -1;
+			const previous = seen.get(name);
+
+			if (previous === undefined) {
+				seen.set(name, descriptor);
+				continue;
+			}
+
+			const pairs =
+				descriptor >= 0 &&
+				previous >= 0 &&
+				(descriptor & 4) === (previous & 4) &&
+				(descriptor & 3) !== (previous & 3);
+
+			if (!pairs) {
+				this.report(
+					`Identifier '${name}' has already been declared.`,
+					reader.start(key),
+				);
+				continue;
+			}
+
+			// A completed pair may not take a third member.
+			seen.set(name, -1);
+		}
+
+		return names;
+	}
+
+	/**
+	 * Reads a private name, resolving any escapes in it.
+	 *
+	 * Two private names are the same name when their `StringValue`s match, and
+	 * `StringValue` is what the escapes mean rather than how they are spelled —
+	 * `#℘` declares the same field `#℘` refers to. Comparing source text
+	 * would report every escaped name as undeclared.
+	 * @param key The `PrivateIdentifier` node index.
+	 * @returns The name, `#` included.
+	 */
+	private privateName(key: number): string {
+		const raw = this.reader.text(key);
+
+		return raw.indexOf("\\") === -1 ? raw : decodeEscapes(raw, false);
+	}
+
+	/**
+	 * Determines whether an expression reads a private field.
+	 *
+	 * Parentheses and an optional chain both wrap the member access without
+	 * changing what is being deleted, so `delete (o?.#x)` has to be seen
+	 * through to be reported.
+	 * @param node The expression node index.
+	 * @returns `true` when the expression is a private reference.
+	 */
+	private isPrivateReference(node: number): boolean {
+		const reader = this.reader;
+		let current = node;
+
+		while (reader.kind(current) === N_ChainExpression) {
+			current = reader.field(current, NODE_A);
+
+			if (current === 0) {
+				return false;
+			}
+		}
+
+		if (reader.kind(current) !== N_MemberExpression) {
+			return false;
+		}
+
+		const property = reader.field(current, NODE_B);
+
+		return (
+			property !== 0 && reader.kind(property) === N_PrivateIdentifier
+		);
+	}
+
+	/**
+	 * Reports a private name that no enclosing class declares.
+	 * @param key The `PrivateIdentifier` node index.
+	 * @returns Nothing.
+	 */
+	private checkPrivateReference(key: number): void {
+		const name = this.privateName(key);
+
+		for (let i = this.privateNames.length - 1; i >= 0; i--) {
+			if (this.privateNames[i].has(name)) {
+				return;
+			}
+		}
+
+		this.report(
+			`Private field '${name}' must be declared in an enclosing class.`,
+			this.reader.start(key),
+		);
+	}
+
+	//-------------------------------------------------------------------------
+	// Assignment Targets
+	//-------------------------------------------------------------------------
+
+	/*
+	 * The spec calls this a node's `AssignmentTargetType`, and it is `simple`
+	 * for exactly two things: a reference to a name, and a member access.
+	 * Everything else is `invalid`, and assigning to it, incrementing it, or
+	 * naming it in a `for-in`/`for-of` head is an early error.
+	 *
+	 * Destructuring widens that for `=` alone. `[a, b] = c` assigns through a
+	 * pattern, so a pattern is allowed on the left of a plain assignment and
+	 * of a `for-of` head, and each of its elements is then a target in its own
+	 * right. It is *not* allowed on the left of `+=`, which has nothing to
+	 * destructure.
+	 *
+	 * The parser has already done the hard half: it rewrites the left of a
+	 * plain assignment into `ArrayPattern` and `ObjectPattern` where that
+	 * reading works, so a bare `ArrayExpression` surviving to here is one that
+	 * could not be reinterpreted.
+	 */
+
+	/**
+	 * Reports an expression being assigned to that cannot be.
+	 * @param node The target node index, or `0`.
+	 * @param pattern Whether a destructuring pattern is allowed here, which it
+	 *      is for `=` and a `for-of` head but not for `+=` or `++`.
+	 * @returns Nothing.
+	 */
+	private checkAssignmentTarget(node: number, pattern: boolean): void {
+		if (node === 0) {
+			return;
+		}
+
+		const reader = this.reader;
+
+		switch (reader.kind(node)) {
+			case N_Identifier:
+			case N_MemberExpression:
+				return;
+
+			/*
+			 * A TypeScript wrapper is transparent here. `x! = 1` and
+			 * `(x as T) = 1` are the parser's shape for an assignment to `x`,
+			 * and `@typescript-eslint/parser` accepts both, so looking through
+			 * keeps this from reporting real TypeScript.
+			 */
+			case N_TSNonNullExpression:
+			case N_TSAsExpression:
+			case N_TSSatisfiesExpression:
+			case N_TSTypeAssertion:
+				this.checkAssignmentTarget(reader.field(node, NODE_A), pattern);
+				return;
+
+			case N_ArrayPattern:
+				if (pattern) {
+					this.checkArrayPattern(node);
+					return;
+				}
+
+				break;
+
+			case N_ObjectPattern:
+				if (pattern) {
+					this.checkObjectPattern(node);
+					return;
+				}
+
+				break;
+
+			/*
+			 * `f() = 1` is an early error in strict code and, for web
+			 * compatibility, only a runtime `ReferenceError` in sloppy code —
+			 * the spec spells the sloppy answer `~web-compat~` rather than
+			 * `~invalid~`. `espree` reports it either way, which is the one
+			 * deviation this check carries; see `docs/deviations.md`.
+			 */
+			case N_CallExpression:
+				if (!this.strict) {
+					return;
+				}
+
+				break;
+
+			/*
+			 * An optional chain is never a target: `a?.b = c` is an error even
+			 * though `a.b = c` is fine, because the chain may produce
+			 * `undefined` and there would be nothing to assign to.
+			 */
+			default:
+				break;
+		}
+
+		this.report(
+			"Invalid assignment target.",
+			reader.start(node),
+		);
+	}
+
+	/**
+	 * Checks the elements of an array destructuring pattern.
+	 *
+	 * A rest element has to come last and take no default, since there is
+	 * nothing after it to collect and nothing to be absent.
+	 * @param node The `ArrayPattern` node index.
+	 * @returns Nothing.
+	 */
+	private checkArrayPattern(node: number): void {
+		const reader = this.reader;
+		const elements = reader.field(node, NODE_A);
+		const size = reader.listSize(elements);
+
+		for (let i = 0; i < size; i++) {
+			const element = reader.listItem(elements, i);
+
+			// A hole is written as a missing element and targets nothing.
+			if (element === 0) {
+				continue;
+			}
+
+			if (reader.kind(element) !== N_RestElement) {
+				this.checkPatternElement(element);
+				continue;
+			}
+
+			if (i !== size - 1) {
+				this.report(
+					"A rest element must be the last element.",
+					reader.start(element),
+				);
+			}
+
+			this.checkRestTarget(element);
+		}
+	}
+
+	/**
+	 * Checks the properties of an object destructuring pattern.
+	 * @param node The `ObjectPattern` node index.
+	 * @returns Nothing.
+	 */
+	private checkObjectPattern(node: number): void {
+		const reader = this.reader;
+		const properties = reader.field(node, NODE_A);
+		const size = reader.listSize(properties);
+
+		for (let i = 0; i < size; i++) {
+			const property = reader.listItem(properties, i);
+
+			if (reader.kind(property) === N_RestElement) {
+				if (i !== size - 1) {
+					this.report(
+						"A rest element must be the last element.",
+						reader.start(property),
+					);
+				}
+
+				this.checkRestTarget(property);
+				continue;
+			}
+
+			this.checkPatternElement(reader.field(property, NODE_B));
+		}
+	}
+
+	/**
+	 * Checks one element of a pattern, seeing past its default.
+	 * @param node The element node index, or `0`.
+	 * @returns Nothing.
+	 */
+	private checkPatternElement(node: number): void {
+		if (node === 0) {
+			return;
+		}
+
+		this.checkAssignmentTarget(
+			this.reader.kind(node) === N_AssignmentPattern
+				? this.reader.field(node, NODE_A)
+				: node,
+			true,
+		);
+	}
+
+	/**
+	 * Checks what a rest element collects into.
+	 * @param node The `RestElement` node index.
+	 * @returns Nothing.
+	 */
+	private checkRestTarget(node: number): void {
+		const target = this.reader.field(node, NODE_A);
+
+		if (target !== 0 && this.reader.kind(target) === N_AssignmentPattern) {
+			this.report(
+				"A rest element cannot have an initializer.",
+				this.reader.start(target),
+			);
+
+			return;
+		}
+
+		this.checkAssignmentTarget(target, true);
+	}
+
+	//-------------------------------------------------------------------------
 	// Node Checks
 	//-------------------------------------------------------------------------
 
@@ -1023,6 +1615,93 @@ class Validator {
 				}
 
 				return;
+
+			/*
+			 * The two places a private name is *used*: `o.#x`, and the
+			 * `#x in o` form that exists to ask whether an object has one
+			 * without throwing.
+			 */
+			case N_MemberExpression: {
+				const property = this.reader.field(node, NODE_B);
+
+				if (
+					property !== 0 &&
+					this.reader.kind(property) === N_PrivateIdentifier
+				) {
+					this.checkPrivateReference(property);
+				}
+
+				return;
+			}
+
+			case N_BinaryExpression: {
+				const left = this.reader.field(node, NODE_A);
+
+				if (
+					this.reader.field(node, NODE_C) === T_in &&
+					left !== 0 &&
+					this.reader.kind(left) === N_PrivateIdentifier
+				) {
+					this.checkPrivateReference(left);
+				}
+
+				return;
+			}
+
+			/*
+			 * `delete o.#x` is an early error however the reference is
+			 * written, because a private field cannot be removed.
+			 */
+			case N_UnaryExpression: {
+				const argument = this.reader.field(node, NODE_A);
+
+				if (
+					this.reader.field(node, NODE_B) === T_delete &&
+					argument !== 0 &&
+					this.isPrivateReference(argument)
+				) {
+					this.report(
+						"Private fields cannot be deleted.",
+						this.reader.start(node),
+					);
+				}
+
+				return;
+			}
+
+			case N_AssignmentExpression:
+				this.checkAssignmentTarget(
+					this.reader.field(node, NODE_A),
+					this.reader.field(node, NODE_C) === T_ASSIGN,
+				);
+				return;
+
+			case N_UpdateExpression:
+				this.checkAssignmentTarget(
+					this.reader.field(node, NODE_A),
+					false,
+				);
+				return;
+
+			/*
+			 * A `for` head either declares its binding, in which case the
+			 * declaration is what is checked, or assigns to an existing
+			 * target. `for-in` takes a pattern too — `for ([a, b] in c)` is
+			 * legal, if odd.
+			 */
+			case N_ForInStatement:
+			case N_ForOfStatement: {
+				const left = this.reader.field(node, NODE_A);
+
+				if (
+					left !== 0 &&
+					this.reader.kind(left) !== N_VariableDeclaration
+				) {
+					this.checkAssignmentTarget(left, true);
+				}
+
+				return;
+			}
 
 			case N_JSXElement:
 				this.checkJsxNotAllowed(node);

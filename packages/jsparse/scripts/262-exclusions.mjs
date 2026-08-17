@@ -64,26 +64,13 @@ export const KNOWN_OVERZEALOUS = 0;
  * — where no tree should have been built at all, and those are the parser's.
  *
  * The run reports which phase catches what it does catch, so the balance is
- * visible: today it is 966 from `parse()` against 301 from `validate()`.
+ * visible: today it is 998 from `parse()` against 1,232 from `validate()`.
  *
  * Counts are approximate: a test usually violates one rule but the families
  * overlap at the edges, and the authority on the totals is
  * `262-baseline.json`. They are here to say what implementing one would be
  * worth, not to be summed.
  *
- * - **Assignment and destructuring targets** (~880, `validate()`). `1 = 2`, `(a + b) = c`,
- *   `[...a, b] = c`, a rest element that is not last, a destructuring pattern
- *   whose target is not simple. `validate()` never asks whether the left side
- *   of an assignment can be assigned to.
- * - **Private names** (~560, `validate()`).
- *   A `#x` referenced where no enclosing class declares it, `#x` as a
- *   duplicate member name, `delete this.#x`. Resolving one needs the stack of
- *   enclosing class bodies, which the walk does not keep.
- * - **Parameter lists, getters, and setters** (~280, `validate()`).
- *   Duplicate parameter names where they are banned, a non-simple parameter
- *   list under a `"use strict"` directive, a trailing comma after a rest
- *   parameter, a getter with a parameter, a setter without one, `constructor`
- *   used as a generator or field name, a private name never declared.
  * - **Regular expression pattern grammar** (~360, `validate()`). The pattern between the
  *   slashes is not parsed at all, so nothing in it is ever an error: an
  *   unmatched `)`, a duplicate group name, an invalid property escape, a `v`

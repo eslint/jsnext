@@ -1726,10 +1726,31 @@ export abstract class ExpressionParser extends TypeParser {
 		this.expect(T_PAREN_OPEN);
 
 		while (!this.at(T_PAREN_CLOSE) && !this.at(T_EOF)) {
-			this.writer.pushList(this.parseParameter());
+			const parameter = this.parseParameter();
+			const isRest =
+				this.writer.get(parameter, NODE_KIND) === N_RestElement;
+
+			const commaStart = this.start;
+
+			this.writer.pushList(parameter);
 
 			if (!this.eat(T_COMMA)) {
 				break;
+			}
+
+			/*
+			 * A rest parameter ends the list, so a comma after it separates it
+			 * from nothing. This is the one part of the rule that cannot be
+			 * left to `validate()`: a rest parameter that is merely not *last*
+			 * is plain to see in the tree, but a trailing comma leaves no
+			 * trace in one. Only the trailing case is caught here, so
+			 * `f(...a, b)` still reports where the rest of the rule does.
+			 */
+			if (isRest && this.at(T_PAREN_CLOSE)) {
+				throw this.error(
+					"A rest parameter may not have a trailing comma.",
+					commaStart,
+				);
 			}
 		}
 

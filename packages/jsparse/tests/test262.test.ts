@@ -130,6 +130,71 @@ const valid: [string, "script" | "module"][] = [
 	["var \u{1d453} = 1;", "script"],
 	["class C { #\u{1d453}; }", "script"],
 
+	/*
+	 * Sloppy code lets a plain function repeat a *simple* parameter, and a
+	 * generator or an async function is still a plain function for this. Only
+	 * a method, an arrow, strict code, or a non-simple list bans it — so these
+	 * are the shapes one character away from the errors above.
+	 */
+	["function f(a, a) {}", "script"],
+	["function* g(a, a) {}", "script"],
+	["async function h(a, a) {}", "script"],
+	["({ m: function (a, a) {} });", "script"],
+	["({ m(a) { function g(b, b) {} } });", "script"],
+	["function f(a) { 'use strict'; }", "script"],
+	["function f(a, b,) {}", "script"],
+	["f(...a,);", "script"],
+	["({ get x() {} });", "script"],
+	["({ set x(a) {} });", "script"],
+	["class C { set x([a, b]) {} }", "script"],
+
+	/*
+	 * A private name resolves against every enclosing class, and against its
+	 * own class wherever in the body it is written — a method may use a field
+	 * declared after it.
+	 */
+	["class C { #x; m() { return this.#x; } }", "script"],
+	["class C { m() { return this.#x; } #x; }", "script"],
+	["class C { m(o) { return #x in o; } #x; }", "script"],
+	["class C { #x; static { C.#x; } }", "script"],
+	["class D { #a; m() { class E { n(o) { return o.#a; } } } }", "script"],
+	["class C extends (class { #y; }) { #x; m() { return this.#x; } }", "script"],
+
+	// One getter/setter pair may share a name, on either side of `static`.
+	["class C { get #x(){} set #x(v){} }", "script"],
+	["class C { static get #x(){} static set #x(v){} }", "script"],
+
+	/*
+	 * A name written with escapes is the name it spells, so this declares and
+	 * uses `#℘` twice over rather than two different fields.
+	 */
+	["class C { #\\u2118; m() { return this.#℘; } }", "script"],
+
+	/*
+	 * Valid assignment targets, including the shapes closest to the invalid
+	 * ones: a rest element that *is* last, a default that is not on a rest
+	 * element, and a member expression anywhere a name may go.
+	 */
+	["[a, b] = c;", "script"],
+	["[a = 1, ...b] = c;", "script"],
+	["[...a.b] = c;", "script"],
+	["({ a, b: c.d, ...e } = f);", "script"],
+	["({ a: { b: [c] } } = d);", "script"],
+	["[, , a] = b;", "script"],
+	["for ([a, b] of c);", "script"],
+	["for (a.b in c);", "script"],
+	["(a) = b;", "script"],
+	["a.b++;", "script"],
+
+	/*
+	 * A call as an assignment target is a runtime error in sloppy code, not an
+	 * early one — the spec keeps it legal for web compatibility, and only
+	 * strict code makes it a `SyntaxError`.
+	 */
+	["f() = 1;", "script"],
+	["f()++;", "script"],
+	["for (f() of x);", "script"],
+
 	// A bare `yield` whose next token can only continue an expression.
 	["function* g() { s = `1${yield}3${4}5`; }", "script"],
 

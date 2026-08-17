@@ -91,7 +91,7 @@ implemented at all, and groups the missed early errors into families with rough
 counts — which is the list to read before deciding what to implement next.
 
 ```
-files=52095 valid=47149 invalid=1267 (parse=966 validate=301) skipped=536 missed=3143 overzealous=0
+files=52095 valid=47149 invalid=2230 (parse=998 validate=1232) skipped=536 missed=2180 overzealous=0
 baseline unchanged
 ```
 
