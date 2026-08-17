@@ -20,7 +20,6 @@ import {
 	TS_FIRST,
 	N_ArrayPattern,
 	N_AssignmentPattern,
-	N_AwaitExpression,
 	N_BlockStatement,
 	N_CatchClause,
 	N_ClassDeclaration,
@@ -1044,18 +1043,13 @@ class Validator {
 
 				return;
 
-			case N_AwaitExpression:
-				if (
-					this.functionDepth === 0 &&
-					this.sourceType !== "module"
-				) {
-					this.report(
-						"Top-level 'await' is only allowed when sourceType is \"module\".",
-						this.reader.start(node),
-					);
-				}
-
-				return;
+			/*
+			 * Top-level `await` is not checked here. Whether `await` is an
+			 * operator at all is settled in `parse()`, which is told the
+			 * source type: in a script it is an ordinary name, so no
+			 * `AwaitExpression` can reach the top level of one to be
+			 * complained about.
+			 */
 
 			case N_Program:
 			case N_VariableDeclarator:

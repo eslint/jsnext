@@ -82,8 +82,26 @@ own.
 
 | Option | Default | Meaning |
 | ------ | ------- | ------- |
+| `sourceType` | `"module"` | Whether to read the text as a script, an ES module, or a CommonJS module. |
 | `embedSource` | `false` | Copy the source text into the buffer, so it can be read in a process that did not parse it. |
 | `parents` | `false` | Derive each node's parent, so a tool can climb from a node to its context. |
+
+`sourceType` is the one interpretation question phase 1 cannot leave to phase
+2, because two readings of the same text can both be valid and produce
+different trees:
+
+```js
+toAST(parse("await.x;", { sourceType: "script" })).ast.body[0].expression.type;
+// => "MemberExpression" — `await` is an ordinary name in a script
+
+parse("await.x;", { sourceType: "module" });
+// => throws: `await` is an operator in a module, and `.x` is not an operand
+```
+
+The same goes for Annex B's HTML-like comments: `a <!--b` is `a` followed by a
+comment in a script, and `a < !(--b)` in a module. The choice is recorded in the
+buffer, so `validate()` and `toAST()` read it back and need not be told again —
+and refuse to be told the opposite, since the tree was built the other way.
 
 Reading text off a buffer works either way in the process that parsed, because
 the original string is cached against the buffer. Turn `embedSource` on when
@@ -121,16 +139,20 @@ Returns an array of `{ message, lineNumber, column }`, in source order. The
 position is spelled the way `ParseError` spells one — both 1-based — so fatal
 and non-fatal problems can be reported through the same code path.
 
-| Option       | Values                                | Default    |
-| ------------ | ------------------------------------- | ---------- |
-| `sourceType` | `"script"`, `"module"`, `"commonjs"`  | `"module"` |
-| `dialect`    | `"js"`, `"ts"`                        | `"ts"`     |
-| `jsx`        | `true`, `false`                       | `false`    |
+| Option       | Values                                | Default              |
+| ------------ | ------------------------------------- | -------------------- |
+| `sourceType` | `"script"`, `"module"`, `"commonjs"`  | what `parse()` used  |
+| `dialect`    | `"js"`, `"ts"`                        | `"ts"`               |
+| `jsx`        | `true`, `false`                       | `false`              |
+
+`sourceType` normally need not be passed, since the buffer records what
+`parse()` was told. Its use is to narrow `"script"` to `"commonjs"` — the two
+parse identically and differ only in what is allowed here. Naming the opposite
+side of the module line throws.
 
 It currently reports:
 
 - `import` and `export` outside a module
-- top-level `await` outside a module
 - a JSX closing tag whose name does not match its opening tag
 - JSX when the `jsx` option is off
 - TypeScript syntax when the dialect is `"js"`
@@ -482,10 +504,10 @@ rewind the node writer and the scanner rather than building throwaway objects.
 
 ## Known limitations
 
-- **`await` at the top level is parsed as an operator.** Whether `await(1)` is a
-  call or an `AwaitExpression` depends on the source type, which `parse()`
-  deliberately does not know. It is parsed the way a module would read it, which
-  matches the default; `validate()` reports the mismatch for a script.
+- **`await` used as a name in a module is only caught where it is bound.**
+  `var await = 1` in a module is reported; a bare reference such as
+  `function f() { await.x; }` is not. `await` is reserved throughout module
+  code, function bodies included.
 - Scope analysis in `validate()` covers declarations and redeclarations. It does
   not resolve references or report unused bindings — that is ESLint's job.
 

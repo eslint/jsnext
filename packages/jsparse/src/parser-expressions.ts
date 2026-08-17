@@ -404,8 +404,17 @@ export abstract class ExpressionParser extends TypeParser {
 				return this.writer.finish(node, this.lastEnd);
 			}
 
+			/*
+			 * Wherever `await` is an operator it is one unconditionally, and
+			 * it always takes an operand — unlike `yield`, which may stand
+			 * alone. So there is nothing to look ahead at: `await.x` and
+			 * `await = 1` are errors here rather than a member expression and
+			 * an assignment, and the places they are *not* errors are the
+			 * places `inAsync` is false. That is the source type at the top
+			 * level, which is why `parse()` has to be told it.
+			 */
 			case T_await:
-				if (this.inAsync && !this.nextIsIdentifierUse()) {
+				if (this.inAsync) {
 					const node = this.writer.alloc(N_AwaitExpression, start);
 
 					this.next();
@@ -1026,33 +1035,6 @@ export abstract class ExpressionParser extends TypeParser {
 		this.next();
 
 		const result = this.at(T_ARROW) && !this.newlineBefore;
-
-		this.tokenizer.restore(state);
-
-		return result;
-	}
-
-	/**
-	 * Looks ahead to decide whether an `await` token is being used as a plain
-	 * identifier rather than as an operator.
-	 * @returns `true` when `await` is followed by something that cannot start
-	 *      an expression.
-	 */
-	private nextIsIdentifierUse(): boolean {
-		const state = this.tokenizer.save();
-
-		this.next();
-
-		/*
-		 * `await => x` is an arrow whose parameter is named `await`, and
-		 * anything that can only continue an expression — `await = 1`,
-		 * `await instanceof C` — leaves the word as the operand it is
-		 * modifying rather than an operator with nothing to operate on.
-		 */
-		const result =
-			!this.atExpressionStart() ||
-			this.at(T_ARROW) ||
-			KIND_CONTINUES_EXPR[this.kind] !== 0;
 
 		this.tokenizer.restore(state);
 

@@ -373,7 +373,7 @@ for (const [name, dialect] of [
 			let ast;
 
 			try {
-				ast = toAST(parse(code), { sourceType, dialect }).ast;
+				ast = toAST(parse(code, { sourceType }), { sourceType, dialect }).ast;
 			} catch {
 				continue;
 			}
@@ -405,7 +405,7 @@ for (const [code, dialect, sourceType] of [
 	let ast;
 
 	try {
-		ast = toAST(parse(code), { sourceType, dialect }).ast;
+		ast = toAST(parse(code, { sourceType }), { sourceType, dialect }).ast;
 	} catch {
 		threw++;
 		continue;
@@ -433,7 +433,10 @@ for (const file of files) {
 	let ast;
 
 	try {
-		ast = toAST(parse(code), { sourceType: "module", dialect }).ast;
+		ast = toAST(parse(code, { sourceType: "module" }), {
+		sourceType: "module",
+		dialect,
+	}).ast;
 	} catch {
 		threw++;
 		continue;

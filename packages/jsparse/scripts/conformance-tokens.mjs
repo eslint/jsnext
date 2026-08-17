@@ -121,7 +121,7 @@ for (const file of files) {
 	let actual;
 
 	try {
-		actual = toAST(parse(code), {
+		actual = toAST(parse(code, { sourceType: "module" }), {
 			sourceType: "module",
 			dialect: "js",
 		}).ast;

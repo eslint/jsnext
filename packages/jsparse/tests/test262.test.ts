@@ -53,7 +53,7 @@ function rejection(
 	let result;
 
 	try {
-		result = parse(code);
+		result = parse(code, { sourceType });
 	} catch (error) {
 		return `parse: ${(error as Error).message}`;
 	}
@@ -88,12 +88,22 @@ const valid: [string, "script" | "module"][] = [
 	["using\nx = y;", "script"],
 	["using[x] = y;", "script"],
 
-	// `await` is a binding name in a script, so it takes any operator after it.
+	// `await` is an ordinary name in a script, so anything may follow it.
 	["var await = 1; await instanceof Object;", "script"],
 	["await = 1;", "script"],
 	["await.x;", "script"],
+	["await(x);", "script"],
+	["await[0];", "script"],
+	["await`t`;", "script"],
 	["await ? a : b;", "script"],
 	["x = await => await;", "script"],
+	["import('m', await(x));", "script"],
+
+	// Annex B's HTML-like comments, which a script has and a module does not.
+	["<!-- opens a comment\nvar a;", "script"],
+	["var a;\n--> closes one\nvar b;", "script"],
+	["a <!--b\nc;", "script"],
+	["-->", "script"],
 
 	// A `/` after a class or function declaration opens a regular expression.
 	["class A {} /re/.test(s);", "script"],

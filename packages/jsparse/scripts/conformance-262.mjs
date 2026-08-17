@@ -176,7 +176,7 @@ function rejection(code, sourceType) {
 	let result;
 
 	try {
-		result = parse(code);
+		result = parse(code, { sourceType });
 	} catch (error) {
 		return `parse: ${error.message}`;
 	}

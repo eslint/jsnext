@@ -15,7 +15,15 @@ function messages(
 	code: string,
 	options: Parameters<typeof validate>[1] = {},
 ): string[] {
-	return validate(parse(code), options).map(problem => problem.message);
+	/*
+	 * The source type goes to both phases. It decides how a few constructs
+	 * *read*, so the buffer records it and `validate()` refuses to be told
+	 * the opposite of what the text was parsed as.
+	 */
+	return validate(
+		parse(code, { sourceType: options.sourceType }),
+		options,
+	).map(problem => problem.message);
 }
 
 describe("sourceType", () => {
@@ -40,16 +48,27 @@ describe("sourceType", () => {
 		expect(messages("await x;")).toEqual([]);
 	});
 
+	/*
+	 * `await` is not an operator in a script, so this is not a validation
+	 * problem at all — it is two expressions side by side, which `parse()`
+	 * rejects once it is told which reading to take.
+	 */
 	it("rejects top-level await in a script", () => {
-		expect(messages("await x;", { sourceType: "script" })).toEqual([
-			expect.stringMatching(/Top-level 'await'/u),
-		]);
+		expect(() => parse("await x;", { sourceType: "script" })).toThrow(
+			/'await' is only an operator/u,
+		);
+	});
+
+	it("allows await as a name in a script", () => {
+		expect(messages("var await = 1; await.x;", { sourceType: "script" }))
+			.toEqual([]);
 	});
 
 	it("reports the position of the problem", () => {
-		const problems = validate(parse("\n\n  import a from 'b';"), {
-			sourceType: "script",
-		});
+		const problems = validate(
+			parse("\n\n  import a from 'b';", { sourceType: "script" }),
+			{ sourceType: "script" },
+		);
 
 		expect(problems[0].lineNumber).toBe(3);
 		expect(problems[0].column).toBe(3);

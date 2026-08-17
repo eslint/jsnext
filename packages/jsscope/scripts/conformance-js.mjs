@@ -165,7 +165,7 @@ for (const file of files) {
 		}
 
 		check("binary", file, sourceType, expected, () => {
-			const parsed = parse(code);
+			const parsed = parse(code, { sourceType });
 
 			return serializeBinary(
 				toScopeManager(analyze(parsed, options), parsed),

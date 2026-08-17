@@ -302,15 +302,38 @@ describe("toAST()", () => {
 	});
 
 	it("reports the requested source type", () => {
-		const { ast } = toAST(parse("a;"), { sourceType: "script" });
+		const { ast } = toAST(parse("a;", { sourceType: "script" }));
 
 		expect(ast.sourceType).toBe("script");
 	});
 
-	it("returns validation errors alongside the AST", () => {
-		const { ast, errors } = toAST(parse("import a from 'b';"), {
-			sourceType: "script",
+	it("takes the source type from the buffer when none is given", () => {
+		expect(toAST(parse("a;")).ast.sourceType).toBe("module");
+		expect(
+			toAST(parse("a;", { sourceType: "commonjs" })).ast.sourceType,
+		).toBe("commonjs");
+	});
+
+	it("narrows script to commonjs, which parse the same way", () => {
+		const { ast } = toAST(parse("a;", { sourceType: "script" }), {
+			sourceType: "commonjs",
 		});
+
+		expect(ast.sourceType).toBe("commonjs");
+	});
+
+	it("refuses a source type the buffer was not parsed as", () => {
+		expect(() =>
+			toAST(parse("a;", { sourceType: "module" }), {
+				sourceType: "script",
+			}),
+		).toThrow(/cannot be read as "script"/u);
+	});
+
+	it("returns validation errors alongside the AST", () => {
+		const { ast, errors } = toAST(
+			parse("import a from 'b';", { sourceType: "script" }),
+		);
 
 		expect(ast.type).toBe("Program");
 		expect(errors).toHaveLength(1);

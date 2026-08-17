@@ -71,6 +71,45 @@ export const PARSE_FLAG_SOURCE_EMBEDDED = 1;
 export const PARSE_FLAG_PARENTS = 1 << 1;
 
 /**
+ * `PARSE_HEADER_FLAGS` field: which source type the text was read as.
+ *
+ * Two readings of the same text can both be valid and differ, and the parser
+ * has to pick one before it can build a tree at all — `await.x` is a member
+ * expression in a script and a syntax error in a module, and `<!--` opens a
+ * comment in a script and is an operator in a module. The choice is therefore
+ * made in `parse()` rather than in `validate()`, which is why it is recorded
+ * here: a buffer read one way cannot be interpreted the other, and everything
+ * downstream needs to know which way it was.
+ *
+ * Only `SOURCE_TYPE_MODULE` differs from the other two at parse time. The
+ * script and CommonJS readings are identical, and are kept apart only so that
+ * `validate()` need not be told again what it was already told.
+ */
+export const PARSE_SOURCE_TYPE_SHIFT = 2;
+export const PARSE_SOURCE_TYPE_MASK = 3 << PARSE_SOURCE_TYPE_SHIFT;
+export const SOURCE_TYPE_MODULE = 0;
+export const SOURCE_TYPE_SCRIPT = 1;
+export const SOURCE_TYPE_COMMONJS = 2;
+
+/** The three source types, indexed by their encoded value. */
+export const SOURCE_TYPE_NAMES = ["module", "script", "commonjs"] as const;
+
+/**
+ * Reads the source type a buffer was parsed as.
+ * @param buffer The parse buffer to read.
+ * @returns How `parse()` was told to read the text.
+ */
+export function readSourceType(
+	buffer: ArrayBufferLike,
+): "script" | "module" | "commonjs" {
+	const flags = new Uint32Array(buffer, PARSE_HEADER_FLAGS * 4, 1)[0];
+
+	return SOURCE_TYPE_NAMES[
+		(flags & PARSE_SOURCE_TYPE_MASK) >> PARSE_SOURCE_TYPE_SHIFT
+	];
+}
+
+/**
  * Views a parse buffer as words after checking that it is one.
  * @param buffer The buffer to read.
  * @returns The whole buffer, viewed as 32-bit words.
@@ -429,6 +468,9 @@ export interface ParseBufferInput {
 
 	/** Whether to derive the parent table and store it in the buffer. */
 	parents: boolean;
+
+	/** Which reading of the text the parser was given, encoded. */
+	sourceType: number;
 }
 
 /**
@@ -460,7 +502,8 @@ export function buildParseBuffer(input: ParseBufferInput): ArrayBuffer {
 	view[PARSE_HEADER_VERSION] = PARSE_VERSION;
 	view[PARSE_HEADER_FLAGS] =
 		(embedSource ? PARSE_FLAG_SOURCE_EMBEDDED : 0) |
-		(parents ? PARSE_FLAG_PARENTS : 0);
+		(parents ? PARSE_FLAG_PARENTS : 0) |
+		(input.sourceType << PARSE_SOURCE_TYPE_SHIFT);
 	view[PARSE_HEADER_ROOT] = input.root;
 	view[PARSE_HEADER_NODE_COUNT] = input.nodeCount;
 	view[PARSE_HEADER_NODE_BYTES] = NODE_BYTES;

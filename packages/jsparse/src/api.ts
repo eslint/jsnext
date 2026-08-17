@@ -3,10 +3,12 @@
  */
 
 import {
+	SOURCE_TYPE_NAMES,
 	TF_HAS_ESCAPE,
 	TF_NEWLINE_BEFORE,
 	buildParseBuffer,
 	readLineStarts,
+	readSourceType,
 } from "./binary.js";
 import { decodeEntities } from "./entities.js";
 import { LineIndex, type SourceLocation } from "./locations.js";
@@ -48,7 +50,15 @@ export type ParseResult = ArrayBuffer;
  * How a parsed program should be interpreted during validation.
  */
 export interface ValidateOptions {
-	/** Whether the program is a script, an ES module, or a CommonJS module. */
+	/**
+	 * Whether the program is a script, an ES module, or a CommonJS module.
+	 *
+	 * Defaults to whatever `parse()` was told, which the buffer records, so
+	 * this normally need not be given at all. Its use is to narrow `"script"`
+	 * to `"commonjs"`; the two parse identically and differ only in what is
+	 * allowed. Naming the opposite side of the module line throws, because
+	 * the tree was built the other way.
+	 */
 	sourceType?: "script" | "module" | "commonjs";
 
 	/** Whether TypeScript syntax is allowed. */
@@ -115,6 +125,24 @@ export interface ToAstResult {
  */
 export interface ParseOptions {
 	/**
+	 * Whether to read the text as a script, an ES module, or a CommonJS
+	 * module. Defaults to `"module"`.
+	 *
+	 * This is the one interpretation question phase one cannot avoid, because
+	 * two readings of the same text can both be valid and produce different
+	 * trees. `await.x` is a member expression in a script and a syntax error
+	 * in a module; `a <!--b` is `a` followed by an Annex B comment in a
+	 * script and `a < !(--b)` in a module. No tree can stand for both, so the
+	 * choice is made here and recorded in the buffer, and `validate()` reads
+	 * it back rather than being told again.
+	 *
+	 * `"script"` and `"commonjs"` are read identically. They differ only in
+	 * what is *allowed*, which is phase two's question and is why both are
+	 * accepted here rather than collapsing them.
+	 */
+	sourceType?: "script" | "module" | "commonjs";
+
+	/**
 	 * Whether to copy the source text into the parse buffer, making the buffer
 	 * readable in a process that did not parse it.
 	 *
@@ -153,7 +181,8 @@ export interface ParseOptions {
  * @throws {ParseError} When the source contains a syntax error.
  */
 export function parse(code: string, options: ParseOptions = {}): ParseResult {
-	const parser = new Parser(code);
+	const sourceType = options.sourceType ?? "module";
+	const parser = new Parser(code, sourceType === "module");
 	const root = parser.parseProgram();
 	const writer = parser.writer;
 	const tokenizer = parser.tokenizer;
@@ -170,7 +199,41 @@ export function parse(code: string, options: ParseOptions = {}): ParseResult {
 		source: code,
 		embedSource: options.embedSource ?? false,
 		parents: options.parents ?? false,
+		sourceType: SOURCE_TYPE_NAMES.indexOf(sourceType),
 	});
+}
+
+/**
+ * Settles which source type a parse buffer is being interpreted as.
+ *
+ * The buffer already carries the answer, so the option is only a way to say
+ * the same thing twice, or to narrow `"script"` to `"commonjs"` — the two are
+ * read identically and differ only in what phase two allows. Contradicting the
+ * buffer across the module line is the case that has to be loud: the tree was
+ * built the other way round, so validating it as the opposite would report
+ * problems about a program the caller never wrote.
+ * @param result The value returned by `parse()`.
+ * @param requested The source type the caller asked for, if any.
+ * @returns The source type to interpret the buffer as.
+ * @throws {TypeError} When the request crosses the module line.
+ */
+function resolveSourceType(
+	result: ParseResult,
+	requested: ValidateOptions["sourceType"],
+): "script" | "module" | "commonjs" {
+	const parsed = readSourceType(result);
+
+	if (requested === undefined || requested === parsed) {
+		return parsed;
+	}
+
+	if ((requested === "module") !== (parsed === "module")) {
+		throw new TypeError(
+			`This buffer was parsed as ${parsed === "module" ? '"module"' : `"${parsed}"`}, so it cannot be read as "${requested}": the two produce different trees for the same text. Re-parse with \`{ sourceType: "${requested}" }\`.`,
+		);
+	}
+
+	return requested;
 }
 
 /**
@@ -187,7 +250,7 @@ export function validate(
 	const problems = validateAst(
 		new AstReader(result),
 		new TokenReader(result),
-		options.sourceType ?? "module",
+		resolveSourceType(result, options.sourceType),
 		options.dialect ?? "ts",
 		options.jsx ?? false,
 	);
@@ -243,7 +306,7 @@ export function buildAst(
 ): AstBuildResult {
 	const reader = new AstReader(result);
 	const tokenReader = new TokenReader(result);
-	const sourceType = options.sourceType ?? "module";
+	const sourceType = resolveSourceType(result, options.sourceType);
 	const dialect = options.dialect ?? "ts";
 	const problems = validateAst(
 		reader,

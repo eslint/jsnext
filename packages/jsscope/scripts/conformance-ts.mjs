@@ -189,7 +189,7 @@ for (const file of files) {
 	}
 
 	check("binary", file, expected, () => {
-		const parsed = parse(code);
+		const parsed = parse(code, { sourceType: "module" });
 
 		return serializeBinary(
 			toScopeManager(analyze(parsed, options), parsed),

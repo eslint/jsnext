@@ -280,6 +280,15 @@ export class Tokenizer {
 	/** Whether the parser is currently inside an async function body. */
 	inAsync = false;
 
+	/**
+	 * Whether the text is being read as an ES module.
+	 *
+	 * The only thing the scanner does with it is Annex B's HTML-like comments,
+	 * which exist in script code and are an operator sequence in a module.
+	 * Set before the first token is scanned, and never after.
+	 */
+	isModule = true;
+
 	/** Stack of open braces, parentheses, and template substitutions. */
 	private context = new Uint8Array(256);
 
@@ -289,9 +298,12 @@ export class Tokenizer {
 	/**
 	 * Creates a tokenizer for a source text and scans the first token.
 	 * @param source The source text to scan.
+	 * @param isModule Whether the text is being read as an ES module, which
+	 *      decides whether Annex B's HTML-like comments are comments.
 	 */
-	constructor(source: string) {
+	constructor(source: string, isModule = true) {
 		this.source = source;
+		this.isModule = isModule;
 		this.length = source.length;
 		this.records = new WordBuffer(
 			Math.max(1024, (source.length >> 2) * TOKEN_WORDS),
@@ -526,7 +538,7 @@ export class Tokenizer {
 					const next = source.charCodeAt(this.pos + 1);
 
 					if (next === CH_SLASH) {
-						this.scanLineComment();
+						this.scanLineComment(2);
 						continue;
 					}
 
@@ -535,6 +547,43 @@ export class Tokenizer {
 							tokenFlags |= TF_NEWLINE_BEFORE;
 						}
 
+						continue;
+					}
+				}
+
+				/*
+				 * Annex B's HTML-like comments, which exist only in script
+				 * code — in a module `<!--` is three operators and `-->` is
+				 * two. `-->` closes a comment only where one could have been
+				 * opened on an earlier line, so it has to be the first thing
+				 * on its own line; `<!--` may appear anywhere, which is what
+				 * makes `a <!--b` an `a` and a comment rather than
+				 * `a < !(--b)`.
+				 *
+				 * The character is tested before the source type so that the
+				 * common path out of this loop — a token starting with
+				 * anything else — costs two compares against constants rather
+				 * than a field load.
+				 */
+				if ((code === CH_LT || code === CH_MINUS) && !this.isModule) {
+					if (
+						code === CH_LT &&
+						source.charCodeAt(this.pos + 1) === CH_BANG &&
+						source.charCodeAt(this.pos + 2) === CH_MINUS &&
+						source.charCodeAt(this.pos + 3) === CH_MINUS
+					) {
+						this.scanLineComment(4);
+						continue;
+					}
+
+					if (
+						code === CH_MINUS &&
+						source.charCodeAt(this.pos + 1) === CH_MINUS &&
+						source.charCodeAt(this.pos + 2) === CH_GT &&
+						(this.prevEnd === 0 ||
+							(tokenFlags & TF_NEWLINE_BEFORE) !== 0)
+					) {
+						this.scanLineComment(3);
 						continue;
 					}
 				}
@@ -564,14 +613,16 @@ export class Tokenizer {
 	}
 
 	/**
-	 * Scans a `//` comment, which ends at the next line terminator.
+	 * Scans a comment that ends at the next line terminator.
+	 * @param openerLength How long the delimiter that opened it is: two for
+	 *      `//`, four for Annex B's `<!--`, three for its `-->`.
 	 * @returns Nothing.
 	 */
-	private scanLineComment(): void {
+	private scanLineComment(openerLength: number): void {
 		const source = this.source;
 		const start = this.pos;
 
-		this.pos += 2;
+		this.pos += openerLength;
 
 		while (this.pos < this.length) {
 			const code = source.charCodeAt(this.pos);

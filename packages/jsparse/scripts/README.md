@@ -64,11 +64,12 @@ clone there needs no argument.
 Two counts come out of it and they are not equally bad:
 
 - **overzealous** — a valid program the parser rejects. This breaks working
-  code, and the standard is zero.
+  code. It is zero, and `KNOWN_OVERZEALOUS` in `262-exclusions.mjs` fails the
+  run if it climbs.
 - **missed** — an invalid program the parser accepts. Thousands, because most
   of ECMAScript's early errors are not implemented yet.
 
-Neither is graded against zero, since one of them cannot be yet. Both are
+Only one of them can be graded against zero, so both are also
 graded against `262-baseline.json`, which holds a failure count per directory:
 a count that went up is a regression even in a directory that was never clean,
 and a count that went down is a fix the baseline should record. Re-run with
@@ -76,12 +77,11 @@ and a count that went down is a fix the baseline should record. Re-run with
 
 `262-exclusions.mjs` is the prose half of the same story. It lists the
 proposals whose tests are skipped outright because the syntax is not
-implemented at all, names the nine valid programs still rejected, and groups
-the missed early errors into families with rough counts — which is the list to
-read before deciding what to implement next.
+implemented at all, and groups the missed early errors into families with rough
+counts — which is the list to read before deciding what to implement next.
 
 ```
-files=52095 valid=91036 invalid=2242 skipped=536 missed=3198 overzealous=9
+files=52095 valid=91051 invalid=2350 skipped=536 missed=3143 overzealous=0
 baseline unchanged
 ```
 

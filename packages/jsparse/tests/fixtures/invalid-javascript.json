@@ -79,6 +79,12 @@
 	{ "code": "function fn() { await 0; }", "sourceType": "module" },
 	{ "code": "-->", "sourceType": "module" },
 	{ "code": "<!--", "sourceType": "module" },
+	{ "code": "x = 1;\n-->\ny;", "sourceType": "module" },
+	{ "code": "await.x;", "sourceType": "module" },
+	{ "code": "await;", "sourceType": "module" },
+	{ "code": "await = 1;", "sourceType": "module" },
+	{ "code": "await instanceof Object;", "sourceType": "module" },
+	{ "code": "async function f() { await.x; }", "sourceType": "script" },
 
 	{ "code": "const x = 1, y;", "sourceType": "script" },
 	{ "code": "const [...x = []] = [];", "sourceType": "script" },

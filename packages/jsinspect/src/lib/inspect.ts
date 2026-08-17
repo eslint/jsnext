@@ -77,7 +77,7 @@ export function inspect(code: string, options: InspectionOptions): Inspection {
 	let result: ParseResult;
 
 	try {
-		result = parse(code);
+		result = parse(code, { sourceType: options.sourceType });
 	} catch (error) {
 		const message = messageOf(error);
 

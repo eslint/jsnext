@@ -235,26 +235,11 @@ confined to input that is already an error, which is why they have been left.
   Matching TypeScript's recovery is not a goal — see [the rule that decides
   where code goes](../AGENTS.md#the-rule-that-decides-where-code-goes).
 
-The next three come from test262, which is the only corpus that tests what the
-parser *rejects*. The first two are valid programs it will not accept, which is
-the worse kind of gap; the third is thousands of invalid programs it accepts in
-silence.
+The last one comes from test262, which is the only corpus that tests what the
+parser *rejects*. No valid program is rejected — that count is zero and has to
+stay there — so what is left is invalid programs accepted in silence.
 
-- **Annex B HTML-like comments.** `<!--` opens a comment running to the end of
-  the line, and a `-->` that begins one closes a comment, in sloppy script code
-  only. Neither is recognized. Implementing them runs straight into the phase
-  split: `parse()` does not know the source type, so the tokenizer would have
-  to accept both everywhere and `validate()` would have to reject them in a
-  module.
-- **`await` where the source type decides what it is.** `parse()` reads `await
-  x` as an `AwaitExpression` because it cannot know it is looking at a script,
-  where `await` is an ordinary identifier. A program that reads only as an
-  identifier — `await = 1`, `await instanceof C`, `await.x` — is handled, since
-  no `AwaitExpression` can be built from it. One that reads both ways is not:
-  `await + 1` and `import(x, await(undefined))` in a script are reported by
-  `validate()` as a top-level `await` that the author did not write. This is
-  inherent to the split rather than a bug in either phase.
-- **Most of ECMAScript's early errors.** Around 3,200 test262 files are invalid
+- **Most of ECMAScript's early errors.** Around 3,140 test262 files are invalid
   programs that both phases accept: an assignment to something that cannot be
   assigned to, a duplicate parameter name where it is banned, `yield` as a
   binding name inside a generator, anything at all wrong inside a regular

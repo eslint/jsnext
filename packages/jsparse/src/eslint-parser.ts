@@ -99,12 +99,19 @@ export const eslintParser = {
 	 * validation finds a problem that makes the program invalid.
 	 */
 	parse(code: string, options: EslintParserOptions = {}): Program {
-		const result = parse(code);
+		const sourceType = options.sourceType ?? "module";
+
+		/*
+		 * The source type goes to both phases, because it decides how some
+		 * text *reads* as well as what is allowed. ESLint has it before the
+		 * first character is scanned, so there is nothing to defer.
+		 */
+		const result = parse(code, { sourceType });
 		const lines = new LineIndex(readLineStarts(result));
 		const { ast, problems } = buildAst(
 			result,
 			{
-				sourceType: options.sourceType ?? "module",
+				sourceType,
 				dialect: dialectFor(options),
 				jsx: jsxFor(options),
 			},

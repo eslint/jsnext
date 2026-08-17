@@ -44,24 +44,13 @@ export const UNSUPPORTED_FEATURES = new Set([
 /**
  * How many valid programs are still rejected. The run fails if it climbs.
  *
- * These are not excluded — they are counted, and the baseline records which
- * directories they are in. This is the explanation of the number, and it
- * should be shrinking.
- *
- * - **Annex B HTML-like comments** (8 tests). `<!--` opens a comment to the
- *   end of the line and a `-->` that begins a line closes one, in sloppy
- *   script code. Neither is recognized. Adding them runs into the phase split:
- *   `parse()` does not know the source type, and `<!--` is only a comment in a
- *   script, so the tokenizer would have to accept it everywhere and
- *   `validate()` reject it in a module.
- * - **`import(x, await(undefined))` in a script** (1 test). `await` is a
- *   function call here, but `parse()` cannot know that without the source
- *   type, so it reads an `await` expression and `validate()` reports a
- *   top-level `await`. This is inherent to the phase split rather than a bug
- *   in either phase; the same shape is why `await + 1` differs from `espree`
- *   in a script.
+ * Zero, and it must stay there: every one of these is working code the parser
+ * will not read. It reached zero when `parse()` gained a `sourceType` option —
+ * Annex B's HTML-like comments and `await` as an ordinary name are both things
+ * only a script has, and no tree can stand for both readings, so the two
+ * families that used to sit here could not be fixed downstream of the parser.
  */
-export const KNOWN_OVERZEALOUS = 9;
+export const KNOWN_OVERZEALOUS = 0;
 
 /*
  * The families of early error that are not implemented, largest first. This is
@@ -86,10 +75,14 @@ export const KNOWN_OVERZEALOUS = 9;
  *   unmatched `)`, a duplicate group name, an invalid property escape, a `v`
  *   flag set operation that is not well formed. This is the one family that
  *   needs a new parser rather than a new check.
- * - **`yield` and `await` as identifiers** (~340). Which of the two is a
+ * - **`yield` and `await` as identifiers** (~290). Which of the two is a
  *   keyword depends on the enclosing function, and neither may be a binding
  *   name where it is. `validate()` tracks strict mode and function depth but
- *   not generator or async context.
+ *   not generator or async context. `await` in a module is the sharp edge:
+ *   `parse()` settles it wherever `await` is an operator, so what is left is
+ *   the places it is not — `function f() { await.x; }` and `({ await })` in
+ *   module code, where the word is reserved but is only checked when it is
+ *   *bound*, never when it is merely referenced.
  * - **`import()` call shape** (~280). No argument, three arguments, a rest
  *   argument, `new import(x)`, an escape in the `import` keyword.
  * - **Literals, escapes, and identifiers** (~170). A numeric separator in a

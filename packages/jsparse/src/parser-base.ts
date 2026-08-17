@@ -37,6 +37,7 @@ import {
 	KW_RESERVED,
 	T_BIGINT,
 	T_EOF,
+	T_await,
 	T_IDENT,
 	T_NUMBER,
 	T_PRIVATE_IDENT,
@@ -78,7 +79,17 @@ export abstract class ParserBase {
 	/** The source text, hoisted for direct character access. */
 	readonly source: string;
 
-	/** Whether `await` is currently an operator rather than an identifier. */
+	/**
+	 * Whether `await` is currently an operator rather than an identifier.
+	 *
+	 * At the top level this is the source type: `await` is a keyword in a
+	 * module and an ordinary name in a script, which is why `parse()` has to
+	 * be told which it is reading.
+	 *
+	 * Initialized here as well as in the constructor so that every field of a
+	 * parser is installed in declaration order — see
+	 * [`docs/performance.md`](../../../docs/performance.md) on object shape.
+	 */
 	inAsync = true;
 
 	/** Whether `yield` is currently an operator rather than an identifier. */
@@ -96,12 +107,16 @@ export abstract class ParserBase {
 	/**
 	 * Creates a parser over a source text.
 	 * @param source The source text to parse.
+	 * @param isModule Whether to read the text as an ES module. CommonJS is
+	 *      read as a script: the two differ in what is *allowed*, which is
+	 *      phase two's question, not in what anything means.
 	 */
-	constructor(source: string) {
+	constructor(source: string, isModule: boolean) {
 		this.source = source;
-		this.tokenizer = new Tokenizer(source);
+		this.tokenizer = new Tokenizer(source, isModule);
 		this.writer = new NodeWriter(source.length);
-		this.tokenizer.inAsync = true;
+		this.inAsync = isModule;
+		this.tokenizer.inAsync = isModule;
 		this.tokenizer.next();
 	}
 
@@ -231,9 +246,21 @@ export abstract class ParserBase {
 
 	/**
 	 * Creates a fatal error for a token that cannot appear here.
+	 *
+	 * The one token worth naming specially is the one before it. Where `await`
+	 * is not an operator it is an ordinary name, so `await x` is two
+	 * expressions side by side and the complaint lands on the `x` — which
+	 * describes the symptom and hides the cause. Saying which it is costs
+	 * nothing, since this runs only on the way to throwing.
 	 * @returns The error to throw.
 	 */
 	unexpected(): ParseError {
+		if (this.tokenizer.prevKind === T_await && !this.inAsync) {
+			return this.error(
+				"'await' is only an operator inside an async function, or at the top level of a module.",
+			);
+		}
+
 		return this.error(`Unexpected token '${this.tokenText()}'`);
 	}
 

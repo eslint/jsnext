@@ -8,6 +8,10 @@ import {
 	PARSE_FLAG_SOURCE_EMBEDDED,
 	PARSE_HEADER_BYTES,
 	PARSE_HEADER_FLAGS,
+	SOURCE_TYPE_COMMONJS,
+	SOURCE_TYPE_MODULE,
+	SOURCE_TYPE_SCRIPT,
+	readSourceType,
 	PARSE_HEADER_LINES_OFFSET,
 	PARSE_HEADER_LINE_COUNT,
 	PARSE_HEADER_LIST_COUNT,
@@ -153,6 +157,9 @@ interface BuildOptions {
 
 	/** Whether to derive the parent table. */
 	parents?: boolean;
+
+	/** Which reading of the text to record, encoded. */
+	sourceType?: number;
 }
 
 /**
@@ -169,6 +176,7 @@ function build(options: BuildOptions = {}): ArrayBuffer {
 		source = "a;",
 		embedSource = true,
 		parents = true,
+		sourceType = SOURCE_TYPE_MODULE,
 	} = options;
 	const nodes = new WordBuffer(64);
 
@@ -198,6 +206,7 @@ function build(options: BuildOptions = {}): ArrayBuffer {
 		source,
 		embedSource,
 		parents,
+		sourceType,
 	});
 }
 
@@ -211,6 +220,33 @@ describe("buildParseBuffer()", () => {
 		expect(view[PARSE_HEADER_NODE_BYTES]).toBe(NODE_BYTES);
 		expect(view[PARSE_HEADER_TOKEN_BYTES]).toBe(TOKEN_BYTES);
 		expect(view[PARSE_HEADER_ROOT]).toBe(1);
+	});
+
+	it("records the source type in the header flags", () => {
+		for (const [name, encoded] of [
+			["module", SOURCE_TYPE_MODULE],
+			["script", SOURCE_TYPE_SCRIPT],
+			["commonjs", SOURCE_TYPE_COMMONJS],
+		] as const) {
+			const buffer = build({ sourceType: encoded });
+
+			expect(readSourceType(buffer)).toBe(name);
+		}
+	});
+
+	it("keeps the source type clear of the other header flags", () => {
+		const buffer = build({
+			sourceType: SOURCE_TYPE_COMMONJS,
+			embedSource: true,
+			parents: true,
+		});
+		const flags = new Uint32Array(buffer)[PARSE_HEADER_FLAGS];
+
+		expect(flags & PARSE_FLAG_SOURCE_EMBEDDED).toBe(
+			PARSE_FLAG_SOURCE_EMBEDDED,
+		);
+		expect(flags & PARSE_FLAG_PARENTS).toBe(PARSE_FLAG_PARENTS);
+		expect(readSourceType(buffer)).toBe("commonjs");
 	});
 
 	it("lays the regions out one after another", () => {
@@ -282,6 +318,7 @@ describe("buildParseBuffer()", () => {
 			source: "",
 			embedSource: false,
 			parents: false,
+			sourceType: SOURCE_TYPE_MODULE,
 		});
 
 		expect(buffer.byteLength).toBe(PARSE_HEADER_BYTES + TOKEN_BYTES + 4);

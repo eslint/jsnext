@@ -140,10 +140,32 @@ answer depends on context the text alone does not supply**.
   syntax under `dialect: "js"`, JSX without `jsx: true`, a mismatched JSX
   closing tag.
 
-So `sourceType`, `dialect`, and `jsx` are options of phase 2, never phase 1.
-When adding a new diagnostic, decide which side of that line it falls on first.
-A check that needs to know the source type, the dialect, or whether JSX is
-enabled belongs in `validate.ts`, even if a reference parser throws for it.
+So `dialect` and `jsx` are options of phase 2, never phase 1. When adding a new
+diagnostic, decide which side of that line it falls on first. A check that needs
+to know the dialect, or whether JSX is enabled, belongs in `validate.ts`, even
+if a reference parser throws for it.
+
+**`sourceType` is the exception, and it is the only one.** It is an option of
+*both* phases, because it is the only thing that makes two readings of the same
+text both valid and different:
+
+| | script | module |
+| --- | --- | --- |
+| `await.x` | a member expression | a syntax error |
+| `a <!--b` | `a`, then a comment | `a < !(--b)` |
+
+No single tree stands for both, so phase 1 has to choose, and it cannot choose
+without being told. `dialect` and `jsx` never pose that question — TypeScript
+syntax and JSX either parse or do not, and where they parse, both settings
+agree on the tree. That is the test for whether something belongs in
+`ParseOptions`: **not** "does it need outside context" — everything here does —
+but "would two answers both be valid?"
+
+`parse()` records the source type in the buffer, so `validate()` and `toAST()`
+read it back rather than being told again. Naming the opposite side of the
+module line throws, since the tree was built the other way; narrowing `script`
+to `commonjs` is allowed, because those two parse identically and differ only
+in what phase 2 permits.
 
 `jsscope` sits alongside phases 2 and 3 rather than after them: it reads the
 same buffers `parse()` produced and needs neither the validation problems nor
@@ -227,16 +249,15 @@ npm run conformance:262 --workspace=@eslint/jsparse
 ```
 
 ```
-files=52095 valid=91036 invalid=2242 skipped=536 missed=3198 overzealous=9
+files=52095 valid=91051 invalid=2350 skipped=536 missed=3143 overzealous=0
 baseline unchanged
 ```
 
 Read those two counts differently. **overzealous** is a valid program the
-parser rejects, which breaks working code; the standard is zero and the nine
-that remain are named in
-[`scripts/262-exclusions.mjs`](./packages/jsparse/scripts/262-exclusions.mjs).
+parser rejects, which breaks working code; it is zero and has to stay there.
 **missed** is an invalid program it accepts, and there are still thousands,
-because most of ECMAScript's early errors are not implemented — that file
+because most of ECMAScript's early errors are not implemented.
+[`scripts/262-exclusions.mjs`](./packages/jsparse/scripts/262-exclusions.mjs)
 groups them into families, and it is the list to read before deciding what to
 implement next.
 
