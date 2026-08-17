@@ -9,6 +9,12 @@ export type { Position, SourceLocation } from "./locations.js";
 export { AstReader, TokenReader } from "./reader.js";
 
 /*
+ * The line offset table lives inside the parse buffer, so reading it is a
+ * function over the buffer rather than a property of the result.
+ */
+export { readLineStarts } from "./binary.js";
+
+/*
  * The shape of everything `toAST()` produces, node by node. Type-only, so a
  * bundler drops the module entirely.
  */

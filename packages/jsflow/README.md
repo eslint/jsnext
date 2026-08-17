@@ -22,7 +22,7 @@ import { createGraph, toGraphTree, FlowBufferReader } from "@eslint/jsflow";
 
 const parsed = parse(sourceText);
 const scope = analyze(parsed);
-const flow = createGraph(parsed.ast, scope);
+const flow = createGraph(parsed, scope);
 
 // Point queries, straight off the buffer.
 const reader = new FlowBufferReader(flow);
@@ -30,7 +30,7 @@ reader.isReachable(nodeHandle);   // can control get here?
 reader.blockOfNode(nodeHandle);   // which basic block runs this node?
 
 // A self-contained, JSON-serializable view for debugging.
-console.log(JSON.stringify(toGraphTree(flow, parsed.ast, scope), null, 2));
+console.log(JSON.stringify(toGraphTree(flow, parsed, scope), null, 2));
 ```
 
 The scope buffer must come from `analyze()` over the same parse result.

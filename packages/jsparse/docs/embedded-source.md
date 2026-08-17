@@ -1,6 +1,6 @@
 # The Embedded Source Region
 
-Why an AST buffer can carry a copy of the program text, why it does not by
+Why a parse buffer can carry a copy of the program text, why it does not by
 default, and how to decide.
 
 ## The short version
@@ -37,11 +37,11 @@ cannot say what any name **is**.
 
 ## Two places the text can live
 
-`buildAstBuffer()` finishes a parse by doing two things with the source
+`buildParseBuffer()` finishes a parse by doing two things with the source
 string:
 
-1. **Optionally** copying it into the buffer as UTF-16 code units, in a
-   region after the nodes and lists, located by `AST_HEADER_SOURCE_OFFSET`.
+1. **Optionally** copying it into the buffer as UTF-16 code units, in the last
+   region, located by `PARSE_HEADER_SOURCE_OFFSET`.
 2. **Always** calling `cacheSource(buffer, source)`, which parks the original
    JavaScript string on the buffer itself, under the registry symbol
    `Symbol.for("@eslint/jsparse.source")`.
@@ -106,7 +106,7 @@ every axis that matters once the pair has to go anywhere.
 - **The format stays self-describing.** The header carries a magic number, a
   version, region offsets, and now a flag saying whether the text is present.
   A buffer can be checked on load. There is no way to ask a loose string
-  whether it belongs to the AST you just read off disk.
+  whether it belongs to the parse you just read off disk.
 - **The units already agree.** Every `start` and `end` is a UTF-16 code-unit
   offset, and the region is UTF-16 code units, so index *i* in the region is
   code unit *i* of the program — no translation table, no surrogate
@@ -124,7 +124,7 @@ buffer with the text):
 | Cost | Amount | Share |
 | ---- | ------ | ----- |
 | `writeSource()` — a per-character `charCodeAt` loop | 0.500 ms | 3.7% of `parse()` |
-| Region size | 401.2 KiB | 17.0% of the AST buffer |
+| Region size | 401.2 KiB | 17.0% of the parse buffer |
 | Times read in the parsing process | 0 | — |
 
 Ratios move with node density: source-heavy files weight the region more,
@@ -141,12 +141,12 @@ opaque, and pointing at the wrong thing. Keep the region but leave it
 zero-filled and it gets worse: the decode succeeds, every name comes back as
 a run of NUL characters, and nothing throws at all.
 
-So the buffer records what it did. `AST_HEADER_FLAGS` carries
-`AST_FLAG_SOURCE_EMBEDDED`, and `readSource()` checks it **after** the cache
+So the buffer records what it did. `PARSE_HEADER_FLAGS` carries
+`PARSE_FLAG_SOURCE_EMBEDDED`, and `readSource()` checks it **after** the cache
 lookup and before decoding anything:
 
 ```
-TypeError: This AST buffer carries no source text, and none is cached for it
+TypeError: This parse buffer carries no source text, and none is cached for it
 in this process. Re-parse with `{ embedSource: true }` before transferring or
 persisting a buffer whose text will be read elsewhere.
 ```
@@ -175,7 +175,7 @@ counting, shape diffing, complexity metrics — that never needs a character.
 
 ## Related
 
-- [`architecture.md`](./architecture.md) — the binary formats field by field.
-- `AST_FLAG_SOURCE_EMBEDDED`, `buildAstBuffer()`, `readSource()`,
+- [`architecture.md`](./architecture.md) — the binary format field by field.
+- `PARSE_FLAG_SOURCE_EMBEDDED`, `buildParseBuffer()`, `readSource()`,
   `cacheSource()` in [`../src/binary.ts`](../src/binary.ts).
 - `AstReader#source` in [`../src/reader.ts`](../src/reader.ts).

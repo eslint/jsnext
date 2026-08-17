@@ -231,7 +231,7 @@ function newContext(kind: number): FlowContext {
  * Builds every graph in a program, one walk per execution unit.
  */
 export class FlowWalker {
-	/** The reader over the AST buffer. */
+	/** The reader over the parse buffer. */
 	readonly #reader: AstReader;
 
 	/** The reader over the scope buffer. */
@@ -272,7 +272,7 @@ export class FlowWalker {
 
 	/**
 	 * Creates a walker over one program.
-	 * @param reader The reader over the AST buffer.
+	 * @param reader The reader over the parse buffer.
 	 * @param scope The reader over the scope buffer.
 	 * @param builder The builder that records the graph.
 	 */

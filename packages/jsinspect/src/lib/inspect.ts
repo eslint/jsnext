@@ -120,10 +120,10 @@ export function inspect(code: string, options: InspectionOptions): Inspection {
 		);
 	} else {
 		try {
-			const flow = createGraph(result.ast, scopeBuffer);
+			const flow = createGraph(result, scopeBuffer);
 
 			flowPane = {
-				data: toGraphTree(flow, result.ast, scopeBuffer),
+				data: toGraphTree(flow, result, scopeBuffer),
 				error: null,
 			};
 		} catch (error) {

@@ -133,7 +133,7 @@ derive the reference's answer from ours and then diff in full —
 other reason still fails. `packages/jsparse/tests/parse.test.ts` pins the
 behavior directly.
 
-**Unaffected:** `jsscope`. The binary AST buffer has always carried `espree`'s
+**Unaffected:** `jsscope`. The binary parse buffer has always carried `espree`'s
 extent — the decoder was the only thing that adjusted it — so the scope graph
 never saw the other rule.
 

@@ -97,24 +97,24 @@ function run<TNode>(
 /**
  * Finds the scopes of a parsed program and resolves every identifier in it.
  *
- * The analysis runs on the binary buffers `parse()` produced, so nothing is
+ * The analysis runs on the binary buffer `parse()` produced, so nothing is
  * decoded into ESTree objects along the way, and the result is itself binary:
  * an `ArrayBuffer` in the scope buffer format, where every binding has a
  * stable symbol ID and every node reference is the byte offset of the node's
- * record in the AST buffer. Hand it to `Scopes` for direct queries,
+ * record in the parse buffer. Hand it to `Scopes` for direct queries,
  * `toScopeManager()` for the escope-compatible object graph, or
  * `toScopeTree()` for a JSON-ready debugging view — each takes the buffer
  * and the same `ParseResult` given here.
  * @param result The value returned by `@eslint/jsparse`'s `parse()`.
  * @param options How the program should be interpreted.
  * @returns The scope buffer.
- * @throws {TypeError} When the buffer is not a jsparse AST buffer.
+ * @throws {TypeError} When the buffer is not a jsparse parse buffer.
  */
 export function analyze(
 	result: ParseResult,
 	options: AnalyzeOptions = {},
 ): ArrayBuffer {
-	const reader = new AstReader(result.ast);
+	const reader = new AstReader(result);
 	const builder = new ScopeBuilder(
 		new BinaryAst(reader),
 		resolveOptions(options),

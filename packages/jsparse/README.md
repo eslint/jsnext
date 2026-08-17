@@ -5,9 +5,9 @@ syntax.
 
 `jsparse` splits the work that other parsers do in one pass into three:
 
-1. **`parse()`** turns source text into two `ArrayBuffer`s — a binary AST and a
-   binary token stream — plus the offset of every line. It throws only for text
-   that cannot be tokenized or shaped into a tree.
+1. **`parse()`** turns source text into a single `ArrayBuffer` holding a binary
+   AST, a binary token stream, and the offset of every line. It throws only for
+   text that cannot be tokenized or shaped into a tree.
 2. **`validate()`** answers the questions that depend on *how* the program is
    meant to be interpreted: module or script, TypeScript or JavaScript, strict
    or sloppy, and what names are already bound.
@@ -19,7 +19,7 @@ If all you want is to lint with it, skip all three and use the
 
 Splitting the phases is what makes the fast path fast. Nothing allocates a
 JavaScript object per node until something actually asks for one, and a tool
-that only needs to look at part of a file can read the binary buffers directly
+that only needs to look at part of a file can read the binary buffer directly
 and never pay for the rest.
 
 There are no version options. The parser accepts the latest JavaScript,
@@ -34,16 +34,24 @@ npm install @eslint/jsparse
 ## Usage
 
 ```js
-import { parse, validate, toAST } from "@eslint/jsparse";
+import {
+	parse,
+	validate,
+	toAST,
+	AstReader,
+	TokenReader,
+	readLineStarts,
+} from "@eslint/jsparse";
 
 const code = `const greeting: string = "hello";`;
 
-// Phase 1: source text -> binary buffers. Throws on syntax errors.
+// Phase 1: source text -> one binary buffer. Throws on syntax errors.
 const result = parse(code);
 
-result.ast; // ArrayBuffer: the binary AST
-result.tokens; // ArrayBuffer: every token, including comments
-result.lineStarts; // Uint32Array: the offset each line begins at
+result; // ArrayBuffer: the AST, the tokens, and the line offsets
+new AstReader(result); // the binary AST
+new TokenReader(result); // every token, including comments
+readLineStarts(result); // Uint32Array: the offset each line begins at
 
 // Phase 2: context-dependent checks.
 const problems = validate(result, { sourceType: "module", dialect: "ts" });
@@ -62,11 +70,14 @@ ast.body[0].declarations[0].id.typeAnnotation.type; // "TSTypeAnnotation"
 
 ### `parse(code, options?)`
 
-Returns `{ ast, tokens, lineStarts }`.
+Returns one `ArrayBuffer` holding the encoded AST, the encoded token stream,
+the offset of every line, and — when asked for — a copy of the source text.
+`AstReader`, `TokenReader`, and `readLineStarts()` read the regions; each takes
+the whole buffer and finds its own.
 
 | Option | Default | Meaning |
 | ------ | ------- | ------- |
-| `embedSource` | `false` | Copy the source text into the AST buffer, so the buffer can be read in a process that did not parse it. |
+| `embedSource` | `false` | Copy the source text into the buffer, so it can be read in a process that did not parse it. |
 
 Reading text off a buffer works either way in the process that parsed, because
 the original string is cached against the buffer. Turn `embedSource` on when
@@ -197,8 +208,8 @@ its own source.
   properties which that parser leaves `undefined` are `null` here.
 - JSX produces the same nodes as both, matching whichever the `dialect` selects.
 - Nodes and tokens carry `start` and `end` offsets. They do not carry `range`
-  or `loc`; use `lineStarts`, or the `LineIndex` helper built on it, if you
-  need line and column numbers. The one exception is
+  or `loc`; use `readLineStarts()`, or the `LineIndex` helper built on it, if
+  you need line and column numbers. The one exception is
   [the ESLint parser](#using-it-with-eslint), which adds both because ESLint
   requires them.
 
@@ -259,18 +270,21 @@ There is one deliberate deviation: `espree` leaves `start` and `end` undefined
 on merged template tokens unless its `range` option is on. `jsparse` always
 fills them in.
 
-## Binary formats
+## Binary format
 
-Both buffers begin with a header holding a magic number, a format version, and
-the size of one record. Readers must honor the recorded record size rather than
-assume a constant — that is what lets a later version add fields without
-breaking existing consumers. Node kinds and token kinds are numbers assigned
-from append-only ranges, so new node types and token types slot in without
-renumbering the old ones.
+A parse produces one buffer. It begins with a 64-byte header holding a magic
+number, a format version, the size of one node record and of one token record,
+and the byte offset of every region that follows: the nodes, the child lists,
+the tokens, the line offsets, and the source text. Readers must honor the
+recorded sizes and offsets rather than assume constants — that is what lets a
+later version add fields, or grow the header itself, without breaking existing
+consumers. Node kinds and token kinds are numbers assigned from append-only
+ranges, so new node types and token types slot in without renumbering the old
+ones.
 
-### Token buffer
+### Token records
 
-A 16-byte header followed by fixed 16-byte records:
+Fixed 16-byte records:
 
 | Offset | Size | Contents                                                    |
 | ------ | ---- | ----------------------------------------------------------- |
@@ -282,24 +296,26 @@ A 16-byte header followed by fixed 16-byte records:
 
 Comments are recorded in source order alongside everything else.
 
-### AST buffer
+### Node records
 
-A 48-byte header, then three regions: fixed 48-byte node records, a list region
-holding child indexes, and a copy of the source text as UTF-16. Carrying the
-text inside the buffer is what lets `validate()` and `toAST()` work from the
-parse result alone, and makes the buffers safe to transfer to a worker.
+Fixed 48-byte records, followed by a list region holding child indexes. Each
+record is twelve 32-bit words: start, end, kind, flags, and eight slots whose
+meaning depends on the kind. Node index `0` is the "no node" sentinel, so a
+slot holding `0` always decodes to `null`.
 
-Each node record is twelve 32-bit words: start, end, kind, flags, and eight
-slots whose meaning depends on the kind. Node index `0` is the "no node"
-sentinel, so a slot holding `0` always decodes to `null`.
+### The source text
 
-### Reading the buffers directly
+The buffer can carry a copy of the source as UTF-16, which is what lets
+`validate()` and `toAST()` work from the parse result alone anywhere, and makes
+the buffer safe to transfer to a worker. It does not by default; see
+`embedSource` above.
+
+### Reading the buffer directly
 
 ```js
-import { parse, AstReader, TokenReader, N_Identifier } from "@eslint/jsparse";
+import { parse, AstReader, N_Identifier } from "@eslint/jsparse";
 
-const { ast } = parse("const answer = 42;");
-const reader = new AstReader(ast);
+const reader = new AstReader(parse("const answer = 42;"));
 
 // Walk without materializing a single node object.
 for (let node = 1; node < reader.nodeCount; node++) {
@@ -403,7 +419,7 @@ node benchmarks/benchmark.js --suite=eslint
 
 A few decisions are worth knowing about if you plan to read the source.
 [`docs/architecture.md`](./docs/architecture.md) is the full specification: how the scanner
-and parser work, the exact layout of both binary buffers, and the invariants to
+and parser work, the exact layout of the binary buffer, and the invariants to
 respect when changing them.
 
 **The scanner is driven by the parser, one token at a time.** That is what lets
@@ -444,7 +460,7 @@ rewind the node writer and the scanner rather than building throwaway objects.
 ## Development
 
 This package lives in a workspace alongside
-[`jsscope`](../jsscope), the scope analyzer built on the same buffers. The
+[`jsscope`](../jsscope), the scope analyzer built on the same buffer. The
 scripts below run from either the repository root or this directory.
 
 ```bash

@@ -11,10 +11,10 @@ This parser is designed to only support the latest JavaScript/TypeScript syntax 
 
 ## Public API
 
-- A `parse()` function that accepts a string of JavaScript or TypeScript code to parse. It returns three values:
-  1. `ast` - an `ArrayBuffer` with a binary-encoded AST structure.
-  2. `tokens` - an `ArrayBuffer` with a binary-encoded list of tokens.
-  3. `lineStarts` - a typed array where each element is the start offset of each line in the text.
+- A `parse()` function that accepts a string of JavaScript or TypeScript code to parse. It returns a single `ArrayBuffer` containing three regions:
+  1. a binary-encoded AST structure, read with `AstReader`.
+  2. a binary-encoded list of tokens, read with `TokenReader`.
+  3. a table where each element is the start offset of each line in the text, read with `readLineStarts()`.
 - A `validate()` function that accepts the return value of `parse()` and an options object. It should return an array of errors (that include message and start offset for each error). The options object contains:
   - `sourceType` - `"script"`, `"module"` (default), `"commonjs"`.
   - `dialect`: - `"js"` or `"ts"` (default). Determines whether TypeScript is allowed.
@@ -28,7 +28,7 @@ This parser is designed to only support the latest JavaScript/TypeScript syntax 
 - When parsing TypeScript code, it should return the same AST structure as the `@typescript-eslint/parser` package with the exception that `undefined` property values are instead represented as `null`.
 - Both AST nodes and tokens must also store their `start` (0-based) and `end` (the index after the last character of the node/token) offsets in the source code. They must not contain `range` or `loc`.
 - Both AST and tokens design must be open to extension in the future to accommodate new AST nodes and token types.
-- Comments should be included in the `tokens` `ArrayBuffer` returned from the `parse()`.
+- Comments should be included in the token region of the `ArrayBuffer` returned from `parse()`.
 - Must pass the same tests as `espree` for JavaScript code with `ecmaVersion: "latest"`.
 - Code must be well-commented so humans can follow the logic.
 

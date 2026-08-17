@@ -31,7 +31,7 @@ import { SLOT_B, SLOT_C, type AstAccess } from "./ast-access.js";
 const NO_CHILDREN: readonly number[] = [];
 
 /**
- * Reads a program out of a binary AST buffer.
+ * Reads a program out of a binary parse buffer.
  */
 export class BinaryAst implements AstAccess<number> {
 	/** The reader over the buffer. */
@@ -42,7 +42,7 @@ export class BinaryAst implements AstAccess<number> {
 
 	/**
 	 * Creates an accessor over a buffer.
-	 * @param reader The reader over the AST buffer.
+	 * @param reader The reader over the parse buffer.
 	 */
 	constructor(reader: AstReader) {
 		this.reader = reader;

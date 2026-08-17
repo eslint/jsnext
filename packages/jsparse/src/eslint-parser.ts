@@ -3,6 +3,7 @@
  */
 
 import { buildAst, parse } from "./api.js";
+import { readLineStarts } from "./binary.js";
 import { ParseError } from "./errors.js";
 import { LineIndex } from "./locations.js";
 import type { Program } from "./ast-types.js";
@@ -99,7 +100,7 @@ export const eslintParser = {
 	 */
 	parse(code: string, options: EslintParserOptions = {}): Program {
 		const result = parse(code);
-		const lines = new LineIndex(result.lineStarts);
+		const lines = new LineIndex(readLineStarts(result));
 		const { ast, problems } = buildAst(
 			result,
 			{

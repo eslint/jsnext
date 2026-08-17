@@ -6,7 +6,7 @@ JavaScript, TypeScript, and JSX syntax. TypeScript source, bundled with
 
 | Package | Name | What it does |
 | ------- | ---- | ------------ |
-| `packages/jsparse` | `@eslint/jsparse` | Parser. Source text in, binary AST and token buffers out, ESTree on request. |
+| `packages/jsparse` | `@eslint/jsparse` | Parser. Source text in, one binary buffer of AST, tokens, and line offsets out, ESTree on request. |
 | `packages/jsscope` | `@eslint/jsscope` | Scope analyzer. Reproduces `eslint-scope` and `@typescript-eslint/scope-manager`. |
 | `packages/jsflow` | `@eslint/jsflow` | Control flow analyzer. Binary AST and scope buffers in, basic-block graph out. |
 | `packages/jsinspect` | `@eslint/jsinspect` | Web app (Astro + React) that runs the other three in the browser: code in a left-hand editor, AST/scope/flow trees in tabs on the right. Its `dev`/`build`/`typecheck` scripts build the upstream packages first. |
@@ -79,7 +79,7 @@ before changing anything in them:
   the invariants that break subtly when violated, and a checklist for adding a
   node kind.
 - [`packages/jsparse/docs/embedded-source.md`](./packages/jsparse/docs/embedded-source.md)
-  explains `parse()`'s `embedSource` option — why an AST buffer can carry a copy
+  explains `parse()`'s `embedSource` option — why a parse buffer can carry a copy
   of the program text, why it does not by default, and the loud failure that
   makes the default safe.
 - [`packages/jsparse/docs/types.md`](./packages/jsparse/docs/types.md) documents
@@ -298,16 +298,40 @@ The numbers move a lot with machine temperature, and both packages are more
 sensitive to it than the allocation-heavy reference implementations, so a hot
 machine does not just add noise — it changes the ratio.
 
-- Each suite already runs in its own child process, so a heap left behind by
-  loading TypeScript cannot skew the next one.
+The parser benchmark spends its running time defending against exactly that,
+which is why it takes minutes rather than seconds:
+
+- **Every contender is measured alone, in a process of its own.** Parsers that
+  share a heap do not share it evenly. Loading TypeScript and Babel into the
+  process is by itself enough to halve the throughput of whichever parser
+  allocates most, and measuring contenders one after another in a single
+  process additionally hands whoever runs first the cleanest heap. Both effects
+  are large enough to reorder a table.
+- Each contender is then sampled several times per process, the whole list is
+  measured over several passes, and the reported figure is the **median** of
+  every sample, so a slow stretch is shared out instead of landing on one row.
+- The `±` column is how far those samples disagreed. A large one means the
+  machine was busy, not that the parser is inconsistent — check what else is
+  running before reading anything into a result carrying `±40%`.
+- Its contenders sit in **two tiers, and a result is only comparable inside its
+  own tier**: `AST only` is the smallest job that still yields a tree, and the
+  ESLint tier is a tree plus tokens plus comments with `range` and `loc` on all
+  of them. Never quote a number from one against a number from the other.
 - Compare ratios within a single suite, not absolute numbers across runs.
 - Run one suite alone when comparing two things:
-  `node benchmarks/benchmark.js --suite=eslint`.
-- For a before/after on a code change, build both versions and alternate them
-  **in one process**. Sequential runs on this machine drift far enough to
-  invert a real result.
+  `node benchmarks/benchmark.js --suite=ts`.
 - The TypeScript 7 row in the parser benchmark self-reports as skipped. That is
   expected: `@typescript-eslint/parser` does not accept TypeScript 7 yet.
+
+`npm run bench:chart --workspace=@eslint/jsparse` runs the parser benchmark,
+writes `benchmarks/results.json`, and renders `benchmarks/results.svg` from it —
+a self-contained, theme-aware chart meant to be shared. `benchmarks/chart.js`
+draws the two tiers as separate panels for the reason above, and orders the rows
+by hand rather than by rank so that two charts of different runs can be laid
+over each other.
+
+The scope analyzer's benchmark is unrelated and still measures its contenders in
+one process.
 
 ## Notes
 

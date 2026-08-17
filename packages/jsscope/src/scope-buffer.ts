@@ -3,12 +3,12 @@
  *
  * `analyze()` and `analyzeTree()` both return one `ArrayBuffer` in this
  * format. Everything in it is a little-endian 32-bit word, the same convention
- * `@eslint/jsparse`'s AST buffer uses, and every consumer — `Scopes`,
+ * `@eslint/jsparse`'s parse buffer uses, and every consumer — `Scopes`,
  * `toScopeManager()`, `toScopeTree()` — reads it through the constants below
  * rather than through magic numbers of its own.
  *
  * Node references are **handles**. On the binary path a handle is the byte
- * offset of the node's record inside the AST buffer the analysis ran over. On
+ * offset of the node's record inside the parse buffer the analysis ran over. On
  * the tree path it is the node's one-based position in a deterministic
  * enumeration of the tree (see `tree-nodes.ts`). Handle `0` means "no node"
  * on both paths, which is what lets one format serve two representations.

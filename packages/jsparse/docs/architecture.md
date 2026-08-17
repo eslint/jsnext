@@ -1,6 +1,6 @@
 # jsparse Technical Specification
 
-How the tokenizer and parser work, and what the binary buffers contain.
+How the tokenizer and parser work, and what the binary parse buffer contains.
 
 This is a reference for people changing the parser. The [README](../README.md)
 covers the public API; this document covers the machinery behind it.
@@ -25,10 +25,10 @@ covers the public API; this document covers the machinery behind it.
   - [Expressions](#expressions)
   - [Patterns without a cover grammar](#patterns-without-a-cover-grammar)
   - [The two ambiguities worth knowing](#the-two-ambiguities-worth-knowing)
-- [Binary formats](#binary-formats)
+- [Binary format](#binary-format)
   - [Shared conventions](#shared-conventions)
-  - [Token buffer](#token-buffer)
-  - [AST buffer](#ast-buffer)
+  - [The header](#the-header)
+  - [Token records](#token-records)
   - [Node records](#node-records)
   - [The flags word](#the-flags-word)
   - [The list region](#the-list-region)
@@ -37,7 +37,7 @@ covers the public API; this document covers the machinery behind it.
 - [Validation](#validation)
 - [Decoding to ESTree](#decoding-to-estree)
 - [Invariants](#invariants)
-- [Extending the formats](#extending-the-formats)
+- [Extending the format](#extending-the-format)
 
 ## The three phases
 
@@ -63,7 +63,7 @@ the dialect, and `jsx` options of phase 2 rather than phase 1, and it means one
 parse can be validated several ways.
 
 Phase 3 is where JavaScript objects finally get allocated. A tool that only
-needs to inspect part of a file can read the binary buffers directly with
+needs to inspect part of a file can read the binary buffer directly with
 `AstReader` and never pay for the rest.
 
 ## Source layout
@@ -73,7 +73,7 @@ src/
   chars.ts          character classification tables
   token-kinds.ts    token kinds, keyword table, per-kind lookup tables
   node-kinds.ts     node kinds, node flags, the node record layout
-  binary.ts         buffer headers, WordBuffer, buffer assembly
+  binary.ts         the buffer header, WordBuffer, buffer assembly
   tokenizer.ts      the scanner
   node-writer.ts    node allocation, child lists, rewind support
   parser-base.ts    shared parser state and token helpers
@@ -83,7 +83,7 @@ src/
   parser.ts         statements, declarations, modules, the entry point
   slots.ts          which node slots hold children, for generic walks
   validate.ts       phase 2
-  reader.ts         readers over both buffers
+  reader.ts         readers over the nodes and the tokens
   to-ast.ts         phase 3
   locations.ts      offset to line and column
   values.ts         escape and numeric literal decoding
@@ -179,7 +179,7 @@ Neither is answerable from the character stream alone. Because the parser asks
 for each token at the moment it knows the answer, the scanner never has to
 guess and never has to be corrected.
 
-Every token the scanner produces is appended to the token buffer as it is
+Every token the scanner produces is appended to the token region as it is
 scanned, including comments. That is why the token stream in the result
 contains trivia that the parser itself skipped over.
 
@@ -335,7 +335,7 @@ try {
 `rewind()` restores all three and zero-fills the abandoned node region so that
 stale words can never be read back. `tokenizer.restore()` also discards any
 token records written during the attempt, so speculation leaves no trace in the
-token buffer.
+token region.
 
 Speculation is not free, so the parser avoids it where a cheap test will do.
 `nextCanStartParameterList()` rejects most `(` in one token before the more
@@ -386,33 +386,71 @@ well-shaped tree, so under the phase rule it is not a parse error. It is
 reported by `validate()`. `espree` throws here; this is a deliberate
 divergence.
 
-## Binary formats
+## Binary format
 
 ### Shared conventions
 
-- All multi-byte values are 32-bit unsigned little-endian words. Both buffers
-  are read through a `Uint32Array` over the whole `ArrayBuffer`.
-- Every buffer starts with a magic number and a format version.
-- **Every buffer records its own record size.** Readers must compute record
-  positions from the recorded size rather than a compiled-in constant. That is
-  the whole extension story: a later version can grow a record, and a reader
-  built against an earlier version still finds every field it knows about,
-  because they are all at the front.
+- A parse produces exactly one `ArrayBuffer`. Everything it found — the nodes,
+  the child lists, the tokens, the line offsets, and optionally the source
+  text — is a region inside it, so a parse result is one value to hold, one
+  value to transfer, and one value to persist.
+- All multi-byte values are 32-bit unsigned little-endian words. The buffer is
+  read through a `Uint32Array` over the whole `ArrayBuffer`.
+- The buffer starts with a magic number and a format version.
+- **The buffer records its own record sizes and region offsets.** Readers must
+  compute record positions from the recorded size, and find a region at the
+  recorded offset, rather than from compiled-in constants. That is the whole
+  extension story: a later version can grow a record, or grow the header
+  itself, and a reader built against an earlier version still finds every field
+  it knows about, because they are all at the front.
 - Offsets stored in records are offsets into the *source text*, in UTF-16 code
   units — the same units as JavaScript string indices.
 
-### Token buffer
+### The header
 
-A 16-byte header followed by `count` records of 16 bytes each.
+Six regions, in order, each beginning on a word boundary.
 
 ```text
-Header (16 bytes, 4 words)
-  word 0   magic          0x4B4F544A  ("JTOK" little-endian)
+Header (64 bytes, 16 words)
+  word 0   magic          0x4250534A  ("JSPB" little-endian)
   word 1   version        1
-  word 2   count          number of token records
-  word 3   recordBytes    16
+  word 2   flags          bit 0: PARSE_FLAG_SOURCE_EMBEDDED
+  word 3   root           index of the root node
+  word 4   nodeCount      includes the reserved node at index 0
+  word 5   nodeBytes      48
+  word 6   nodesOffset    byte offset of the node region
+  word 7   listCount      length of the list region, in words
+  word 8   listOffset     byte offset of the list region
+  word 9   tokenCount     number of token records
+  word 10  tokenBytes     16
+  word 11  tokensOffset   byte offset of the token region
+  word 12  lineCount      number of lines
+  word 13  linesOffset    byte offset of the line offset table
+  word 14  sourceLength   length of the text, in UTF-16 code units
+  word 15  sourceOffset   byte offset of the embedded source text
 
-Record (16 bytes, 4 words), repeated `count` times
+Node region     nodeCount * 48 bytes
+List region     listCount * 4 bytes
+Token region    tokenCount * 16 bytes
+Line region     lineCount * 4 bytes
+Source region   sourceLength * 2 bytes, padded up to a word boundary,
+                or absent entirely when the source is not embedded
+```
+
+`sourceLength` describes the *program*, not the region: it is recorded whether
+or not the text is present, and the flag in word 2 is what says whether the
+characters are actually there.
+
+The line region is the offset at which each line begins, one word per line.
+`readLineStarts()` returns it as a `Uint32Array` view onto the buffer rather
+than a copy, which is what `LineIndex` is built over.
+
+### Token records
+
+Fixed 16-byte records, `tokenCount` of them.
+
+```text
+Record (16 bytes, 4 words), repeated `tokenCount` times
   word 0   start          offset of the first character
   word 1   end            offset just past the last character
   word 2   kind | flags   kind in the low 16 bits, flags in the high 16
@@ -433,36 +471,7 @@ The four token flags occupy the high half of word 2:
 | `TF_LEGACY_OCTAL` | 3 | Uses legacy octal syntax, which strict mode forbids. |
 
 Comments and the hashbang are recorded as tokens. There is no separate comment
-buffer.
-
-### AST buffer
-
-Four regions, in order. Each region begins on a word boundary.
-
-```text
-Header (48 bytes, 12 words)
-  word 0   magic          0x5453414A  ("JAST" little-endian)
-  word 1   version        1
-  word 2   nodeCount      includes the reserved node at index 0
-  word 3   nodeBytes      48
-  word 4   nodesOffset    byte offset of the node region
-  word 5   listOffset     byte offset of the list region
-  word 6   listCount      length of the list region, in words
-  word 7   sourceOffset   byte offset of the embedded source text
-  word 8   sourceLength   length of the text, in UTF-16 code units
-  word 9   root           index of the root node
-  word 10  flags          bit 0: AST_FLAG_SOURCE_EMBEDDED
-  word 11  reserved       currently 0
-
-Node region     nodeCount * 48 bytes
-List region     listCount * 4 bytes
-Source region   sourceLength * 2 bytes, padded up to a word boundary,
-                or absent entirely when the source is not embedded
-```
-
-`sourceLength` describes the *program*, not the region: it is recorded whether
-or not the text is present, and the flag in word 10 is what says whether the
-characters are actually there.
+region.
 
 ### Node records
 
@@ -562,18 +571,18 @@ Elements are node indices; a `0` element is an array hole, as in `[a, , b]`.
 
 ### The embedded source text
 
-The AST buffer *can* carry a copy of the source as little-endian UTF-16 code
+The parse buffer *can* carry a copy of the source as little-endian UTF-16 code
 units, so that the buffer is self-describing when it is transferred to a worker
 or written to disk. It does not by default: the region is roughly a sixth of
 the buffer and costs about 4% of a parse, and a consumer that stays in the
 process that parsed never reads it.
 
-`buildAstBuffer()` always calls `cacheSource()`, which parks the original
+`buildParseBuffer()` always calls `cacheSource()`, which parks the original
 string on the buffer under `Symbol.for("@eslint/jsparse.source")` — a registry
 symbol rather than a `WeakMap`, so that `jsscope`'s bundled copy of this module
 finds the same cache. `readSource()` returns that string when the same process
 reads the same buffer — so text works whether or not the region exists — and
-only falls through to decoding when the buffer arrived from somewhere else. On that path it checks `AST_FLAG_SOURCE_EMBEDDED`
+only falls through to decoding when the buffer arrived from somewhere else. On that path it checks `PARSE_FLAG_SOURCE_EMBEDDED`
 first and throws rather than decoding an absent region into a run of NUL
 characters.
 
@@ -586,14 +595,14 @@ it on, and what it costs.**
 
 ### Reading a buffer
 
-`AstReader` and `TokenReader` validate the magic number and then compute record
-positions from the recorded record size:
+`AstReader` and `TokenReader` are both constructed over the whole parse buffer.
+Each validates the magic number, finds its own region at the offset the header
+records, and computes record positions from the recorded record size:
 
 ```js
 import { parse, AstReader, N_Identifier } from "@eslint/jsparse";
 
-const { ast } = parse("const answer = 42;");
-const reader = new AstReader(ast);
+const reader = new AstReader(parse("const answer = 42;"));
 
 for (let node = 1; node < reader.nodeCount; node++) {
 	if (reader.kind(node) === N_Identifier) {
@@ -657,7 +666,7 @@ Things that will break subtly if violated:
 7. **Reused flag bits must be documented where they are defined**, as
    `NF_SELF_CLOSING` is.
 
-## Extending the formats
+## Extending the format
 
 To add a field to a node kind: use a free slot. Slots are per kind, so a slot
 unused by that kind costs nothing.
@@ -668,6 +677,10 @@ read the fields they know. Do not reorder existing words.
 
 To add a token flag: take the next free bit in the high half of word 2. Four of
 the sixteen are used, so twelve remain.
+
+To add a header word: append it and grow `PARSE_HEADER_BYTES`. Every region is
+found at a recorded offset, so nothing an existing reader knows how to locate
+moves. Do not reorder existing words.
 
 To add a node kind: append it in the correct partition (JavaScript, JSX, or
 TypeScript at or above `TS_FIRST`), raise `NODE_KIND_COUNT`, add its name to
@@ -689,6 +702,6 @@ What neither can check is which node types belong in a slot: `this.node(a)`
 says a child goes there, not which children, so the unions in `ast-types.ts`
 are written by hand.
 
-Bumping `TOKEN_VERSION` or `AST_VERSION` is only necessary for a change that
-existing readers could misinterpret. Adding a field at the end of a record, a
-new flag bit, or a new node kind does not qualify.
+Bumping `PARSE_VERSION` is only necessary for a change that existing readers
+could misinterpret. Adding a field at the end of a record, a word at the end of
+the header, a new flag bit, or a new node kind does not qualify.

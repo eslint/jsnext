@@ -5,8 +5,8 @@
 import {
 	TF_HAS_ESCAPE,
 	TF_NEWLINE_BEFORE,
-	buildAstBuffer,
-	buildTokenBuffer,
+	buildParseBuffer,
+	readLineStarts,
 } from "./binary.js";
 import { decodeEntities } from "./entities.js";
 import { LineIndex, type SourceLocation } from "./locations.js";
@@ -33,18 +33,16 @@ import { validateAst, type ValidationProblem } from "./validate.js";
 import { decodeEscapes } from "./values.js";
 
 /**
- * The three buffers produced by parsing.
+ * Everything parsing produced, in one buffer.
+ *
+ * The encoded AST, the encoded token stream (comments included), the offset
+ * each line begins at, and — when `embedSource` asked for it — a copy of the
+ * source text all live in a single `ArrayBuffer`, so a parse result is one
+ * value to hold, one value to transfer, and one value to persist. Its layout
+ * is `binary.ts`; `AstReader`, `TokenReader`, and `readLineStarts()` are how
+ * the regions are read.
  */
-export interface ParseResult {
-	/** The binary-encoded AST, which also carries a copy of the source. */
-	ast: ArrayBuffer;
-
-	/** The binary-encoded token stream, including comments. */
-	tokens: ArrayBuffer;
-
-	/** The offset at which each line of the source begins. */
-	lineStarts: Uint32Array;
-}
+export type ParseResult = ArrayBuffer;
 
 /**
  * How a parsed program should be interpreted during validation.
@@ -117,7 +115,7 @@ export interface ToAstResult {
  */
 export interface ParseOptions {
 	/**
-	 * Whether to copy the source text into the AST buffer, making the buffer
+	 * Whether to copy the source text into the parse buffer, making the buffer
 	 * readable in a process that did not parse it.
 	 *
 	 * Defaults to `false`. Reading text in the parsing process works either
@@ -131,13 +129,13 @@ export interface ParseOptions {
 }
 
 /**
- * Parses source text into binary buffers.
+ * Parses source text into one binary buffer.
  *
  * Only problems that make the text impossible to tokenize or shape into a tree
  * are reported here; everything context-dependent is left to `validate()`.
  * @param code The JavaScript or TypeScript source to parse.
- * @param options How the buffers should be built.
- * @returns The encoded AST, the encoded token stream, and the line offsets.
+ * @param options How the buffer should be built.
+ * @returns The encoded AST, token stream, and line offsets, in one buffer.
  * @throws {ParseError} When the source contains a syntax error.
  */
 export function parse(code: string, options: ParseOptions = {}): ParseResult {
@@ -146,18 +144,18 @@ export function parse(code: string, options: ParseOptions = {}): ParseResult {
 	const writer = parser.writer;
 	const tokenizer = parser.tokenizer;
 
-	return {
-		ast: buildAstBuffer(
-			writer.nodes,
-			writer.count,
-			writer.lists,
-			root,
-			code,
-			options.embedSource ?? false,
-		),
-		tokens: buildTokenBuffer(tokenizer.records, tokenizer.count),
-		lineStarts: tokenizer.lineStarts.slice(0, tokenizer.lineCount),
-	};
+	return buildParseBuffer({
+		nodes: writer.nodes,
+		nodeCount: writer.count,
+		lists: writer.lists,
+		root,
+		tokens: tokenizer.records,
+		tokenCount: tokenizer.count,
+		lineStarts: tokenizer.lineStarts,
+		lineCount: tokenizer.lineCount,
+		source: code,
+		embedSource: options.embedSource ?? false,
+	});
 }
 
 /**
@@ -172,14 +170,14 @@ export function validate(
 	options: ValidateOptions = {},
 ): ValidationError[] {
 	const problems = validateAst(
-		new AstReader(result.ast),
-		new TokenReader(result.tokens),
+		new AstReader(result),
+		new TokenReader(result),
 		options.sourceType ?? "module",
 		options.dialect ?? "ts",
 		options.jsx ?? false,
 	);
 
-	return locateProblems(problems, new LineIndex(result.lineStarts));
+	return locateProblems(problems, new LineIndex(readLineStarts(result)));
 }
 
 /**
@@ -228,8 +226,8 @@ export function buildAst(
 	options: ValidateOptions,
 	lines: LineIndex | null,
 ): AstBuildResult {
-	const reader = new AstReader(result.ast);
-	const tokenReader = new TokenReader(result.tokens);
+	const reader = new AstReader(result);
+	const tokenReader = new TokenReader(result);
 	const sourceType = options.sourceType ?? "module";
 	const dialect = options.dialect ?? "ts";
 	const problems = validateAst(
@@ -257,7 +255,7 @@ export function buildAst(
 		ast: program as unknown as Program,
 		errors: locateProblems(
 			problems,
-			lines ?? new LineIndex(result.lineStarts),
+			lines ?? new LineIndex(readLineStarts(result)),
 		),
 		problems,
 	};

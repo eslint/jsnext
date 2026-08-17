@@ -129,18 +129,18 @@ export interface FlowTree {
 /**
  * Renders a flow buffer as a self-contained, JSON-serializable tree.
  * @param flow The buffer returned by `createGraph()`.
- * @param ast The AST buffer the graph was built from.
+ * @param parsed The parse buffer the graph was built from.
  * @param scope The scope buffer the graph was built with.
  * @returns The tree.
  * @throws {TypeError} When a buffer is not what its parameter claims.
  */
 export function toGraphTree(
 	flow: ArrayBufferLike,
-	ast: ArrayBufferLike,
+	parsed: ArrayBufferLike,
 	scope: ArrayBufferLike,
 ): FlowTree {
 	const reader = new FlowBufferReader(flow);
-	const astReader = new AstReader(ast);
+	const astReader = new AstReader(parsed);
 	const scopeReader = new ScopeBufferReader(scope);
 	const referencesBase = scopeReader.words[H_REFERENCES_BASE];
 

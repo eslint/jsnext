@@ -75,7 +75,7 @@ describe("tree shaking", () => {
 		 * these strings appears in exactly one of the two, so their absence is
 		 * evidence both were left behind.
 		 */
-		expect(treeOnly.code).not.toContain("Not a jsparse AST buffer");
+		expect(treeOnly.code).not.toContain("Not a jsparse parse buffer");
 		expect(treeOnly.code).not.toContain("Unterminated string literal");
 	});
 
@@ -83,6 +83,6 @@ describe("tree shaking", () => {
 		const binaryOnly = await bundle(["analyze"]);
 
 		// The reader is what the binary entry point is for.
-		expect(binaryOnly.code).toContain("Not a jsparse AST buffer");
+		expect(binaryOnly.code).toContain("Not a jsparse parse buffer");
 	});
 });

@@ -52,7 +52,7 @@ describe("the scope buffer", () => {
 	it("rejects a buffer that is not a scope buffer", () => {
 		const { parsed } = analyzed("a;");
 
-		expect(() => new Scopes(parsed.ast, parsed)).toThrow(
+		expect(() => new Scopes(parsed, parsed)).toThrow(
 			/Not a jsscope scope buffer/u,
 		);
 	});

@@ -369,7 +369,7 @@ Where a record field holds an *optional* ID or index, it is stored as
 ### Node handles
 
 The buffer never contains a node; it contains **handles**. On the binary path
-a handle is the byte offset of the node's record in the AST buffer
+a handle is the byte offset of the node's record in the parse buffer
 (`handles.ts` holds the arithmetic both directions). On the tree path it is
 the node's one-based position in the deterministic enumeration
 `tree-nodes.ts` produces — a pure depth-first walk over own properties,

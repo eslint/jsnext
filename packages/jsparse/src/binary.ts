@@ -1,37 +1,83 @@
 /**
- * @fileoverview Binary buffer layouts shared by the parser and its consumers.
+ * @fileoverview The binary parse buffer layout, shared by the parser and its
+ * consumers.
  *
- * Both buffers begin with a header that records a magic number, a format
- * version, and the size of one record. Readers must honor the recorded record
- * size rather than assuming a constant, which is what makes it possible to add
- * fields in a later version without breaking existing consumers.
+ * A parse produces exactly one `ArrayBuffer`. It opens with a header that
+ * records a magic number, a format version, the size of one node record and of
+ * one token record, and the byte offset of every region that follows. Readers
+ * must honor the recorded sizes and offsets rather than assuming constants,
+ * which is what makes it possible to grow a record — or the header itself — in
+ * a later version without breaking existing consumers.
  */
 
 import { NODE_BYTES } from "./node-kinds.js";
 
 //-----------------------------------------------------------------------------
-// Token Buffer
+// Parse Buffer Header
 //-----------------------------------------------------------------------------
 
-/** Magic number identifying a token buffer: "JTOK" in little-endian ASCII. */
-export const TOKEN_MAGIC = 0x4b4f544a;
+/** Magic number identifying a parse buffer: "JSPB" in little-endian ASCII. */
+export const PARSE_MAGIC = 0x4250534a;
 
-/** Format version of the token buffer. */
-export const TOKEN_VERSION = 1;
+/** Format version of the parse buffer. */
+export const PARSE_VERSION = 1;
 
-/** Size of the token buffer header in bytes. */
-export const TOKEN_HEADER_BYTES = 16;
+/** Size of the parse buffer header in bytes. */
+export const PARSE_HEADER_BYTES = 64;
+
+/*
+ * Header word offsets, in 32-bit words from the start of the buffer. Every
+ * region is located by a recorded byte offset, so the header may grow in a
+ * later version without moving anything an existing reader knows how to find.
+ */
+export const PARSE_HEADER_MAGIC = 0;
+export const PARSE_HEADER_VERSION = 1;
+export const PARSE_HEADER_FLAGS = 2;
+export const PARSE_HEADER_ROOT = 3;
+export const PARSE_HEADER_NODE_COUNT = 4;
+export const PARSE_HEADER_NODE_BYTES = 5;
+export const PARSE_HEADER_NODES_OFFSET = 6;
+export const PARSE_HEADER_LIST_COUNT = 7;
+export const PARSE_HEADER_LIST_OFFSET = 8;
+export const PARSE_HEADER_TOKEN_COUNT = 9;
+export const PARSE_HEADER_TOKEN_BYTES = 10;
+export const PARSE_HEADER_TOKENS_OFFSET = 11;
+export const PARSE_HEADER_LINE_COUNT = 12;
+export const PARSE_HEADER_LINES_OFFSET = 13;
+export const PARSE_HEADER_SOURCE_LENGTH = 14;
+export const PARSE_HEADER_SOURCE_OFFSET = 15;
+
+/**
+ * `PARSE_HEADER_FLAGS` bit: the buffer carries its own copy of the source text.
+ *
+ * When it is clear, the source region has zero length and the text can only be
+ * recovered in the process that parsed it, from the cache below. See
+ * [`docs/embedded-source.md`](../docs/embedded-source.md).
+ */
+export const PARSE_FLAG_SOURCE_EMBEDDED = 1;
+
+/**
+ * Views a parse buffer as words after checking that it is one.
+ * @param buffer The buffer to read.
+ * @returns The whole buffer, viewed as 32-bit words.
+ * @throws {TypeError} When the buffer is not a jsparse parse buffer.
+ */
+export function parseHeader(buffer: ArrayBufferLike): Uint32Array {
+	const words = new Uint32Array(buffer);
+
+	if (words[PARSE_HEADER_MAGIC] !== PARSE_MAGIC) {
+		throw new TypeError("Not a jsparse parse buffer");
+	}
+
+	return words;
+}
+
+//-----------------------------------------------------------------------------
+// Token Records
+//-----------------------------------------------------------------------------
 
 /** Size of one token record in bytes. */
 export const TOKEN_BYTES = 16;
-
-/*
- * Token header word offsets, in 32-bit words from the start of the buffer.
- */
-export const TOKEN_HEADER_MAGIC = 0;
-export const TOKEN_HEADER_VERSION = 1;
-export const TOKEN_HEADER_COUNT = 2;
-export const TOKEN_HEADER_RECORD_BYTES = 3;
 
 /*
  * Token record word offsets, relative to the start of the record. The kind and
@@ -53,44 +99,6 @@ export const TF_INVALID_ESCAPE = 1 << 2;
 
 /** The token uses legacy octal syntax, which is banned in strict mode. */
 export const TF_LEGACY_OCTAL = 1 << 3;
-
-//-----------------------------------------------------------------------------
-// AST Buffer
-//-----------------------------------------------------------------------------
-
-/** Magic number identifying an AST buffer: "JAST" in little-endian ASCII. */
-export const AST_MAGIC = 0x5453414a;
-
-/** Format version of the AST buffer. */
-export const AST_VERSION = 1;
-
-/** Size of the AST buffer header in bytes. */
-export const AST_HEADER_BYTES = 48;
-
-/*
- * AST header word offsets, in 32-bit words from the start of the buffer.
- */
-export const AST_HEADER_MAGIC = 0;
-export const AST_HEADER_VERSION = 1;
-export const AST_HEADER_NODE_COUNT = 2;
-export const AST_HEADER_NODE_BYTES = 3;
-export const AST_HEADER_NODES_OFFSET = 4;
-export const AST_HEADER_LIST_OFFSET = 5;
-export const AST_HEADER_LIST_COUNT = 6;
-export const AST_HEADER_SOURCE_OFFSET = 7;
-export const AST_HEADER_SOURCE_LENGTH = 8;
-export const AST_HEADER_ROOT = 9;
-export const AST_HEADER_FLAGS = 10;
-
-/**
- * `AST_HEADER_FLAGS` bit: the buffer carries its own copy of the source text.
- *
- * When it is clear, the source region has zero length and the text can only be
- * recovered in the process that parsed it, from the cache below. See
- * [`docs/embedded-source.md`](../docs/embedded-source.md).
- */
-export const AST_FLAG_SOURCE_EMBEDDED = 1;
-export const AST_HEADER_RESERVED = 11;
 
 //-----------------------------------------------------------------------------
 // Growable Word Buffer
@@ -165,11 +173,11 @@ export class WordBuffer {
 //-----------------------------------------------------------------------------
 
 /*
- * The AST buffer carries a copy of the source text so that `validate()` and
- * `toAST()` need nothing but the parse result. Decoding that copy back into a
- * JavaScript string costs a full pass, so the string produced during parsing
- * is cached against the buffer it was stored in and reused when the same
- * process converts the AST.
+ * The parse buffer can carry a copy of the source text so that `validate()`
+ * and `toAST()` need nothing but the parse result. Decoding that copy back
+ * into a JavaScript string costs a full pass, so the string produced during
+ * parsing is cached against the buffer it was stored in and reused when the
+ * same process reads it.
  */
 /**
  * Where a buffer's source text is parked for the process that produced it.
@@ -196,9 +204,9 @@ type SourceCarrier = { [SOURCE_KEY]?: string };
 const UTF16_DECODER = new TextDecoder("utf-16le");
 
 /**
- * Records the source text that was encoded into an AST buffer so that later
+ * Records the source text that was encoded into a parse buffer so that later
  * reads can skip decoding it again.
- * @param buffer The AST buffer holding the encoded text.
+ * @param buffer The parse buffer holding the encoded text.
  * @param source The original source text.
  * @returns Nothing.
  */
@@ -210,8 +218,8 @@ export function cacheSource(buffer: ArrayBufferLike, source: string): void {
 }
 
 /**
- * Retrieves the source text stored inside an AST buffer.
- * @param buffer The AST buffer to read from.
+ * Retrieves the source text stored inside a parse buffer.
+ * @param buffer The parse buffer to read from.
  * @param byteOffset The byte offset of the encoded text.
  * @param length The length of the text in UTF-16 code units.
  * @returns The source text the buffer was produced from.
@@ -236,12 +244,12 @@ export function readSource(
 	 * one place that has to be loud.
 	 */
 	if (
-		(new Uint32Array(buffer, AST_HEADER_FLAGS * 4, 1)[0] &
-			AST_FLAG_SOURCE_EMBEDDED) ===
+		(new Uint32Array(buffer, PARSE_HEADER_FLAGS * 4, 1)[0] &
+			PARSE_FLAG_SOURCE_EMBEDDED) ===
 		0
 	) {
 		throw new TypeError(
-			"This AST buffer carries no source text, and none is cached for it in this process. Re-parse with `{ embedSource: true }` before transferring or persisting a buffer whose text will be read elsewhere.",
+			"This parse buffer carries no source text, and none is cached for it in this process. Re-parse with `{ embedSource: true }` before transferring or persisting a buffer whose text will be read elsewhere.",
 		);
 	}
 
@@ -272,7 +280,7 @@ export function writeSource(
 }
 
 //-----------------------------------------------------------------------------
-// Assembly Helpers
+// Assembly
 //-----------------------------------------------------------------------------
 
 /**
@@ -286,80 +294,97 @@ export function alignWords(bytes: number): number {
 }
 
 /**
- * Builds the final token `ArrayBuffer` from the words written during scanning.
- * @param records The token records, four words each.
- * @param count The number of tokens written.
- * @returns A standalone buffer containing the header and every token record.
+ * Everything a parse produced, before it is laid out in one buffer.
+ *
+ * A parse assembles its buffer exactly once, so the intermediate object costs
+ * nothing measurable and keeps ten same-typed arguments from being passed
+ * positionally.
  */
-export function buildTokenBuffer(
-	records: WordBuffer,
-	count: number,
-): ArrayBuffer {
-	const headerWords = TOKEN_HEADER_BYTES / 4;
-	const buffer = new ArrayBuffer(TOKEN_HEADER_BYTES + count * TOKEN_BYTES);
-	const view = new Uint32Array(buffer);
+export interface ParseBufferInput {
+	/** The node records. */
+	nodes: WordBuffer;
 
-	view[TOKEN_HEADER_MAGIC] = TOKEN_MAGIC;
-	view[TOKEN_HEADER_VERSION] = TOKEN_VERSION;
-	view[TOKEN_HEADER_COUNT] = count;
-	view[TOKEN_HEADER_RECORD_BYTES] = TOKEN_BYTES;
+	/** The number of nodes written, including the reserved node 0. */
+	nodeCount: number;
 
-	view.set(records.words.subarray(0, count * (TOKEN_BYTES / 4)), headerWords);
+	/** The list region. */
+	lists: WordBuffer;
 
-	return buffer;
+	/** The index of the root node. */
+	root: number;
+
+	/** The token records, four words each. */
+	tokens: WordBuffer;
+
+	/** The number of tokens written. */
+	tokenCount: number;
+
+	/** The offset at which each line begins. */
+	lineStarts: Uint32Array;
+
+	/** The number of valid entries in `lineStarts`. */
+	lineCount: number;
+
+	/** The source text the program was parsed from. */
+	source: string;
+
+	/** Whether to copy the source text into the buffer. */
+	embedSource: boolean;
 }
 
 /**
- * Builds the final AST `ArrayBuffer` from the node and list regions.
- * @param nodes The node records.
- * @param nodeCount The number of nodes written, including the reserved node 0.
- * @param lists The list region.
- * @param root The index of the root node.
- * @param source The source text to embed.
- * @returns A standalone buffer containing the header, nodes, lists, and text.
+ * Builds the single `ArrayBuffer` a parse returns.
+ * @param input Everything the parse produced.
+ * @returns A standalone buffer holding the header, nodes, lists, tokens, line
+ *      offsets, and — when asked for — the source text.
  */
-export function buildAstBuffer(
-	nodes: WordBuffer,
-	nodeCount: number,
-	lists: WordBuffer,
-	root: number,
-	source: string,
-	embedSource: boolean,
-): ArrayBuffer {
-	const nodesBytes = nodeCount * NODE_BYTES;
-	const listBytes = lists.length * 4;
+export function buildParseBuffer(input: ParseBufferInput): ArrayBuffer {
+	const { source, embedSource } = input;
+	const nodesBytes = input.nodeCount * NODE_BYTES;
+	const listBytes = input.lists.length * 4;
+	const tokenBytes = input.tokenCount * TOKEN_BYTES;
+	const lineBytes = input.lineCount * 4;
 	const sourceBytes = embedSource ? alignWords(source.length * 2) : 0;
 
-	const nodesOffset = AST_HEADER_BYTES;
+	const nodesOffset = PARSE_HEADER_BYTES;
 	const listOffset = nodesOffset + nodesBytes;
-	const sourceOffset = listOffset + listBytes;
+	const tokensOffset = listOffset + listBytes;
+	const linesOffset = tokensOffset + tokenBytes;
+	const sourceOffset = linesOffset + lineBytes;
 
 	const buffer = new ArrayBuffer(sourceOffset + sourceBytes);
 	const view = new Uint32Array(buffer);
 
-	view[AST_HEADER_MAGIC] = AST_MAGIC;
-	view[AST_HEADER_VERSION] = AST_VERSION;
-	view[AST_HEADER_NODE_COUNT] = nodeCount;
-	view[AST_HEADER_NODE_BYTES] = NODE_BYTES;
-	view[AST_HEADER_NODES_OFFSET] = nodesOffset;
-	view[AST_HEADER_LIST_OFFSET] = listOffset;
-	view[AST_HEADER_LIST_COUNT] = lists.length;
-	view[AST_HEADER_SOURCE_OFFSET] = sourceOffset;
+	view[PARSE_HEADER_MAGIC] = PARSE_MAGIC;
+	view[PARSE_HEADER_VERSION] = PARSE_VERSION;
+	view[PARSE_HEADER_FLAGS] = embedSource ? PARSE_FLAG_SOURCE_EMBEDDED : 0;
+	view[PARSE_HEADER_ROOT] = input.root;
+	view[PARSE_HEADER_NODE_COUNT] = input.nodeCount;
+	view[PARSE_HEADER_NODE_BYTES] = NODE_BYTES;
+	view[PARSE_HEADER_NODES_OFFSET] = nodesOffset;
+	view[PARSE_HEADER_LIST_COUNT] = input.lists.length;
+	view[PARSE_HEADER_LIST_OFFSET] = listOffset;
+	view[PARSE_HEADER_TOKEN_COUNT] = input.tokenCount;
+	view[PARSE_HEADER_TOKEN_BYTES] = TOKEN_BYTES;
+	view[PARSE_HEADER_TOKENS_OFFSET] = tokensOffset;
+	view[PARSE_HEADER_LINE_COUNT] = input.lineCount;
+	view[PARSE_HEADER_LINES_OFFSET] = linesOffset;
 
 	/*
 	 * The length is recorded either way: it describes the program, not the
 	 * region, and a consumer can still learn how long the source was. The
 	 * flag is what says whether the characters are actually here.
 	 */
-	view[AST_HEADER_SOURCE_LENGTH] = source.length;
-	view[AST_HEADER_FLAGS] = embedSource ? AST_FLAG_SOURCE_EMBEDDED : 0;
-	view[AST_HEADER_ROOT] = root;
+	view[PARSE_HEADER_SOURCE_LENGTH] = source.length;
+	view[PARSE_HEADER_SOURCE_OFFSET] = sourceOffset;
 
+	view.set(input.nodes.words.subarray(0, nodesBytes / 4), nodesOffset / 4);
+	view.set(input.lists.words.subarray(0, input.lists.length), listOffset / 4);
 	view.set(
-		nodes.words.subarray(0, nodesBytes / 4),
-		nodesOffset / 4,
+		input.tokens.words.subarray(0, tokenBytes / 4),
+		tokensOffset / 4,
 	);
-	view.set(lists.words.subarray(0, lists.length), listOffset / 4);
+	view.set(input.lineStarts.subarray(0, input.lineCount), linesOffset / 4);
 
 	if (embedSource) {
 		writeSource(
@@ -378,4 +403,23 @@ export function buildAstBuffer(
 	cacheSource(buffer, source);
 
 	return buffer;
+}
+
+/**
+ * Reads the line offset table out of a parse buffer.
+ *
+ * The result is a view onto the buffer rather than a copy, so it costs nothing
+ * to ask for and stays valid as long as the buffer does.
+ * @param buffer The buffer returned by `parse()`.
+ * @returns The offset at which each line of the source begins.
+ * @throws {TypeError} When the buffer is not a jsparse parse buffer.
+ */
+export function readLineStarts(buffer: ArrayBufferLike): Uint32Array {
+	const words = parseHeader(buffer);
+
+	return new Uint32Array(
+		buffer,
+		words[PARSE_HEADER_LINES_OFFSET],
+		words[PARSE_HEADER_LINE_COUNT],
+	);
 }

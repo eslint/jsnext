@@ -1,2 +1,7 @@
 dist
 node_modules
+
+# What `npm run bench:chart` produces. Regenerable in one command, and a
+# committed benchmark number is stale the moment the parser changes.
+packages/*/benchmarks/results.json
+packages/*/benchmarks/results.svg

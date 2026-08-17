@@ -84,7 +84,7 @@ src/
 ## The walk
 
 One pass over every value-position node, in evaluation order, reading the
-AST buffer directly through `AstReader` — nothing is decoded into ESTree
+parse buffer directly through `AstReader` — nothing is decoded into ESTree
 objects. Kinds with control flow of their own have explicit cases; every
 other kind falls through to a generic child walk over `SLOT_TABLE`, the
 same table `@eslint/jsscope` walks with.
@@ -223,7 +223,7 @@ optional ID it is stored as `id + 1`, so `0` means "none".
 ### Handles
 
 The buffer never contains a node; it contains **handles** — the byte offset
-of the node's record in the AST buffer, exactly as the scope buffer's
+of the node's record in the parse buffer, exactly as the scope buffer's
 binary path stores them, so a handle read out of either buffer names the
 same node. Scope references are byte offsets of reference records in the
 scope buffer. `0` means "none" for both.

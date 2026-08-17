@@ -1,36 +1,35 @@
 /**
- * @fileoverview Unit tests for the binary buffer layouts and their assembly.
+ * @fileoverview Unit tests for the binary parse buffer layout and its assembly.
  */
 
 import { describe, expect, it } from "vitest";
 import {
-	AST_FLAG_SOURCE_EMBEDDED,
-	AST_HEADER_BYTES,
-	AST_HEADER_FLAGS,
-	AST_HEADER_LIST_COUNT,
-	AST_HEADER_LIST_OFFSET,
-	AST_HEADER_MAGIC,
-	AST_HEADER_NODE_BYTES,
-	AST_HEADER_NODE_COUNT,
-	AST_HEADER_NODES_OFFSET,
-	AST_HEADER_ROOT,
-	AST_HEADER_SOURCE_LENGTH,
-	AST_HEADER_SOURCE_OFFSET,
-	AST_HEADER_VERSION,
-	AST_MAGIC,
-	AST_VERSION,
+	PARSE_FLAG_SOURCE_EMBEDDED,
+	PARSE_HEADER_BYTES,
+	PARSE_HEADER_FLAGS,
+	PARSE_HEADER_LINES_OFFSET,
+	PARSE_HEADER_LINE_COUNT,
+	PARSE_HEADER_LIST_COUNT,
+	PARSE_HEADER_LIST_OFFSET,
+	PARSE_HEADER_MAGIC,
+	PARSE_HEADER_NODE_BYTES,
+	PARSE_HEADER_NODE_COUNT,
+	PARSE_HEADER_NODES_OFFSET,
+	PARSE_HEADER_ROOT,
+	PARSE_HEADER_SOURCE_LENGTH,
+	PARSE_HEADER_SOURCE_OFFSET,
+	PARSE_HEADER_TOKENS_OFFSET,
+	PARSE_HEADER_TOKEN_BYTES,
+	PARSE_HEADER_TOKEN_COUNT,
+	PARSE_HEADER_VERSION,
+	PARSE_MAGIC,
+	PARSE_VERSION,
 	TOKEN_BYTES,
-	TOKEN_HEADER_BYTES,
-	TOKEN_HEADER_COUNT,
-	TOKEN_HEADER_MAGIC,
-	TOKEN_HEADER_RECORD_BYTES,
-	TOKEN_HEADER_VERSION,
-	TOKEN_MAGIC,
-	TOKEN_VERSION,
 	WordBuffer,
 	alignWords,
-	buildAstBuffer,
-	buildTokenBuffer,
+	buildParseBuffer,
+	parseHeader,
+	readLineStarts,
 	readSource,
 	writeSource,
 } from "./binary.js";
@@ -119,229 +118,250 @@ describe("alignWords()", () => {
 	});
 });
 
-describe("buildTokenBuffer()", () => {
-	/**
-	 * Assembles a buffer from whole token records.
-	 * @param records The word values to write, four per token.
-	 * @returns The assembled buffer.
-	 */
-	function build(records: number[]): ArrayBuffer {
-		const words = new WordBuffer(16);
+/** What `build()` may be told to put in a buffer; everything is optional. */
+interface BuildOptions {
+	/** How many node records to claim, node 0 included. */
+	nodeCount?: number;
 
-		for (const value of records) {
-			words.push(value);
-		}
+	/** The words of the list region. */
+	listValues?: number[];
 
-		return buildTokenBuffer(words, records.length / (TOKEN_BYTES / 4));
-	}
+	/** The words of the token region, four per token. */
+	tokenValues?: number[];
 
-	it("writes a header identifying the buffer", () => {
-		const view = new Uint32Array(build([1, 2, 3, 4]));
+	/** The offsets at which each line begins. */
+	lineStarts?: number[];
 
-		expect(view[TOKEN_HEADER_MAGIC]).toBe(TOKEN_MAGIC);
-		expect(view[TOKEN_HEADER_VERSION]).toBe(TOKEN_VERSION);
-		expect(view[TOKEN_HEADER_COUNT]).toBe(1);
-		expect(view[TOKEN_HEADER_RECORD_BYTES]).toBe(TOKEN_BYTES);
-	});
+	/** The source text. */
+	source?: string;
 
-	it("sizes the buffer to the header plus every record", () => {
-		expect(build([1, 2, 3, 4, 5, 6, 7, 8]).byteLength).toBe(
-			TOKEN_HEADER_BYTES + 2 * TOKEN_BYTES,
-		);
-	});
+	/** Whether to copy the text into the buffer. */
+	embedSource?: boolean;
+}
 
-	it("writes the records after the header", () => {
-		const view = new Uint32Array(build([1, 2, 3, 4, 5, 6, 7, 8]));
-
-		expect(Array.from(view.subarray(TOKEN_HEADER_BYTES / 4))).toEqual([
-			1, 2, 3, 4, 5, 6, 7, 8,
-		]);
-	});
-
-	it("writes a header-only buffer when there are no tokens", () => {
-		const buffer = build([]);
-
-		expect(buffer.byteLength).toBe(TOKEN_HEADER_BYTES);
-		expect(new Uint32Array(buffer)[TOKEN_HEADER_COUNT]).toBe(0);
-	});
-
-	it("copies only the words the count covers", () => {
-		const words = new WordBuffer(16);
-
-		for (let i = 1; i <= 8; i++) {
-			words.push(i);
-		}
-
-		const view = new Uint32Array(buildTokenBuffer(words, 1));
-
-		expect(view.length).toBe((TOKEN_HEADER_BYTES + TOKEN_BYTES) / 4);
-		expect(Array.from(view.subarray(TOKEN_HEADER_BYTES / 4))).toEqual([
-			1, 2, 3, 4,
-		]);
-	});
-});
-
-describe("buildAstBuffer()", () => {
-	/**
-	 * Assembles an AST buffer from node words, list words, and source text.
-	 * @param nodeCount How many node records to claim, node 0 included.
-	 * @param listValues The words of the list region.
-	 * @param source The source text.
-	 * @param embedSource Whether to copy the text into the buffer.
-	 * @returns The assembled buffer.
-	 */
-	function build(
-		nodeCount: number,
-		listValues: number[],
-		source: string,
+/**
+ * Assembles a parse buffer from raw region contents.
+ * @param options What each region should hold.
+ * @returns The assembled buffer.
+ */
+function build(options: BuildOptions = {}): ArrayBuffer {
+	const {
+		nodeCount = 2,
+		listValues = [],
+		tokenValues = [],
+		lineStarts = [0],
+		source = "a;",
 		embedSource = true,
-	): ArrayBuffer {
-		const nodes = new WordBuffer(64);
+	} = options;
+	const nodes = new WordBuffer(64);
 
-		nodes.reserve((nodeCount * NODE_BYTES) / 4);
+	nodes.reserve((nodeCount * NODE_BYTES) / 4);
 
-		const lists = new WordBuffer(16);
+	const lists = new WordBuffer(16);
 
-		for (const value of listValues) {
-			lists.push(value);
-		}
-
-		return buildAstBuffer(
-			nodes,
-			nodeCount,
-			lists,
-			1,
-			source,
-			embedSource,
-		);
+	for (const value of listValues) {
+		lists.push(value);
 	}
 
-	it("writes a header identifying the buffer", () => {
-		const view = new Uint32Array(build(2, [], "a;"));
+	const tokens = new WordBuffer(16);
 
-		expect(view[AST_HEADER_MAGIC]).toBe(AST_MAGIC);
-		expect(view[AST_HEADER_VERSION]).toBe(AST_VERSION);
-		expect(view[AST_HEADER_NODE_COUNT]).toBe(2);
-		expect(view[AST_HEADER_NODE_BYTES]).toBe(NODE_BYTES);
-		expect(view[AST_HEADER_ROOT]).toBe(1);
+	for (const value of tokenValues) {
+		tokens.push(value);
+	}
+
+	return buildParseBuffer({
+		nodes,
+		nodeCount,
+		lists,
+		root: 1,
+		tokens,
+		tokenCount: tokenValues.length / (TOKEN_BYTES / 4),
+		lineStarts: new Uint32Array(lineStarts),
+		lineCount: lineStarts.length,
+		source,
+		embedSource,
+	});
+}
+
+describe("buildParseBuffer()", () => {
+	it("writes a header identifying the buffer", () => {
+		const view = new Uint32Array(build());
+
+		expect(view[PARSE_HEADER_MAGIC]).toBe(PARSE_MAGIC);
+		expect(view[PARSE_HEADER_VERSION]).toBe(PARSE_VERSION);
+		expect(view[PARSE_HEADER_NODE_COUNT]).toBe(2);
+		expect(view[PARSE_HEADER_NODE_BYTES]).toBe(NODE_BYTES);
+		expect(view[PARSE_HEADER_TOKEN_BYTES]).toBe(TOKEN_BYTES);
+		expect(view[PARSE_HEADER_ROOT]).toBe(1);
 	});
 
 	it("lays the regions out one after another", () => {
-		const view = new Uint32Array(build(2, [7, 8, 9], "a;"));
-		const nodesOffset = view[AST_HEADER_NODES_OFFSET];
-		const listOffset = view[AST_HEADER_LIST_OFFSET];
-		const sourceOffset = view[AST_HEADER_SOURCE_OFFSET];
+		const view = new Uint32Array(
+			build({
+				listValues: [7, 8, 9],
+				tokenValues: [1, 2, 3, 4, 5, 6, 7, 8],
+				lineStarts: [0, 5],
+			}),
+		);
+		const nodesOffset = view[PARSE_HEADER_NODES_OFFSET];
+		const listOffset = view[PARSE_HEADER_LIST_OFFSET];
+		const tokensOffset = view[PARSE_HEADER_TOKENS_OFFSET];
+		const linesOffset = view[PARSE_HEADER_LINES_OFFSET];
+		const sourceOffset = view[PARSE_HEADER_SOURCE_OFFSET];
 
-		expect(nodesOffset).toBe(AST_HEADER_BYTES);
+		expect(nodesOffset).toBe(PARSE_HEADER_BYTES);
 		expect(listOffset).toBe(nodesOffset + 2 * NODE_BYTES);
-		expect(sourceOffset).toBe(listOffset + 3 * 4);
-		expect(view[AST_HEADER_LIST_COUNT]).toBe(3);
-		expect(view[AST_HEADER_SOURCE_LENGTH]).toBe(2);
+		expect(tokensOffset).toBe(listOffset + 3 * 4);
+		expect(linesOffset).toBe(tokensOffset + 2 * TOKEN_BYTES);
+		expect(sourceOffset).toBe(linesOffset + 2 * 4);
+
+		expect(view[PARSE_HEADER_LIST_COUNT]).toBe(3);
+		expect(view[PARSE_HEADER_TOKEN_COUNT]).toBe(2);
+		expect(view[PARSE_HEADER_LINE_COUNT]).toBe(2);
+		expect(view[PARSE_HEADER_SOURCE_LENGTH]).toBe(2);
 	});
 
 	it("writes the list region where the header says it is", () => {
-		const buffer = build(2, [7, 8, 9], "a;");
+		const buffer = build({ listValues: [7, 8, 9] });
 		const view = new Uint32Array(buffer);
-		const listOffset = view[AST_HEADER_LIST_OFFSET];
 
 		expect(
-			Array.from(new Uint32Array(buffer, listOffset, 3)),
+			Array.from(
+				new Uint32Array(buffer, view[PARSE_HEADER_LIST_OFFSET], 3),
+			),
 		).toEqual([7, 8, 9]);
 	});
 
-	it("keeps every region word-aligned even for odd-length text", () => {
-		const buffer = build(2, [], "abc");
+	it("writes the token region where the header says it is", () => {
+		const buffer = build({ tokenValues: [1, 2, 3, 4, 5, 6, 7, 8] });
+		const view = new Uint32Array(buffer);
 
-		expect(buffer.byteLength % 4).toBe(0);
+		expect(
+			Array.from(
+				new Uint32Array(buffer, view[PARSE_HEADER_TOKENS_OFFSET], 8),
+			),
+		).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+	});
+
+	it("copies only the token words the count covers", () => {
+		const tokens = new WordBuffer(16);
+
+		for (let i = 1; i <= 8; i++) {
+			tokens.push(i);
+		}
+
+		const buffer = buildParseBuffer({
+			nodes: new WordBuffer(64),
+			nodeCount: 0,
+			lists: new WordBuffer(1),
+			root: 0,
+			tokens,
+			tokenCount: 1,
+			lineStarts: new Uint32Array([0]),
+			lineCount: 1,
+			source: "",
+			embedSource: false,
+		});
+
+		expect(buffer.byteLength).toBe(PARSE_HEADER_BYTES + TOKEN_BYTES + 4);
+		expect(Array.from(new Uint32Array(buffer, PARSE_HEADER_BYTES, 4))).toEqual(
+			[1, 2, 3, 4],
+		);
+	});
+
+	it("keeps every region word-aligned even for odd-length text", () => {
+		expect(build({ source: "abc" }).byteLength % 4).toBe(0);
 	});
 
 	it("embeds the source text so a fresh reader can recover it", () => {
 		const source = "const a = 1;";
 		// A copy is not in the cache, so the text has to be decoded.
-		const buffer = build(2, [], source).slice(0);
+		const buffer = build({ source }).slice(0);
 		const view = new Uint32Array(buffer);
 
 		expect(
 			readSource(
 				buffer,
-				view[AST_HEADER_SOURCE_OFFSET],
-				view[AST_HEADER_SOURCE_LENGTH],
+				view[PARSE_HEADER_SOURCE_OFFSET],
+				view[PARSE_HEADER_SOURCE_LENGTH],
 			),
 		).toBe(source);
 	});
 
 	it("embeds text outside the ASCII range", () => {
 		const source = "const é = \"日\";";
-		const buffer = build(2, [], source).slice(0);
+		const buffer = build({ source }).slice(0);
 		const view = new Uint32Array(buffer);
 
 		expect(
 			readSource(
 				buffer,
-				view[AST_HEADER_SOURCE_OFFSET],
-				view[AST_HEADER_SOURCE_LENGTH],
+				view[PARSE_HEADER_SOURCE_OFFSET],
+				view[PARSE_HEADER_SOURCE_LENGTH],
 			),
 		).toBe(source);
 	});
 
 	it("caches the source text against the buffer it built", () => {
 		const source = "const a = 1;";
-		const buffer = build(2, [], source);
+		const buffer = build({ source });
 		const view = new Uint32Array(buffer);
 
 		expect(
 			readSource(
 				buffer,
-				view[AST_HEADER_SOURCE_OFFSET],
-				view[AST_HEADER_SOURCE_LENGTH],
+				view[PARSE_HEADER_SOURCE_OFFSET],
+				view[PARSE_HEADER_SOURCE_LENGTH],
 			),
 		).toBe(source);
 	});
 
 	it("handles empty source text", () => {
-		const buffer = build(1, [], "");
+		const buffer = build({ nodeCount: 1, source: "" });
 		const view = new Uint32Array(buffer);
 
-		expect(view[AST_HEADER_SOURCE_LENGTH]).toBe(0);
+		expect(view[PARSE_HEADER_SOURCE_LENGTH]).toBe(0);
 		expect(
-			readSource(buffer.slice(0), view[AST_HEADER_SOURCE_OFFSET], 0),
+			readSource(buffer.slice(0), view[PARSE_HEADER_SOURCE_OFFSET], 0),
 		).toBe("");
 	});
 
 	describe("without embedSource", () => {
 		it("records the flag and leaves the region empty", () => {
 			const source = "const a = 1;";
-			const embedded = new Uint32Array(build(2, [], source));
-			const bare = new Uint32Array(build(2, [], source, false));
-
-			expect(embedded[AST_HEADER_FLAGS] & AST_FLAG_SOURCE_EMBEDDED).toBe(
-				AST_FLAG_SOURCE_EMBEDDED,
+			const embedded = new Uint32Array(build({ source }));
+			const bare = new Uint32Array(
+				build({ source, embedSource: false }),
 			);
-			expect(bare[AST_HEADER_FLAGS] & AST_FLAG_SOURCE_EMBEDDED).toBe(0);
+
+			expect(embedded[PARSE_HEADER_FLAGS] & PARSE_FLAG_SOURCE_EMBEDDED).toBe(
+				PARSE_FLAG_SOURCE_EMBEDDED,
+			);
+			expect(bare[PARSE_HEADER_FLAGS] & PARSE_FLAG_SOURCE_EMBEDDED).toBe(0);
 
 			// The length still describes the program; only the bytes are gone.
-			expect(bare[AST_HEADER_SOURCE_LENGTH]).toBe(source.length);
+			expect(bare[PARSE_HEADER_SOURCE_LENGTH]).toBe(source.length);
 			expect(bare.byteLength).toBeLessThan(embedded.byteLength);
-			expect(bare[AST_HEADER_SOURCE_OFFSET]).toBe(bare.byteLength);
+			expect(bare[PARSE_HEADER_SOURCE_OFFSET]).toBe(bare.byteLength);
 		});
 
 		it("still serves the text in the process that built it", () => {
 			const source = "const a = 1;";
-			const buffer = build(2, [], source, false);
+			const buffer = build({ source, embedSource: false });
 			const view = new Uint32Array(buffer);
 
 			expect(
 				readSource(
 					buffer,
-					view[AST_HEADER_SOURCE_OFFSET],
-					view[AST_HEADER_SOURCE_LENGTH],
+					view[PARSE_HEADER_SOURCE_OFFSET],
+					view[PARSE_HEADER_SOURCE_LENGTH],
 				),
 			).toBe(source);
 		});
 
 		it("refuses loudly rather than decoding an absent region", () => {
 			const source = "const a = 1;";
-			const buffer = build(2, [], source, false);
+			const buffer = build({ source, embedSource: false });
 			const view = new Uint32Array(buffer);
 
 			/*
@@ -351,11 +371,45 @@ describe("buildAstBuffer()", () => {
 			expect(() =>
 				readSource(
 					buffer.slice(0),
-					view[AST_HEADER_SOURCE_OFFSET],
-					view[AST_HEADER_SOURCE_LENGTH],
+					view[PARSE_HEADER_SOURCE_OFFSET],
+					view[PARSE_HEADER_SOURCE_LENGTH],
 				),
 			).toThrow(/carries no source text/u);
 		});
+	});
+});
+
+describe("parseHeader()", () => {
+	it("returns a word view over a parse buffer", () => {
+		const buffer = build();
+
+		expect(parseHeader(buffer)[PARSE_HEADER_MAGIC]).toBe(PARSE_MAGIC);
+	});
+
+	it("refuses a buffer that is not one", () => {
+		expect(() => parseHeader(new ArrayBuffer(64))).toThrow(
+			/Not a jsparse parse buffer/u,
+		);
+	});
+});
+
+describe("readLineStarts()", () => {
+	it("views the line offsets stored in the buffer", () => {
+		const starts = readLineStarts(build({ lineStarts: [0, 12, 30] }));
+
+		expect(Array.from(starts)).toEqual([0, 12, 30]);
+	});
+
+	it("views the buffer rather than copying it", () => {
+		const buffer = build({ lineStarts: [0, 12] });
+
+		expect(readLineStarts(buffer).buffer).toBe(buffer);
+	});
+
+	it("refuses a buffer that is not a parse buffer", () => {
+		expect(() => readLineStarts(new ArrayBuffer(64))).toThrow(
+			/Not a jsparse parse buffer/u,
+		);
 	});
 });
 

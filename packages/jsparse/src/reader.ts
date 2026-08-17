@@ -1,22 +1,23 @@
 /**
- * @fileoverview Readers over the binary buffers produced by `parse()`.
+ * @fileoverview Readers over the binary buffer produced by `parse()`.
+ *
+ * Both readers are constructed over the whole parse buffer and find their own
+ * region through the header, so a consumer passes the one value `parse()`
+ * returned to whichever of them it needs.
  */
 
 import {
-	AST_HEADER_LIST_OFFSET,
-	AST_HEADER_MAGIC,
-	AST_HEADER_NODES_OFFSET,
-	AST_HEADER_NODE_BYTES,
-	AST_HEADER_NODE_COUNT,
-	AST_HEADER_ROOT,
-	AST_HEADER_SOURCE_LENGTH,
-	AST_HEADER_SOURCE_OFFSET,
-	AST_MAGIC,
-	TOKEN_HEADER_BYTES,
-	TOKEN_HEADER_COUNT,
-	TOKEN_HEADER_MAGIC,
-	TOKEN_HEADER_RECORD_BYTES,
-	TOKEN_MAGIC,
+	PARSE_HEADER_LIST_OFFSET,
+	PARSE_HEADER_NODES_OFFSET,
+	PARSE_HEADER_NODE_BYTES,
+	PARSE_HEADER_NODE_COUNT,
+	PARSE_HEADER_ROOT,
+	PARSE_HEADER_SOURCE_LENGTH,
+	PARSE_HEADER_SOURCE_OFFSET,
+	PARSE_HEADER_TOKENS_OFFSET,
+	PARSE_HEADER_TOKEN_BYTES,
+	PARSE_HEADER_TOKEN_COUNT,
+	parseHeader,
 	readSource,
 } from "./binary.js";
 import {
@@ -27,7 +28,7 @@ import {
 } from "./node-kinds.js";
 
 /**
- * Reads nodes and child lists out of an AST buffer.
+ * Reads nodes and child lists out of a parse buffer.
  */
 export class AstReader {
 	/** The whole buffer, viewed as 32-bit words. */
@@ -52,22 +53,18 @@ export class AstReader {
 	private sourceText: string | null = null;
 
 	/**
-	 * Creates a reader over an AST buffer.
+	 * Creates a reader over a parse buffer.
 	 * @param buffer The buffer returned by `parse()`.
-	 * @throws {TypeError} When the buffer is not an AST buffer.
+	 * @throws {TypeError} When the buffer is not a parse buffer.
 	 */
 	constructor(buffer: ArrayBufferLike) {
-		this.words = new Uint32Array(buffer);
+		this.words = parseHeader(buffer);
 
-		if (this.words[AST_HEADER_MAGIC] !== AST_MAGIC) {
-			throw new TypeError("Not a jsparse AST buffer");
-		}
-
-		this.nodesBase = this.words[AST_HEADER_NODES_OFFSET] / 4;
-		this.listsBase = this.words[AST_HEADER_LIST_OFFSET] / 4;
-		this.nodeWords = this.words[AST_HEADER_NODE_BYTES] / 4;
-		this.nodeCount = this.words[AST_HEADER_NODE_COUNT];
-		this.root = this.words[AST_HEADER_ROOT];
+		this.nodesBase = this.words[PARSE_HEADER_NODES_OFFSET] / 4;
+		this.listsBase = this.words[PARSE_HEADER_LIST_OFFSET] / 4;
+		this.nodeWords = this.words[PARSE_HEADER_NODE_BYTES] / 4;
+		this.nodeCount = this.words[PARSE_HEADER_NODE_COUNT];
+		this.root = this.words[PARSE_HEADER_ROOT];
 	}
 
 	/**
@@ -87,8 +84,8 @@ export class AstReader {
 		if (text === null) {
 			text = readSource(
 				this.words.buffer,
-				this.words[AST_HEADER_SOURCE_OFFSET],
-				this.words[AST_HEADER_SOURCE_LENGTH],
+				this.words[PARSE_HEADER_SOURCE_OFFSET],
+				this.words[PARSE_HEADER_SOURCE_LENGTH],
 			);
 			this.sourceText = text;
 		}
@@ -183,7 +180,7 @@ export interface TokenRecord {
 }
 
 /**
- * Reads token records out of a token buffer.
+ * Reads token records out of a parse buffer.
  */
 export class TokenReader {
 	/** The whole buffer, viewed as 32-bit words. */
@@ -199,20 +196,16 @@ export class TokenReader {
 	readonly base: number;
 
 	/**
-	 * Creates a reader over a token buffer.
+	 * Creates a reader over a parse buffer.
 	 * @param buffer The buffer returned by `parse()`.
-	 * @throws {TypeError} When the buffer is not a token buffer.
+	 * @throws {TypeError} When the buffer is not a parse buffer.
 	 */
 	constructor(buffer: ArrayBufferLike) {
-		this.words = new Uint32Array(buffer);
+		this.words = parseHeader(buffer);
 
-		if (this.words[TOKEN_HEADER_MAGIC] !== TOKEN_MAGIC) {
-			throw new TypeError("Not a jsparse token buffer");
-		}
-
-		this.count = this.words[TOKEN_HEADER_COUNT];
-		this.recordWords = this.words[TOKEN_HEADER_RECORD_BYTES] / 4;
-		this.base = TOKEN_HEADER_BYTES / 4;
+		this.count = this.words[PARSE_HEADER_TOKEN_COUNT];
+		this.recordWords = this.words[PARSE_HEADER_TOKEN_BYTES] / 4;
+		this.base = this.words[PARSE_HEADER_TOKENS_OFFSET] / 4;
 	}
 
 	/**

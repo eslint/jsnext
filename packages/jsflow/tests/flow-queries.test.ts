@@ -170,7 +170,7 @@ describe("input validation", () => {
 		const scope = analyzeTree(program as never, { sourceType: "module" });
 		const { parsed } = graphOf("const a = 1;");
 
-		expect(() => createGraph(parsed.ast, scope)).toThrow(
+		expect(() => createGraph(parsed, scope)).toThrow(
 			/tree handles/u,
 		);
 	});
@@ -179,11 +179,11 @@ describe("input validation", () => {
 		const { parsed, scope, flow } = graphOf("f();");
 
 		expect(() => createGraph(scope, scope)).toThrow(TypeError);
-		expect(() => createGraph(parsed.ast, parsed.ast)).toThrow(TypeError);
-		expect(() => toGraphTree(parsed.ast, parsed.ast, scope)).toThrow(
+		expect(() => createGraph(parsed, parsed)).toThrow(TypeError);
+		expect(() => toGraphTree(parsed, parsed, scope)).toThrow(
 			TypeError,
 		);
-		expect(() => toGraphTree(flow, parsed.ast, parsed.ast)).toThrow(
+		expect(() => toGraphTree(flow, parsed, parsed)).toThrow(
 			TypeError,
 		);
 	});

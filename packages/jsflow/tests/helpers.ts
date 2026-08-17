@@ -42,15 +42,15 @@ export function graphOf(
 ): GraphFixture {
 	const parsed = parse(code);
 	const scope = analyze(parsed, { sourceType: "module", ...options });
-	const flow = createGraph(parsed.ast, scope);
+	const flow = createGraph(parsed, scope);
 
 	return {
 		parsed,
 		scope,
 		flow,
-		tree: toGraphTree(flow, parsed.ast, scope),
+		tree: toGraphTree(flow, parsed, scope),
 		reader: new FlowBufferReader(flow),
-		ast: new AstReader(parsed.ast),
+		ast: new AstReader(parsed),
 	};
 }
 

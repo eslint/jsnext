@@ -2,7 +2,7 @@
  * @fileoverview Turning stored node handles back into nodes.
  *
  * A scope buffer refers to the AST by handle: a byte offset into the binary
- * AST buffer, or a position in the tree enumeration. The consumers that hand
+ * parse buffer, or a position in the tree enumeration. The consumers that hand
  * nodes back to a caller — `Scopes`, `toScopeManager()`, `toScopeTree()` —
  * need the reverse mapping, and this module supplies it for both paths behind
  * one interface.
@@ -21,8 +21,8 @@ import { collectTreeNodes, isEsTreeNode } from "./tree-nodes.js";
 
 /**
  * What a consumer of a scope buffer accepts as "the program": the parse
- * result the binary analysis ran over, a reader already constructed over its
- * AST buffer, or the very `Program` node `analyzeTree()` was given.
+ * buffer the binary analysis ran over, a reader already constructed over it,
+ * or the very `Program` node `analyzeTree()` was given.
  */
 export type ScopeSource = ParseResult | AstReader | EsTreeNode;
 
@@ -35,7 +35,7 @@ export interface NodeSource<TNode> {
 	/** How to read the program the handles point into. */
 	readonly ast: AstAccess<TNode>;
 
-	/** The reader over the AST buffer, or `null` on the tree path. */
+	/** The reader over the parse buffer, or `null` on the tree path. */
 	readonly reader: AstReader | null;
 
 	/** The node a handle stores, for a handle that is not `0`. */
@@ -47,7 +47,7 @@ export interface NodeSource<TNode> {
 
 /**
  * Builds the node source for a scope buffer over a binary AST.
- * @param reader The reader over the AST buffer.
+ * @param reader The reader over the parse buffer.
  * @returns The node source.
  */
 function binaryNodeSource(reader: AstReader): NodeSource<number> {
@@ -81,20 +81,6 @@ function treeNodeSource(root: EsTreeNode): NodeSource<EsTreeNode> {
 }
 
 /**
- * Reports whether a value is the result `parse()` returned.
- * @param source The value to test.
- * @returns `true` for a parse result.
- */
-function isParseResult(source: ScopeSource): source is ParseResult {
-	return (
-		typeof source === "object" &&
-		source !== null &&
-		"ast" in source &&
-		!("type" in source)
-	);
-}
-
-/**
  * Resolves whatever the caller supplied as the program into a node source,
  * checking that it matches the path the buffer was written on.
  * @param source The parse result, reader, or `Program` node.
@@ -116,14 +102,14 @@ export function resolveNodeSource(
 		return binaryNodeSource(source);
 	}
 
-	if (isParseResult(source)) {
+	if (source instanceof ArrayBuffer) {
 		if (treeHandles) {
 			throw new TypeError(
 				"This scope buffer came from analyzeTree(); pass the Program node it analyzed.",
 			);
 		}
 
-		return binaryNodeSource(new AstReader(source.ast));
+		return binaryNodeSource(new AstReader(source));
 	}
 
 	if (isEsTreeNode(source)) {

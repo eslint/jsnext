@@ -25,7 +25,7 @@
  *    which is also what future type narrowing needs.
  *
  * Node references are **handles**: the byte offset of the node's record in
- * the AST buffer the graph was built from, exactly as the scope buffer's
+ * the parse buffer the graph was built from, exactly as the scope buffer's
  * binary path stores them. Scope references are byte offsets of reference
  * records in the scope buffer. Handle `0` means "none" for both.
  *

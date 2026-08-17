@@ -14,7 +14,7 @@ import type { AstReader } from "@eslint/jsparse";
 /**
  * The handle stored for a node: the byte offset of its record in the AST
  * buffer.
- * @param reader The reader over the AST buffer.
+ * @param reader The reader over the parse buffer.
  * @param node The node index.
  * @returns The byte offset.
  */
@@ -24,7 +24,7 @@ export function nodeHandle(reader: AstReader, node: number): number {
 
 /**
  * The node index a stored handle names.
- * @param reader The reader over the AST buffer.
+ * @param reader The reader over the parse buffer.
  * @param handle The byte offset of the node's record.
  * @returns The node index.
  */

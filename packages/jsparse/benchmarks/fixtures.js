@@ -130,7 +130,15 @@ export enum Mode${index} {
 	Auto = "auto",
 }
 
-export abstract class Service${index}<T extends object> implements Shape${index}<T> {
+declare class Base${index} {
+	constructor(...args: unknown[]);
+	protected tag?: string;
+}
+
+export abstract class Service${index}<T extends object>
+	extends Base${index}
+	implements Shape${index}<T>
+{
 	readonly id: number = ${index};
 	name?: string;
 	values: Array<T | null> = [];
