@@ -23,6 +23,7 @@ import {
 	LIT_NUMBER,
 	LIT_REGEXP,
 	LIT_STRING,
+	NF_IDENTIFIER_NAME,
 	NODE_A,
 	NODE_B,
 	N_Identifier,
@@ -372,6 +373,14 @@ export abstract class ParserBase {
 		 * the end of the name itself is recorded separately.
 		 */
 		this.writer.set(node, NODE_A, end);
+
+		/*
+		 * Every word that reaches here is an `IdentifierName` — a property
+		 * name, a member access, an import or export name, or half of a meta
+		 * property — and a reserved word is allowed to be any of those.
+		 * `validate()` cannot tell that from the tree, so it is recorded.
+		 */
+		this.writer.addFlags(node, NF_IDENTIFIER_NAME);
 		this.tokenizer.next();
 
 		return this.writer.finish(node, end);
@@ -503,7 +512,10 @@ export abstract class ParserBase {
 	 * Parses a parenthesized parameter list.
 	 * @returns A list handle holding the parameter nodes.
 	 */
-	abstract parseParameterList(): number;
+	abstract parseParameterList(
+		isAsync?: boolean,
+		isGenerator?: boolean,
+	): number;
 
 	/**
 	 * Parses a `: Type` annotation.

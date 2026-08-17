@@ -243,8 +243,8 @@ is always there.
 
 Not deviations — bugs that are simply not fixed yet.
 
-The first four were found by running TypeScript's own conformance suite (see
-[AGENTS.md](../AGENTS.md#conformance-is-the-real-test-suite)) and all four are
+The first three were found by running TypeScript's own conformance suite (see
+[AGENTS.md](../AGENTS.md#conformance-is-the-real-test-suite)) and all three are
 confined to input that is already an error, which is why they have been left.
 
 - **`export { type as as bar }`** throws. A binding actually named `as`, with a
@@ -254,10 +254,6 @@ confined to input that is already an error, which is why they have been left.
 - **`({...({})} = {})`** produces an `ObjectPattern` where the reference keeps
   an `ObjectExpression`. Parentheses around an invalid rest target are the
   trigger; without them the two agree.
-- **`function *f(a = yield) {}`** reads `yield` as an identifier where
-  `@typescript-eslint/parser` builds a `YieldExpression`. `yield` is not legal
-  in a generator's parameters at all, and `espree` rejects the program
-  outright, so there is no answer that satisfies both references.
 - **Error recovery in general.** TypeScript's parser continues after a syntax
   error and produces a tree; this one throws. Roughly twenty files in the
   conformance suite differ for that reason alone, all of them negative tests.
@@ -268,10 +264,10 @@ The last one comes from test262, which is the only corpus that tests what the
 parser *rejects*. No valid program is rejected — that count is zero and has to
 stay there — so what is left is invalid programs accepted in silence.
 
-- **Most of ECMAScript's early errors.** Around 1,817 test262 files are invalid
-  programs that both phases accept: `yield` as a binding name inside a
-  generator, `eval` assigned to in strict code, `break` with nothing to break
-  out of. The families are enumerated with rough counts in
+- **Most of ECMAScript's early errors.** Around 1,429 test262 files are invalid
+  programs that both phases accept: `eval` assigned to in strict code, `break`
+  with nothing to break out of, a lexical declaration as the body of an `if`.
+  The families are enumerated with rough counts in
   [`packages/jsparse/scripts/262-exclusions.mjs`](../packages/jsparse/scripts/262-exclusions.mjs),
   and the per-directory counts are pinned in `262-baseline.json` so that the
   number cannot quietly grow.

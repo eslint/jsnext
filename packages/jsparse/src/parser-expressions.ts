@@ -1230,7 +1230,11 @@ export abstract class ExpressionParser extends TypeParser {
 		const node = this.writer.alloc(N_FunctionExpression, this.start);
 
 		this.writer.set(node, NODE_D, this.tryParseTypeParameters());
-		this.writer.set(node, NODE_B, this.parseParameterList());
+		this.writer.set(
+			node,
+			NODE_B,
+			this.parseParameterList(isAsync, isGenerator),
+		);
 		this.writer.set(node, NODE_E, this.tryParseTypeAnnotation());
 
 		if (isAsync) {
@@ -1670,7 +1674,11 @@ export abstract class ExpressionParser extends TypeParser {
 		}
 
 		this.writer.set(node, NODE_D, this.tryParseTypeParameters());
-		this.writer.set(node, NODE_B, this.parseParameterList());
+		this.writer.set(
+			node,
+			NODE_B,
+			this.parseParameterList(isAsync, isGenerator),
+		);
 		this.writer.set(node, NODE_E, this.tryParseTypeAnnotation());
 		this.writer.set(
 			node,
@@ -1720,7 +1728,31 @@ export abstract class ExpressionParser extends TypeParser {
 	 * Parses a parenthesized parameter list.
 	 * @returns A list handle holding the parameter nodes.
 	 */
-	parseParameterList(): number {
+	parseParameterList(
+		isAsync = this.inAsync,
+		isGenerator = this.inGenerator,
+	): number {
+		const previousAsync = this.inAsync;
+		const previousGenerator = this.inGenerator;
+
+		/*
+		 * A function's parameters are read in the function's own context, not
+		 * in the one around it: `FormalParameters[~Yield, ~Await]` for an
+		 * ordinary function and `[+Yield]` for a generator. So the `yield` in
+		 * `function *g() { function f(x = yield) {} }` is an ordinary name,
+		 * belonging to `f`, while the one in `function *g(x = yield) {}` is a
+		 * `YieldExpression` that is then not allowed to be there.
+		 *
+		 * An arrow is the exception and passes nothing, because its
+		 * parameters really do inherit — they are read before the `=>` is
+		 * known to be coming, and the specification has them as
+		 * `ArrowParameters[?Yield, ?Await]`.
+		 */
+		this.inAsync = isAsync;
+		this.inGenerator = isGenerator;
+		this.tokenizer.inAsync = isAsync;
+		this.tokenizer.inGenerator = isGenerator;
+
 		const mark = this.writer.startList();
 
 		this.expect(T_PAREN_OPEN);
@@ -1755,6 +1787,11 @@ export abstract class ExpressionParser extends TypeParser {
 		}
 
 		this.expect(T_PAREN_CLOSE);
+
+		this.inAsync = previousAsync;
+		this.inGenerator = previousGenerator;
+		this.tokenizer.inAsync = previousAsync;
+		this.tokenizer.inGenerator = previousGenerator;
 
 		return this.writer.endList(mark);
 	}

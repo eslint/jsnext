@@ -87,6 +87,23 @@ export const NF_IN = 1 << 22;
 /** A JSX opening element that closes itself, as in `<br />`. */
 export const NF_SELF_CLOSING = NF_ASYNC;
 
+/**
+ * An `Identifier` that stands for an `IdentifierName` rather than for a
+ * binding or a reference: the `x` in `o.x`, `{ x: 1 }`, `class C { x() {} }`,
+ * and `import { x as y }`.
+ *
+ * The two are the same node kind and the same text, and only the parser can
+ * tell them apart — it reaches one through `parseIdentifier()` and the other
+ * through `parseWordAsIdentifier()`. Which it was decides whether a reserved
+ * word is an error there, so `validate()` needs the answer and cannot work it
+ * out from the tree: `await` is a name in `o.await` and a reference in
+ * `({ await })`, and both are an `Identifier` under a `Property`.
+ *
+ * The highest bit, because the low ones are spoken for and the packed
+ * enumerations above start at 23.
+ */
+export const NF_IDENTIFIER_NAME = 1 << 31;
+
 /*
  * Small enumerations are packed into the high bits of the flags word rather
  * than consuming a whole data slot.

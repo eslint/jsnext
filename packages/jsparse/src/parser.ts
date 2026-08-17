@@ -607,7 +607,11 @@ export class Parser extends JsxParser {
 		}
 
 		this.writer.set(node, NODE_D, this.tryParseTypeParameters());
-		this.writer.set(node, NODE_B, this.parseParameterList());
+		this.writer.set(
+			node,
+			NODE_B,
+			this.parseParameterList(isAsync, isGenerator),
+		);
 		this.writer.set(node, NODE_E, this.tryParseTypeAnnotation());
 
 		if (this.at(T_BRACE_OPEN)) {

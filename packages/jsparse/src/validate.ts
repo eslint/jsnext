@@ -22,12 +22,18 @@ import {
 	MKIND_MASK,
 	MKIND_SET,
 	MKIND_SHIFT,
+	NF_ASYNC,
 	NF_COMPUTED,
+	NF_GENERATOR,
+	NF_IDENTIFIER_NAME,
 	NF_METHOD,
+	NF_SHORTHAND,
 	NF_STATIC,
 	TS_FIRST,
 	N_ArrayPattern,
 	N_AssignmentExpression,
+	N_AwaitExpression,
+	N_YieldExpression,
 	N_AssignmentPattern,
 	N_BinaryExpression,
 	N_BlockStatement,
@@ -39,6 +45,7 @@ import {
 	N_ExportAllDeclaration,
 	N_ExportDefaultDeclaration,
 	N_ExportNamedDeclaration,
+	N_ExportSpecifier,
 	N_ForInStatement,
 	N_ForOfStatement,
 	N_ForStatement,
@@ -86,11 +93,14 @@ import { SLOT_COUNT, SLOT_LIST, SLOT_NODE, SLOT_TABLE } from "./slots.js";
 import {
 	KEYWORD_FIRST,
 	KEYWORD_LAST,
+	KEYWORD_NAMES,
 	KIND_KEYWORD_FLAGS,
 	KW_STRICT_RESERVED,
 	T_ASSIGN,
+	T_await,
 	T_delete,
 	T_in,
+	T_yield,
 	lookupKeyword,
 	hashChar,
 } from "./token-kinds.js";
@@ -115,6 +125,33 @@ const BINDING_PARAM = 3;
 const BINDING_TYPE = 4;
 const BINDING_SIGNATURE = 5;
 const BINDING_CATCH = 6;
+
+/** The character that hides a letter, as in `yield`. */
+const CH_BACKSLASH = 0x5c;
+
+/**
+ * Which characters an identifier that might be a reserved word can start with.
+ *
+ * The words are `await`, `implements`, `interface`, `let`, `package`,
+ * `private`, `protected`, `public`, `static`, and `yield`, so six letters
+ * cover all of them — plus the backslash, for a first letter written as an
+ * escape. Indexed by character code; anything outside ASCII cannot begin one.
+ */
+const RESERVED_INITIALS = /* @__PURE__ */ buildReservedInitials();
+
+/**
+ * Builds the table of characters a reserved word can start with.
+ * @returns The table, indexed by character code.
+ */
+function buildReservedInitials(): Uint8Array {
+	const table = new Uint8Array(128);
+
+	for (const letter of "ailpsy\\") {
+		table[letter.charCodeAt(0)] = 1;
+	}
+
+	return table;
+}
 
 /**
  * One lexical scope's bindings.
@@ -234,6 +271,39 @@ class Validator {
 	private readonly privateNames: Set<string>[] = [];
 
 	/**
+	 * Whether the function being visited is a generator, which reserves
+	 * `yield` even in sloppy code.
+	 */
+	private inGenerator = false;
+
+	/**
+	 * Whether the function being visited is async, which reserves `await`.
+	 *
+	 * Separate from `awaitReserved` because it decides only the wording of the
+	 * complaint: a module reserves `await` without any function being async.
+	 */
+	private inAsync = false;
+
+	/**
+	 * Whether `await` may not be an identifier here.
+	 *
+	 * True inside an async function, anywhere in a module, and inside a class
+	 * static block — which is not async, but reserves the word anyway so that
+	 * it can be given a meaning there later.
+	 */
+	private awaitReserved = false;
+
+	/**
+	 * Whether a parameter list is being visited.
+	 *
+	 * A default value runs before the function's own body exists, so it may
+	 * not suspend it: neither `yield` nor `await` may appear in one. A nested
+	 * function's body clears this, because `f(x = async () => await 1)` is
+	 * fine — the suspension belongs to the arrow, not to `f`.
+	 */
+	private inParameters = false;
+
+	/**
 	 * The reader for regular expression patterns, made on first use.
 	 *
 	 * Most programs have no regular expression literal at all, and the one
@@ -262,6 +332,9 @@ class Validator {
 		this.dialect = dialect;
 		this.jsx = jsx;
 		this.strict = sourceType === "module";
+
+		// A module reserves `await` everywhere in it, function or no function.
+		this.awaitReserved = sourceType === "module";
 		this.scope = {
 			names: new Map(),
 			varNames: new Set(),
@@ -390,12 +463,29 @@ class Validator {
 			 * function declared in either one binds there.
 			 */
 			case N_StaticBlock:
-			case N_TSModuleBlock:
+			case N_TSModuleBlock: {
+				const wasAwait = this.awaitReserved;
+				const wasGenerator = this.inGenerator;
+
+				/*
+				 * A static block is not async, but it reserves `await` so that
+				 * the word is free to be given a meaning there later. It is
+				 * not a generator either, and `yield` inside one is reserved
+				 * only because a class body is strict.
+				 */
+				if (kind === N_StaticBlock) {
+					this.awaitReserved = true;
+					this.inGenerator = false;
+				}
+
 				this.enterScope(true);
 				this.hoist(reader.field(node, NODE_A));
 				this.visitChildren(node, kind);
 				this.exitScope();
+				this.awaitReserved = wasAwait;
+				this.inGenerator = wasGenerator;
 				return;
+			}
 
 			/*
 			 * Every case shares the switch's one block scope, so a lexical
@@ -517,17 +607,26 @@ class Validator {
 			case N_ClassDeclaration:
 			case N_ClassExpression: {
 				const body = reader.field(node, NODE_C);
+				const wasStrict = this.strict;
 
+				/*
+				 * Every part of a class is strict mode code, its name and its
+				 * heritage clause included, whatever surrounds it. So
+				 * `class C { m() { var yield; } }` is an error in a sloppy
+				 * script, where the same method written outside a class is
+				 * not.
+				 */
+				this.strict = true;
 				this.visit(reader.field(node, NODE_A));
 				this.visit(reader.field(node, NODE_B));
 
-				if (body === 0) {
-					return;
+				if (body !== 0) {
+					this.privateNames.push(this.collectPrivateNames(body));
+					this.visitChildren(body, reader.kind(body));
+					this.privateNames.pop();
 				}
 
-				this.privateNames.push(this.collectPrivateNames(body));
-				this.visitChildren(body, reader.kind(body));
-				this.privateNames.pop();
+				this.strict = wasStrict;
 				return;
 			}
 
@@ -593,8 +692,17 @@ class Validator {
 		const reader = this.reader;
 		const previousStrict = this.strict;
 		const previousUnique = this.uniqueParams;
+		const previousGenerator = this.inGenerator;
+		const previousAsync = this.inAsync;
+		const previousAwait = this.awaitReserved;
+		const previousParameters = this.inParameters;
 		const isMethod = this.inMethod;
 		const body = reader.field(node, NODE_C);
+		const kind = reader.kind(node);
+		const flags = reader.flags(node);
+		const isArrow = kind === N_ArrowFunctionExpression;
+		const isGenerator = (flags & NF_GENERATOR) !== 0;
+		const isAsync = (flags & NF_ASYNC) !== 0;
 
 		/*
 		 * Method-ness reaches exactly one function, the one it was set for.
@@ -632,10 +740,33 @@ class Validator {
 		}
 
 		this.uniqueParams =
-			this.strict ||
-			!simple ||
-			isMethod ||
-			reader.kind(node) === N_ArrowFunctionExpression;
+			this.strict || !simple || isMethod || isArrow;
+
+		const isDeclaration =
+			kind === N_FunctionDeclaration || kind === N_TSDeclareFunction;
+
+		/*
+		 * A function's own name is read where the function is written, not
+		 * inside it — so `function* yield() {}` is legal in sloppy code while
+		 * `(function* yield() {})` is not, an expression's name being the one
+		 * thing about it that is in scope within its own body.
+		 */
+		if (isDeclaration) {
+			this.visit(reader.field(node, NODE_A));
+		}
+
+		/*
+		 * An arrow reads its parameters in the enclosing context and its body
+		 * in a fresh one, which no other function does. So
+		 * `async function f() { (await) => 1; }` is an error while
+		 * `async function f() { () => { var await; }; }` is not.
+		 */
+		this.inGenerator = isArrow ? previousGenerator : isGenerator;
+		this.inAsync = isArrow ? previousAsync || isAsync : isAsync;
+		this.awaitReserved =
+			this.inAsync ||
+			(isArrow && previousAwait) ||
+			this.sourceType === "module";
 
 		for (let i = 0; i < size; i++) {
 			const param = reader.listItem(params, i);
@@ -654,8 +785,21 @@ class Validator {
 		}
 
 		this.uniqueParams = previousUnique;
-		this.visit(reader.field(node, NODE_A));
+
+		if (!isDeclaration) {
+			this.visit(reader.field(node, NODE_A));
+		}
+
+		this.inParameters = true;
 		this.visitList(params);
+		this.inParameters = false;
+
+		// The body of an arrow is the one place the enclosing context stops.
+		if (isArrow) {
+			this.inGenerator = false;
+			this.inAsync = isAsync;
+			this.awaitReserved = isAsync || this.sourceType === "module";
+		}
 
 		if (body !== 0 && reader.kind(body) === N_BlockStatement) {
 			this.hoist(reader.field(body, NODE_A));
@@ -669,6 +813,10 @@ class Validator {
 		this.exitScope();
 		this.functionDepth--;
 		this.strict = previousStrict;
+		this.inGenerator = previousGenerator;
+		this.inAsync = previousAsync;
+		this.awaitReserved = previousAwait;
+		this.inParameters = previousParameters;
 	}
 
 	/**
@@ -1001,7 +1149,12 @@ class Validator {
 		const name = reader.text(identifier);
 		const start = reader.start(identifier);
 
-		this.checkReservedBinding(name, start);
+		/*
+		 * Nothing checks the word here. Every binding identifier is also
+		 * reached by the walk, which checks all of them in one place —
+		 * references and labels included — so doing it here too would report
+		 * a binding twice.
+		 */
 
 		if (binding === BINDING_VAR) {
 			this.declareVar(name, start);
@@ -1129,27 +1282,152 @@ class Validator {
 			hash = hashChar(hash, name.charCodeAt(i));
 		}
 
-		const kind = lookupKeyword(name, 0, name.length, hash);
+		this.checkReservedWord(
+			lookupKeyword(name, 0, name.length, hash),
+			start,
+		);
+	}
 
+	/**
+	 * Reports a word that may not be an identifier where it was written.
+	 *
+	 * Three rules meet here. Strict mode reserves a fixed list. A generator
+	 * reserves `yield`, and an async function — or a module, or a class static
+	 * block — reserves `await`; those two are reserved by *position* rather
+	 * than by strict mode, which is why a sloppy script may still name a
+	 * variable `yield` outside a generator.
+	 * @param kind The keyword kind the word matched, if any.
+	 * @param start Where the word is, as an offset into the program text.
+	 * @returns Nothing.
+	 */
+	private checkReservedWord(kind: number, start: number): void {
 		if (kind < KEYWORD_FIRST || kind > KEYWORD_LAST) {
 			return;
 		}
 
-		if (this.strict && (KIND_KEYWORD_FLAGS[kind] & KW_STRICT_RESERVED) !== 0) {
+		if (kind === T_yield && this.inGenerator) {
 			this.report(
-				`Unexpected reserved word '${name}' in strict mode.`,
+				"'yield' cannot be used as an identifier inside a generator.",
 				start,
 			);
 
 			return;
 		}
 
-		if (name === "await" && this.sourceType === "module") {
+		if (kind === T_await && this.awaitReserved) {
 			this.report(
-				"'await' cannot be used as an identifier in a module.",
+				this.sourceType === "module" && !this.inAsync
+					? "'await' cannot be used as an identifier in a module."
+					: "'await' cannot be used as an identifier here.",
+				start,
+			);
+
+			return;
+		}
+
+		if (
+			this.strict &&
+			(KIND_KEYWORD_FLAGS[kind] & KW_STRICT_RESERVED) !== 0
+		) {
+			this.report(
+				`Unexpected reserved word '${KEYWORD_NAMES[kind - KEYWORD_FIRST]}' in strict mode.`,
 				start,
 			);
 		}
+	}
+
+	/**
+	 * Checks one `Identifier` for a word that is reserved where it is written.
+	 *
+	 * This runs on every identifier in the program, so it opens with the
+	 * cheapest test that can rule one out. Every word it looks for begins with
+	 * one of six letters, and one that is written with an escape begins either
+	 * with its own first letter or with the backslash that hides it — so a
+	 * single table lookup on the first character settles the great majority.
+	 * @param node The `Identifier` node index.
+	 * @returns Nothing.
+	 */
+	private checkIdentifierWord(node: number): void {
+		/*
+		 * An `IdentifierName` may be any word at all. `o.await` and
+		 * `({ yield: 1 })` are names rather than references, and the parser is
+		 * the only thing that can tell, so it says so.
+		 */
+		if ((this.reader.flags(node) & NF_IDENTIFIER_NAME) !== 0) {
+			return;
+		}
+
+		this.checkWordAt(node);
+	}
+
+	/**
+	 * Checks the identifier a node uses as a name and as a reference at once.
+	 *
+	 * `({ await })`, `import { await }`, and `export { await }` each hold one
+	 * `Identifier` in both slots, and the parser read it down the name path
+	 * because that is what it looked like. The reference half still has to be
+	 * checked, and this is where the double duty is visible.
+	 * @param node The `Property`, `ImportSpecifier`, or `ExportSpecifier`.
+	 * @returns Nothing.
+	 */
+	private checkSharedName(node: number): void {
+		const reader = this.reader;
+		const first = reader.field(node, NODE_A);
+
+		if (
+			first !== 0 &&
+			first === reader.field(node, NODE_B) &&
+			reader.kind(first) === N_Identifier
+		) {
+			this.checkWordAt(first);
+		}
+	}
+
+	/**
+	 * Checks an identifier's text for a word reserved where it is written.
+	 * @param node The `Identifier` node index.
+	 * @returns Nothing.
+	 */
+	private checkWordAt(node: number): void {
+		const reader = this.reader;
+		const source = reader.source;
+		const start = reader.start(node);
+		const first = source.charCodeAt(start);
+
+		if (first >= RESERVED_INITIALS.length || RESERVED_INITIALS[first] === 0) {
+			return;
+		}
+
+		const nameEnd = reader.field(node, NODE_A);
+		const end = nameEnd === 0 ? reader.end(node) : nameEnd;
+		let hash = 0;
+		let escaped = false;
+
+		for (let i = start; i < end; i++) {
+			const code = source.charCodeAt(i);
+
+			if (code === CH_BACKSLASH) {
+				escaped = true;
+			}
+
+			hash = hashChar(hash, code);
+		}
+
+		/*
+		 * A word written with an escape is the word it spells, so `yield`
+		 * is `yield` and is reserved wherever `yield` is. Decoding costs a
+		 * string, which is why it waits until an escape is known to be there.
+		 */
+		if (escaped) {
+			this.checkReservedBinding(
+				decodeEscapes(source.slice(start, end), false),
+				start,
+			);
+
+			return;
+		}
+
+		this.checkReservedWord(lookupKeyword(source, start, end, hash), start);
 	}
 
 	//-------------------------------------------------------------------------
@@ -1740,6 +2018,46 @@ class Validator {
 
 				return;
 			}
+
+			case N_Identifier:
+				this.checkIdentifierWord(node);
+				return;
+
+			/*
+			 * A default value is evaluated as the call sets up the function's
+			 * own scope, before there is anything to suspend, so neither form
+			 * of suspension may appear in one.
+			 */
+			case N_YieldExpression:
+			case N_AwaitExpression:
+				if (this.inParameters) {
+					this.report(
+						kind === N_YieldExpression
+							? "A yield expression may not appear in a parameter list."
+							: "An await expression may not appear in a parameter list.",
+						this.reader.start(node),
+					);
+				}
+
+				return;
+
+			/*
+			 * Shorthand reuses one node for both halves, and that node was
+			 * read as a property name — but in `({ await })` it is also the
+			 * reference, so it is checked here where the shorthand is known.
+			 * `import { await }` and `export { await }` have the same shape.
+			 */
+			case N_Property:
+				if ((this.reader.flags(node) & NF_SHORTHAND) !== 0) {
+					this.checkSharedName(node);
+				}
+
+				return;
+
+			case N_ImportSpecifier:
+			case N_ExportSpecifier:
+				this.checkSharedName(node);
+				return;
 
 			case N_JSXElement:
 				this.checkJsxNotAllowed(node);

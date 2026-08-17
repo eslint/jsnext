@@ -202,6 +202,48 @@ const valid: [string, "script" | "module"][] = [
 	["1_0 + 0x1_2 + 0b1_1 + 0o1_7 + 1_0.2_5e1_0 + 1_0n;", "script"],
 
 	/*
+	 * `yield` and `await` are reserved by *position*, so sloppy code outside a
+	 * generator or an async function may still use either as a name. Each of
+	 * these is one word away from an error in the fixture file.
+	 */
+	["var yield; yield: ;", "script"],
+	["var await;", "script"],
+	["function g() { var yield; }", "script"],
+
+	/*
+	 * A plain function resets both, and so does the *body* of an arrow —
+	 * though not its parameters, which are read in the enclosing context.
+	 */
+	["function* g() { function h() { var yield; } }", "script"],
+	["function* g() { function h(yield) {} }", "script"],
+	["function* g() { function f(x = yield) {} }", "script"],
+	["function* g() { var h = () => { var yield; }; }", "script"],
+	["async function f() { function h() { var await; } }", "script"],
+	["async function f() { var g = () => { var await; }; }", "script"],
+	["class C { static { function f() { var await; } } }", "script"],
+
+	// A default may hold a suspension that belongs to a function of its own.
+	["function f(x = async () => await 1) {}", "script"],
+
+	/*
+	 * A declaration's own name is read outside the function, so it is not yet
+	 * in the generator when it is read. An expression's name is read inside.
+	 */
+	["function* yield() {}", "script"],
+	["async function await() {}", "script"],
+
+	/*
+	 * Neither word is ever reserved as an `IdentifierName`, which is what a
+	 * property name and a member access both are, in any context at all.
+	 */
+	["function* g() { o.yield; ({ yield: 1 }); }", "script"],
+	["async function f() { o.await; ({ await: 1 }); ({ await() {} }); }", "script"],
+	["o.await; o.yield;", "module"],
+	["({ await: 1, yield: 2 });", "module"],
+	["class C { await() {} yield() {} }", "module"],
+	["import { await as x } from 'm';", "module"],
+
+	/*
 	 * What Annex B keeps legal in a pattern without `u`: a brace that opens no
 	 * quantifier, an unmatched `]`, a digit escape past the group count, and a
 	 * range whose end is a character class. Each is an error the moment the
