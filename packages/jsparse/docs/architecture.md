@@ -85,6 +85,8 @@ src/
   parser.ts         statements, declarations, modules, the entry point
   slots.ts          which node slots hold children, for generic walks
   validate.ts       phase 2
+  regexp.ts         the regular expression pattern grammar, for phase 2
+  unicode-properties.ts  the names \p{…} may use; generated, do not edit
   reader.ts         readers over the nodes and the tokens
   to-ast.ts         phase 3
   locations.ts      offset to line and column

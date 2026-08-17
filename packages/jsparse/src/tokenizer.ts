@@ -1866,7 +1866,27 @@ export class Tokenizer {
 				throw this.error("Unterminated regular expression", start);
 			}
 
+			/*
+			 * A backslash escapes the next character, but only a
+			 * `RegularExpressionNonTerminator`. A line terminator after one is
+			 * not escaped by it, so the literal ends there, unterminated.
+			 */
 			if (code === CH_BACKSLASH) {
+				const next = source.charCodeAt(this.pos + 1);
+
+				if (
+					this.pos + 1 >= this.length ||
+					next === CH_LF ||
+					next === CH_CR ||
+					next === CH_LINE_SEPARATOR ||
+					next === CH_PARAGRAPH_SEPARATOR
+				) {
+					throw this.error(
+						"Unterminated regular expression",
+						start,
+					);
+				}
+
 				this.pos += 2;
 				continue;
 			}

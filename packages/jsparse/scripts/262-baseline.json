@@ -1,7 +1,5 @@
 {
 	"test/annexB/language/statements": 5,
-	"test/built-ins/RegExp/property-escapes": 163,
-	"test/built-ins/RegExp/prototype": 29,
 	"test/language/arguments-object": 1,
 	"test/language/block-scope/syntax": 25,
 	"test/language/comments/hashbang": 3,
@@ -42,7 +40,6 @@
 	"test/language/literals/boolean": 2,
 	"test/language/literals/null": 1,
 	"test/language/literals/numeric": 6,
-	"test/language/literals/regexp": 171,
 	"test/language/literals/string": 23,
 	"test/language/module-code": 109,
 	"test/language/module-code/import-attributes": 3,

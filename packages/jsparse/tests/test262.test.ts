@@ -200,6 +200,37 @@ const valid: [string, "script" | "module"][] = [
 
 	// A numeric separator between two digits, in every literal that takes one.
 	["1_0 + 0x1_2 + 0b1_1 + 0o1_7 + 1_0.2_5e1_0 + 1_0n;", "script"],
+
+	/*
+	 * What Annex B keeps legal in a pattern without `u`: a brace that opens no
+	 * quantifier, an unmatched `]`, a digit escape past the group count, and a
+	 * range whose end is a character class. Each is an error the moment the
+	 * flag is added, so these are the shapes one character away from the
+	 * errors in the fixture file.
+	 */
+	["/a{/;", "script"],
+	["/]/;", "script"],
+	["/\\8/;", "script"],
+	["/[\\d-a]/;", "script"],
+	["/\\c1/;", "script"],
+
+	/*
+	 * With no group name anywhere, `\k` is the letter `k` — one named group
+	 * elsewhere in the same pattern is what turns it into a reference.
+	 */
+	["/\\k<n>/;", "script"],
+	["/(?<n>a)\\k<n>/;", "script"],
+
+	// A reference may name a group that appears later, or a different branch.
+	["/\\1(a)/;", "script"],
+	["/(?<n>a)|(?<n>b)/;", "script"],
+
+	// The pieces of the pattern grammar that needed tables or a second reading.
+	["/\\p{Script=Greek}/u;", "script"],
+	["/\\p{RGI_Emoji}/v;", "script"],
+	["/[[a]--[b]]/v;", "script"],
+	["/[\\q{a|bc}]/v;", "script"],
+	["/(?i-m:a)/;", "script"],
 ];
 
 describe("test262 positive tests", () => {

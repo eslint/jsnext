@@ -10,6 +10,7 @@
 
 import { TF_LEGACY_OCTAL } from "./binary.js";
 import {
+	LIT_REGEXP,
 	DECL_CONST,
 	DECL_MASK,
 	DECL_SHIFT,
@@ -49,6 +50,7 @@ import {
 	N_ImportSpecifier,
 	N_JSXElement,
 	N_JSXFragment,
+	N_Literal,
 	N_ObjectPattern,
 	N_Program,
 	N_Property,
@@ -78,6 +80,7 @@ import {
 	N_WithStatement,
 } from "./node-kinds.js";
 import { AstReader, TokenReader } from "./reader.js";
+import { RegExpValidator } from "./regexp.js";
 import { decodeEscapes } from "./values.js";
 import { SLOT_COUNT, SLOT_LIST, SLOT_NODE, SLOT_TABLE } from "./slots.js";
 import {
@@ -229,6 +232,14 @@ class Validator {
 	 * error rather than an unresolved name.
 	 */
 	private readonly privateNames: Set<string>[] = [];
+
+	/**
+	 * The reader for regular expression patterns, made on first use.
+	 *
+	 * Most programs have no regular expression literal at all, and the one
+	 * instance is reused by every literal in the ones that do.
+	 */
+	private regexp: RegExpValidator | null = null;
 
 	/**
 	 * Creates a validator.
@@ -1698,6 +1709,33 @@ class Validator {
 					this.reader.kind(left) !== N_VariableDeclaration
 				) {
 					this.checkAssignmentTarget(left, true);
+				}
+
+				return;
+			}
+
+			/*
+			 * The pattern between the slashes. `parse()` found where the
+			 * literal ends, which is all the lexical grammar covers; whether
+			 * the text in between is a pattern at all is an early error on the
+			 * literal, and so belongs here.
+			 */
+			case N_Literal: {
+				if (this.reader.field(node, NODE_A) !== LIT_REGEXP) {
+					return;
+				}
+
+				this.regexp ??= new RegExpValidator();
+
+				const problem = this.regexp.validate(
+					this.reader.source,
+					this.reader.start(node),
+					this.reader.field(node, NODE_B),
+					this.reader.end(node),
+				);
+
+				if (problem !== null) {
+					this.report(problem.message, problem.start);
 				}
 
 				return;

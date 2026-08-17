@@ -64,18 +64,13 @@ export const KNOWN_OVERZEALOUS = 0;
  * — where no tree should have been built at all, and those are the parser's.
  *
  * The run reports which phase catches what it does catch, so the balance is
- * visible: today it is 998 from `parse()` against 1,232 from `validate()`.
+ * visible: today it is 1,002 from `parse()` against 1,591 from `validate()`.
  *
  * Counts are approximate: a test usually violates one rule but the families
  * overlap at the edges, and the authority on the totals is
  * `262-baseline.json`. They are here to say what implementing one would be
  * worth, not to be summed.
  *
- * - **Regular expression pattern grammar** (~360, `validate()`). The pattern between the
- *   slashes is not parsed at all, so nothing in it is ever an error: an
- *   unmatched `)`, a duplicate group name, an invalid property escape, a `v`
- *   flag set operation that is not well formed. This is the one family that
- *   needs a new parser rather than a new check.
  * - **`yield` and `await` as identifiers** (~300, `validate()`). Which of the two is a
  *   keyword depends on the enclosing function, and neither may be a binding
  *   name where it is. `validate()` tracks strict mode and function depth but

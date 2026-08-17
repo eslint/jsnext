@@ -268,10 +268,10 @@ The last one comes from test262, which is the only corpus that tests what the
 parser *rejects*. No valid program is rejected — that count is zero and has to
 stay there — so what is left is invalid programs accepted in silence.
 
-- **Most of ECMAScript's early errors.** Around 2,180 test262 files are invalid
+- **Most of ECMAScript's early errors.** Around 1,817 test262 files are invalid
   programs that both phases accept: `yield` as a binding name inside a
-  generator, `eval` assigned to in strict code, anything at all wrong inside a
-  regular expression pattern. The families are enumerated with rough counts in
+  generator, `eval` assigned to in strict code, `break` with nothing to break
+  out of. The families are enumerated with rough counts in
   [`packages/jsparse/scripts/262-exclusions.mjs`](../packages/jsparse/scripts/262-exclusions.mjs),
   and the per-directory counts are pinned in `262-baseline.json` so that the
   number cannot quietly grow.
@@ -287,6 +287,15 @@ here* — strict mode violations, `return` outside a function, TypeScript syntax
 under `dialect: "js"` — is reported by `validate()` instead. The output for a
 program both accept is unchanged; what moved is *when* the complaint arrives.
 See [The rule that decides where code goes](../AGENTS.md#the-rule-that-decides-where-code-goes).
+
+**A malformed regular expression pattern is part of that**, which surprises,
+because the pattern sits inside one token and a bad one looks like a bad token.
+It is not. The lexical grammar stops at `RegularExpressionBody`, which is what
+finds the closing slash; "BodyText cannot be recognized using the goal symbol
+`Pattern`" arrives in §22.2.1 as an early error on the literal, beside the
+rules about flags. So `espree` throws for `/(/` and `/a/gg` where this reports
+them from `validate()`, and the division of labor follows the specification's
+own classification rather than an approximation of it.
 
 **Property order.** Object key order is not part of any AST contract, and the
 conformance comparisons sort keys before comparing. Nothing depends on it.

@@ -1,6 +1,7 @@
 # `@eslint/jsparse` scripts
 
-One build script and six checks. The checks are the real test suite: `npm test`
+One build script, one generator, and six checks. The checks are the real test
+suite: `npm test`
 runs a few hundred hand-written cases, while these run every `.js`, `.jsx`,
 `.ts`, and `.tsx` file in `node_modules` — around 2,650 files — through the
 parser and compare the result against the implementation it replaces.
@@ -28,6 +29,18 @@ npm run conformance:262 # the test262 run, which needs a checkout
 | `conformance-262.mjs` | accepted or rejected | what test262 says |
 
 Zero mismatches is the standard. Anything else is a regression.
+
+`generate-unicode-properties.mjs` is the odd one out in the other direction:
+it produces source rather than checking it. `src/unicode-properties.ts` holds
+every name `\p{…}` may use, and those names are a fact about the Unicode
+Character Database rather than a decision, so they are derived from test262's
+`property-escapes/generated/` directory — the same corpus the parser is graded
+against — and the result is committed. Rerun it when test262 moves to a new
+Unicode version.
+
+```bash
+node scripts/generate-unicode-properties.mjs ../../test262
+```
 
 ```
 files=1433 ok=1433 mismatch=0 threw=0                          # conformance-js
