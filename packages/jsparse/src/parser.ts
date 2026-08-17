@@ -282,7 +282,7 @@ export class Parser extends JsxParser {
 				break;
 
 			case T_using:
-				if (this.nextStartsBinding() && !this.newlineBefore) {
+				if (this.usingStartsBinding()) {
 					return this.parseVariableStatement(DECL_USING);
 				}
 
@@ -447,13 +447,18 @@ export class Parser extends JsxParser {
 
 	/**
 	 * Parses a brace-delimited block of statements.
+	 * @param withDirectives Whether a directive prologue may open the block.
+	 * @param isStatement Whether a `/` after the closing brace begins a new
+	 *      statement. A function *expression* can be divided —
+	 *      `function(){} / 2` — so its body passes `false`; every other block
+	 *      ends a statement, after which a `/` opens a regular expression.
 	 * @returns The index of the `BlockStatement` node.
 	 */
-	parseBlock(withDirectives = false): number {
+	parseBlock(withDirectives = false, isStatement = true): number {
 		const node = this.writer.alloc(N_BlockStatement, this.start);
 		const mark = this.writer.startList();
 
-		this.enterBrace(true);
+		this.enterBrace(isStatement);
 
 		if (withDirectives) {
 			this.parseStatementList(T_BRACE_CLOSE);
@@ -609,7 +614,7 @@ export class Parser extends JsxParser {
 			this.writer.set(
 				node,
 				NODE_C,
-				this.parseFunctionBody(isAsync, isGenerator),
+				this.parseFunctionBody(isAsync, isGenerator, true),
 			);
 		} else {
 			// A body-less function declaration is an overload signature.
@@ -799,7 +804,7 @@ export class Parser extends JsxParser {
 				return this.nextStartsBinding() ? DECL_LET : -1;
 
 			case T_using:
-				return this.nextStartsBinding() ? DECL_USING : -1;
+				return this.usingStartsBinding() ? DECL_USING : -1;
 
 			case T_await:
 				return this.awaitStartsUsing() ? DECL_AWAIT_USING : -1;
@@ -1787,6 +1792,29 @@ export class Parser extends JsxParser {
 			this.atBindingName() ||
 			this.at(T_BRACKET_OPEN) ||
 			this.at(T_BRACE_OPEN);
+
+		this.tokenizer.restore(state);
+
+		return result;
+	}
+
+	/**
+	 * Determines whether `using` introduces a `using` declaration.
+	 *
+	 * A `using` declaration binds a plain identifier and nothing else, and the
+	 * identifier has to be on the same line — `using \n x` is the identifier
+	 * `using` followed by the expression `x`, and `using [x]` is a member
+	 * expression. The line to check is therefore the one *after* `using`, not
+	 * the one before it: a `using` declaration that opens a block written on
+	 * its own line is perfectly ordinary.
+	 * @returns `true` when `using x` follows on the same line.
+	 */
+	private usingStartsBinding(): boolean {
+		const state = this.tokenizer.save();
+
+		this.next();
+
+		const result = this.atBindingName() && !this.newlineBefore;
 
 		this.tokenizer.restore(state);
 

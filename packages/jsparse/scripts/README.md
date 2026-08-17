@@ -1,6 +1,6 @@
 # `@eslint/jsparse` scripts
 
-One build script and five checks. The checks are the real test suite: `npm test`
+One build script and six checks. The checks are the real test suite: `npm test`
 runs a few hundred hand-written cases, while these run every `.js`, `.jsx`,
 `.ts`, and `.tsx` file in `node_modules` — around 2,650 files — through the
 parser and compare the result against the implementation it replaces.
@@ -10,8 +10,9 @@ first**. `npm run conformance` does that for you; a bare `node scripts/…` uses
 whatever `dist/` currently holds, or fails outright if it is missing.
 
 ```bash
-npm run build         # scripts/build.js
-npm run conformance   # every check below, in order
+npm run build           # scripts/build.js
+npm run conformance     # every check in the first table, in order
+npm run conformance:262 # the test262 run, which needs a checkout
 ```
 
 ## What each script checks
@@ -24,6 +25,7 @@ npm run conformance   # every check below, in order
 | `conformance-ts.mjs` | the TypeScript AST | `@typescript-eslint/parser` |
 | `conformance-types.mjs` | `src/ast-types.ts` | what the decoder emits |
 | `derive-shapes.mjs` | `src/ast-types.ts` | what the decoder's source says |
+| `conformance-262.mjs` | accepted or rejected | what test262 says |
 
 Zero mismatches is the standard. Anything else is a regression.
 
@@ -34,6 +36,59 @@ files=1221 ok=1221 mismatch=0 threw=0                          # conformance-ts
 files=2886 threw=0 kinds=158 exercised=158 problems=0 unseen=0 # conformance-types
 derived=144 declared=158 identical=158 differ=0 undeclared=0   # derive-shapes
 ```
+
+## `conformance-262.mjs` is the odd one out
+
+The other five are **differential**: they run a program through two
+implementations and compare what comes back, which means they can only ever
+check a program both implementations accept. Nothing in them tests that an
+error is *reported*, and nothing could — `node_modules` is working code, so it
+contains no syntax errors at all.
+
+test262 is not differential. Every file carries its own verdict in its
+frontmatter, and a `negative` block with `phase: parse` says the file must be
+rejected before a line of it runs. That is the only corpus here that exercises
+the rejecting half of the parser.
+
+It reads a checkout rather than a vendored copy, because the suite is around
+52,000 files:
+
+```bash
+git clone --depth 1 https://github.com/tc39/test262
+npm run conformance:262 -- ./test262
+```
+
+`/test262` at the repository root is the default path and is gitignored, so a
+clone there needs no argument.
+
+Two counts come out of it and they are not equally bad:
+
+- **overzealous** — a valid program the parser rejects. This breaks working
+  code, and the standard is zero.
+- **missed** — an invalid program the parser accepts. Thousands, because most
+  of ECMAScript's early errors are not implemented yet.
+
+Neither is graded against zero, since one of them cannot be yet. Both are
+graded against `262-baseline.json`, which holds a failure count per directory:
+a count that went up is a regression even in a directory that was never clean,
+and a count that went down is a fix the baseline should record. Re-run with
+`--update` once the change is understood, and commit the result along with it.
+
+`262-exclusions.mjs` is the prose half of the same story. It lists the
+proposals whose tests are skipped outright because the syntax is not
+implemented at all, names the nine valid programs still rejected, and groups
+the missed early errors into families with rough counts — which is the list to
+read before deciding what to implement next.
+
+```
+files=52095 valid=91036 invalid=2242 skipped=536 missed=3198 overzealous=9
+baseline unchanged
+```
+
+Its flags: `--update` rewrites the baseline, `--verbose` prints every failing
+file rather than one per distinct message, and `--features` prints the failure
+counts grouped by the feature each file declares, which is how a whole
+unimplemented proposal is told apart from a scattering of real defects.
 
 ## How they divide the work
 

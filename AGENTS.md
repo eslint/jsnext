@@ -208,6 +208,47 @@ difference between the analyzers.
 Zero mismatches is the standard; anything else is a regression. Individual
 scripts take a directory and a file cap, which is useful while iterating:
 
+### What the differential corpus cannot prove
+
+It can only compare two implementations on a program **both** accept, and
+`node_modules` is working code, so nothing in it is a syntax error. That leaves
+the other half of the parser's job — rejecting what is not JavaScript —
+untested by every script above.
+
+`npm run conformance:262 --workspace=@eslint/jsparse` is the check that covers
+it. test262 states its own verdict in each file's frontmatter, so a `negative`
+block with `phase: parse` is an assertion that the file must be rejected, by
+`parse()` throwing or by `validate()` reporting — the split decides which, and
+the test asserts neither.
+
+```bash
+git clone --depth 1 https://github.com/tc39/test262
+npm run conformance:262 --workspace=@eslint/jsparse
+```
+
+```
+files=52095 valid=91036 invalid=2242 skipped=536 missed=3198 overzealous=9
+baseline unchanged
+```
+
+Read those two counts differently. **overzealous** is a valid program the
+parser rejects, which breaks working code; the standard is zero and the nine
+that remain are named in
+[`scripts/262-exclusions.mjs`](./packages/jsparse/scripts/262-exclusions.mjs).
+**missed** is an invalid program it accepts, and there are still thousands,
+because most of ECMAScript's early errors are not implemented — that file
+groups them into families, and it is the list to read before deciding what to
+implement next.
+
+Both are graded against `scripts/262-baseline.json`, a failure count per
+directory, so a new failure shows up even where the count was never zero.
+Re-run with `--update` when a change moves a count, and commit the baseline
+with it.
+
+`tests/test262.test.ts` is the part that runs without a checkout: a hundred-odd
+negative tests reduced to a line each, plus the valid programs that this corpus
+caught the parser rejecting.
+
 The directory is resolved against the working directory, so run these from the
 package they belong to:
 

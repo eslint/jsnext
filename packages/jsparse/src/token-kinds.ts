@@ -439,6 +439,19 @@ export const KIND_TOKEN_TYPE = new Uint8Array(KIND_COUNT);
 export const KIND_BEFORE_EXPR = new Uint8Array(KIND_COUNT);
 
 /**
+ * Bit set when a token of this kind can only *continue* an expression and can
+ * never begin one — every binary and assignment operator, `.`, `?.`, and the
+ * closers.
+ *
+ * This is not the complement of `KIND_BEFORE_EXPR`: `(`, `!`, `typeof`, and
+ * `new` all expect an expression to follow *and* can start one themselves. It
+ * is what tells `await = 1` from `await x`, so a kind left out of it is only
+ * ever read as the more permissive of the two. Nothing may be added here that
+ * can legally start an expression.
+ */
+export const KIND_CONTINUES_EXPR = new Uint8Array(KIND_COUNT);
+
+/**
  * Binding power of each binary operator kind; `0` means "not a binary
  * operator". Higher numbers bind more tightly.
  */
@@ -604,6 +617,59 @@ export const KIND_KEYWORD_FLAGS = new Uint8Array(KIND_COUNT);
 
 	for (let kind = ASSIGN_FIRST; kind <= ASSIGN_LAST; kind++) {
 		KIND_BEFORE_EXPR[kind] = 1;
+	}
+
+	/*
+	 * `+` and `-` are binary operators that are also prefix operators, and `<`
+	 * opens JSX and a type assertion, so all three are left out. `/` is left
+	 * out too: when a regular expression is what may appear, the scanner has
+	 * already produced `T_REGEXP` rather than `T_SLASH`.
+	 */
+	const CONTINUES_EXPR_KINDS = [
+		T_DOT,
+		T_QUESTION_DOT,
+		T_QUESTION,
+		T_COLON,
+		T_COMMA,
+		T_SEMICOLON,
+		T_ARROW,
+		T_PAREN_CLOSE,
+		T_BRACKET_CLOSE,
+		T_BRACE_CLOSE,
+		T_TEMPLATE_MIDDLE,
+		T_TEMPLATE_TAIL,
+		T_EOF,
+		T_QQ,
+		T_PIPEPIPE,
+		T_AMPAMP,
+		T_PIPE,
+		T_CARET,
+		T_AMP,
+		T_EQ_EQ,
+		T_NOT_EQ,
+		T_EQ_EQ_EQ,
+		T_NOT_EQ_EQ,
+		T_GT,
+		T_LT_EQ,
+		T_GT_EQ,
+		T_SHL,
+		T_SAR,
+		T_SHR,
+		T_STAR,
+		T_PERCENT,
+		T_STARSTAR,
+		T_in,
+		T_instanceof,
+		T_as,
+		T_satisfies,
+	];
+
+	for (let i = 0; i < CONTINUES_EXPR_KINDS.length; i++) {
+		KIND_CONTINUES_EXPR[CONTINUES_EXPR_KINDS[i]] = 1;
+	}
+
+	for (let kind = ASSIGN_FIRST; kind <= ASSIGN_LAST; kind++) {
+		KIND_CONTINUES_EXPR[kind] = 1;
 	}
 
 	// Binary operator binding powers.

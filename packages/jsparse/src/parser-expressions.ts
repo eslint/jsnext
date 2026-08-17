@@ -53,6 +53,7 @@ import {
 	N_CallExpression,
 	N_ChainExpression,
 	N_ClassBody,
+	N_ClassDeclaration,
 	N_ClassExpression,
 	N_ConditionalExpression,
 	N_Decorator,
@@ -93,6 +94,7 @@ import {
 	N_FunctionExpression,
 } from "./node-kinds.js";
 import {
+	KIND_CONTINUES_EXPR,
 	KIND_PRECEDENCE,
 	T_ARROW,
 	T_ASSIGN,
@@ -249,7 +251,11 @@ export abstract class ExpressionParser extends TypeParser {
 		if (this.eat(T_STAR)) {
 			this.writer.addFlags(node, NF_DELEGATE);
 			this.writer.set(node, NODE_A, this.parseAssignmentExpression());
-		} else if (!this.canInsertSemicolon() && this.atExpressionStart()) {
+		} else if (
+			!this.canInsertSemicolon() &&
+			this.atExpressionStart() &&
+			KIND_CONTINUES_EXPR[this.kind] === 0
+		) {
 			this.writer.set(node, NODE_A, this.parseAssignmentExpression());
 		}
 
@@ -563,11 +569,15 @@ export abstract class ExpressionParser extends TypeParser {
 				}
 
 				if (this.at(T_BRACKET_OPEN)) {
+					const previousAllowIn = this.allowIn;
+
+					this.allowIn = true;
 					this.next();
 
 					const property = this.parseExpression();
 
 					this.expect(T_BRACKET_CLOSE);
+					this.allowIn = previousAllowIn;
 					expression = this.finishMember(
 						start,
 						expression,
@@ -595,11 +605,15 @@ export abstract class ExpressionParser extends TypeParser {
 					break;
 				}
 
+				const previousAllowIn = this.allowIn;
+
+				this.allowIn = true;
 				this.next();
 
 				const property = this.parseExpression();
 
 				this.expect(T_BRACKET_CLOSE);
+				this.allowIn = previousAllowIn;
 				expression = this.finishMember(
 					start,
 					expression,
@@ -771,7 +785,9 @@ export abstract class ExpressionParser extends TypeParser {
 	 */
 	private parseArguments(): number {
 		const mark = this.writer.startList();
+		const previousAllowIn = this.allowIn;
 
+		this.allowIn = true;
 		this.expect(T_PAREN_OPEN);
 
 		while (!this.at(T_PAREN_CLOSE) && !this.at(T_EOF)) {
@@ -797,6 +813,7 @@ export abstract class ExpressionParser extends TypeParser {
 		}
 
 		this.expect(T_PAREN_CLOSE);
+		this.allowIn = previousAllowIn;
 
 		return this.writer.endList(mark);
 	}
@@ -1026,7 +1043,16 @@ export abstract class ExpressionParser extends TypeParser {
 
 		this.next();
 
-		const result = !this.atExpressionStart() || this.at(T_ARROW);
+		/*
+		 * `await => x` is an arrow whose parameter is named `await`, and
+		 * anything that can only continue an expression — `await = 1`,
+		 * `await instanceof C` — leaves the word as the operand it is
+		 * modifying rather than an operator with nothing to operate on.
+		 */
+		const result =
+			!this.atExpressionStart() ||
+			this.at(T_ARROW) ||
+			KIND_CONTINUES_EXPR[this.kind] !== 0;
 
 		this.tokenizer.restore(state);
 
@@ -1041,6 +1067,16 @@ export abstract class ExpressionParser extends TypeParser {
 		const node = this.writer.alloc(N_ArrayExpression, this.start);
 		const mark = this.writer.startList();
 
+		/*
+		 * Every bracketed construct restores `in` as an operator. The `for`
+		 * head that took it away only reaches its own top-level operators, so
+		 * `for (a[b in c] of d)` is a member access on the result of `b in c`,
+		 * not a syntax error. The same three lines appear at each of the
+		 * constructs that bracket an expression.
+		 */
+		const previousAllowIn = this.allowIn;
+
+		this.allowIn = true;
 		this.next();
 
 		while (!this.at(T_BRACKET_CLOSE) && !this.at(T_EOF)) {
@@ -1071,6 +1107,7 @@ export abstract class ExpressionParser extends TypeParser {
 		}
 
 		this.expect(T_BRACKET_CLOSE);
+		this.allowIn = previousAllowIn;
 		this.writer.set(node, NODE_A, this.writer.endList(mark));
 
 		return this.writer.finish(node, this.lastEnd);
@@ -1083,7 +1120,9 @@ export abstract class ExpressionParser extends TypeParser {
 	private parseObjectLiteral(): number {
 		const node = this.writer.alloc(N_ObjectExpression, this.start);
 		const mark = this.writer.startList();
+		const previousAllowIn = this.allowIn;
 
+		this.allowIn = true;
 		this.enterBrace(false);
 
 		while (!this.at(T_BRACE_CLOSE) && !this.at(T_EOF)) {
@@ -1095,6 +1134,7 @@ export abstract class ExpressionParser extends TypeParser {
 		}
 
 		this.expect(T_BRACE_CLOSE);
+		this.allowIn = previousAllowIn;
 		this.writer.set(node, NODE_A, this.writer.endList(mark));
 
 		return this.writer.finish(node, this.lastEnd);
@@ -1263,11 +1303,15 @@ export abstract class ExpressionParser extends TypeParser {
 	 */
 	protected parsePropertyName(): number {
 		if (this.at(T_BRACKET_OPEN)) {
+			const previousAllowIn = this.allowIn;
+
+			this.allowIn = true;
 			this.next();
 
 			const key = this.parseAssignmentExpression();
 
 			this.expect(T_BRACKET_CLOSE);
+			this.allowIn = previousAllowIn;
 
 			return key;
 		}
@@ -1290,6 +1334,9 @@ export abstract class ExpressionParser extends TypeParser {
 	private parseTemplateLiteral(): number {
 		const node = this.writer.alloc(N_TemplateLiteral, this.start);
 		const mark = this.writer.startList();
+		const previousAllowIn = this.allowIn;
+
+		this.allowIn = true;
 
 		if (this.at(T_TEMPLATE_FULL)) {
 			this.writer.pushList(this.parseTemplateElement(true));
@@ -1311,6 +1358,8 @@ export abstract class ExpressionParser extends TypeParser {
 				this.writer.pushList(this.parseTemplateElement(false));
 			}
 		}
+
+		this.allowIn = previousAllowIn;
 
 		const [quasis, expressions] = this.writer.endInterleavedLists(mark);
 
@@ -1387,7 +1436,9 @@ export abstract class ExpressionParser extends TypeParser {
 		}
 
 		const node = this.writer.alloc(N_ImportExpression, start);
+		const previousAllowIn = this.allowIn;
 
+		this.allowIn = true;
 		this.expect(T_PAREN_OPEN);
 		this.writer.set(node, NODE_A, this.parseAssignmentExpression());
 
@@ -1397,6 +1448,7 @@ export abstract class ExpressionParser extends TypeParser {
 		}
 
 		this.expect(T_PAREN_CLOSE);
+		this.allowIn = previousAllowIn;
 
 		return this.writer.finish(node, this.lastEnd);
 	}
@@ -1406,11 +1458,15 @@ export abstract class ExpressionParser extends TypeParser {
 	 * @returns The index of the expression node.
 	 */
 	private parseParenthesizedExpression(): number {
+		const previousAllowIn = this.allowIn;
+
+		this.allowIn = true;
 		this.next();
 
 		const inner = this.parseExpression();
 
 		this.expect(T_PAREN_CLOSE);
+		this.allowIn = previousAllowIn;
 		this.writer.addFlags(inner, NF_PARENTHESIZED);
 
 		return inner;
@@ -1585,6 +1641,11 @@ export abstract class ExpressionParser extends TypeParser {
 		this.tokenizer.inGenerator = false;
 
 		if (this.at(T_BRACE_OPEN)) {
+			/*
+			 * An arrow's block body keeps the statement reading, matching
+			 * `espree`: `() => {} / 2` is an unterminated regular expression
+			 * to both, not a division.
+			 */
 			this.writer.set(node, NODE_C, this.parseBlock(true));
 		} else {
 			this.writer.addFlags(node, NF_EXPRESSION_BODY);
@@ -1642,11 +1703,14 @@ export abstract class ExpressionParser extends TypeParser {
 	 * Parses a function body, switching the `await` and `yield` contexts.
 	 * @param isAsync Whether the function is async.
 	 * @param isGenerator Whether the function is a generator.
+	 * @param isStatement Whether the function is a declaration, after whose
+	 *      closing brace a `/` opens a regular expression rather than divides.
 	 * @returns The index of the `BlockStatement` node.
 	 */
 	protected parseFunctionBody(
 		isAsync: boolean,
 		isGenerator: boolean,
+		isStatement = false,
 	): number {
 		const previousAsync = this.inAsync;
 		const previousGenerator = this.inGenerator;
@@ -1656,7 +1720,7 @@ export abstract class ExpressionParser extends TypeParser {
 		this.tokenizer.inAsync = isAsync;
 		this.tokenizer.inGenerator = isGenerator;
 
-		const body = this.parseBlock(true);
+		const body = this.parseBlock(true, isStatement);
 
 		this.inAsync = previousAsync;
 		this.inGenerator = previousGenerator;
@@ -1880,7 +1944,9 @@ export abstract class ExpressionParser extends TypeParser {
 	private parseArrayPattern(): number {
 		const node = this.writer.alloc(N_ArrayPattern, this.start);
 		const mark = this.writer.startList();
+		const previousAllowIn = this.allowIn;
 
+		this.allowIn = true;
 		this.next();
 
 		while (!this.at(T_BRACKET_CLOSE) && !this.at(T_EOF)) {
@@ -1898,6 +1964,7 @@ export abstract class ExpressionParser extends TypeParser {
 		}
 
 		this.expect(T_BRACKET_CLOSE);
+		this.allowIn = previousAllowIn;
 		this.writer.set(node, NODE_A, this.writer.endList(mark));
 
 		return this.writer.finish(node, this.lastEnd);
@@ -1910,7 +1977,9 @@ export abstract class ExpressionParser extends TypeParser {
 	private parseObjectPattern(): number {
 		const node = this.writer.alloc(N_ObjectPattern, this.start);
 		const mark = this.writer.startList();
+		const previousAllowIn = this.allowIn;
 
+		this.allowIn = true;
 		this.enterBrace(false);
 
 		while (!this.at(T_BRACE_CLOSE) && !this.at(T_EOF)) {
@@ -1975,6 +2044,7 @@ export abstract class ExpressionParser extends TypeParser {
 		}
 
 		this.expect(T_BRACE_CLOSE);
+		this.allowIn = previousAllowIn;
 		this.writer.set(node, NODE_A, this.writer.endList(mark));
 
 		return this.writer.finish(node, this.lastEnd);
@@ -2176,7 +2246,11 @@ export abstract class ExpressionParser extends TypeParser {
 			this.writer.set(node, NODE_F, this.writer.endList(mark));
 		}
 
-		this.writer.set(node, NODE_C, this.parseClassBody());
+		this.writer.set(
+			node,
+			NODE_C,
+			this.parseClassBody(nodeKind === N_ClassDeclaration),
+		);
 
 		return this.writer.finish(node, this.lastEnd);
 	}
@@ -2205,15 +2279,22 @@ export abstract class ExpressionParser extends TypeParser {
 
 	/**
 	 * Parses the body of a class.
+	 *
+	 * The closing brace decides whether a `/` after the class starts a regular
+	 * expression or divides, and the answer differs by form: a declaration is
+	 * a statement, so `class C {} /re/.test(s)` is a second statement, while
+	 * an expression can be divided. The scanner reads that off the brace
+	 * context, so the form has to be handed down here.
+	 * @param isStatement `true` when the class is a declaration.
 	 * @returns The index of the `ClassBody` node.
 	 */
-	private parseClassBody(): number {
+	private parseClassBody(isStatement: boolean): number {
 		const node = this.writer.alloc(N_ClassBody, this.start);
 		const mark = this.writer.startList();
 		const previousSuperProperty = this.allowSuperProperty;
 
 		this.allowSuperProperty = true;
-		this.enterBrace(false);
+		this.enterBrace(isStatement);
 
 		while (!this.at(T_BRACE_CLOSE) && !this.at(T_EOF)) {
 			if (this.eat(T_SEMICOLON)) {
@@ -2648,5 +2729,5 @@ export abstract class ExpressionParser extends TypeParser {
 	 * @param withDirectives Whether a directive prologue may appear here.
 	 * @returns The index of the `BlockStatement` node.
 	 */
-	abstract parseBlock(withDirectives?: boolean): number;
+	abstract parseBlock(withDirectives?: boolean, isStatement?: boolean): number;
 }

@@ -693,7 +693,13 @@ export class Tokenizer {
 				this.scanNumber();
 				return;
 			}
-		} else if (isNonAsciiIdStart(code)) {
+		} else if (isNonAsciiIdStart(source.codePointAt(this.pos)!)) {
+			/*
+			 * An identifier may start above the basic plane, where the first
+			 * code unit is a lone surrogate and classifies as nothing at all.
+			 * Only this branch pays for assembling the code point, so the
+			 * ASCII path above is untouched.
+			 */
 			this.scanIdentifier();
 			return;
 		}
@@ -870,7 +876,7 @@ export class Tokenizer {
 			code < ASCII_LIMIT
 				? (CHAR_FLAGS[code] & MASK_ID_START) !== 0 ||
 					code === CH_BACKSLASH
-				: isNonAsciiIdStart(code);
+				: isNonAsciiIdStart(this.source.codePointAt(this.pos)!);
 
 		if (!isStart) {
 			throw this.error("Unexpected character '#'", start);
@@ -941,13 +947,7 @@ export class Tokenizer {
 			}
 		}
 
-		while ((CHAR_FLAGS[source.charCodeAt(this.pos)] & MASK_DIGIT) !== 0) {
-			this.pos++;
-
-			if (source.charCodeAt(this.pos) === CH_UNDERSCORE) {
-				this.pos++;
-			}
-		}
+		this.scanDecimalDigits();
 
 		code = source.charCodeAt(this.pos);
 
@@ -960,14 +960,7 @@ export class Tokenizer {
 
 		if (code === CH_DOT) {
 			this.pos++;
-
-			while ((CHAR_FLAGS[source.charCodeAt(this.pos)] & MASK_DIGIT) !== 0) {
-				this.pos++;
-
-				if (source.charCodeAt(this.pos) === CH_UNDERSCORE) {
-					this.pos++;
-				}
-			}
+			this.scanDecimalDigits();
 
 			code = source.charCodeAt(this.pos);
 		}
@@ -985,16 +978,41 @@ export class Tokenizer {
 				throw this.error("Invalid number", start);
 			}
 
-			while ((CHAR_FLAGS[source.charCodeAt(this.pos)] & MASK_DIGIT) !== 0) {
-				this.pos++;
-
-				if (source.charCodeAt(this.pos) === CH_UNDERSCORE) {
-					this.pos++;
-				}
-			}
+			this.scanDecimalDigits();
 		}
 
 		this.checkNumberBoundary();
+	}
+
+	/**
+	 * Consumes a run of decimal digits, with `_` allowed between two of them.
+	 *
+	 * A separator with no digit after it has to be rejected here rather than
+	 * left to `checkNumberBoundary()`: that reports the character *after* the
+	 * literal, and `1_` ends the literal at the end of the input, where there
+	 * is no character to complain about.
+	 * @returns Nothing.
+	 * @throws {ParseError} When a separator is not between two digits.
+	 */
+	private scanDecimalDigits(): void {
+		const source = this.source;
+
+		while ((CHAR_FLAGS[source.charCodeAt(this.pos)] & MASK_DIGIT) !== 0) {
+			this.pos++;
+
+			if (source.charCodeAt(this.pos) !== CH_UNDERSCORE) {
+				continue;
+			}
+
+			this.pos++;
+
+			if ((CHAR_FLAGS[source.charCodeAt(this.pos)] & MASK_DIGIT) === 0) {
+				throw this.error(
+					"Numeric separator must be between two digits",
+					this.pos - 1,
+				);
+			}
+		}
 	}
 
 	/**
@@ -1011,7 +1029,24 @@ export class Tokenizer {
 		for (;;) {
 			const code = source.charCodeAt(this.pos);
 
-			if (code === CH_UNDERSCORE && this.pos > start) {
+			/*
+			 * A separator has to sit between two digits, so one that opens the
+			 * run, doubles, or ends it stops the scan where it is. The literal
+			 * then ends on a `_`, which `finishNumber()` reports as an
+			 * identifier running into the number.
+			 */
+			if (code === CH_UNDERSCORE) {
+				const next = source.charCodeAt(this.pos + 1);
+
+				if (
+					this.pos === start ||
+					next >= ASCII_LIMIT ||
+					(CHAR_FLAGS[next] & mask) === 0 ||
+					(radix < 10 && next - CH_0 >= radix)
+				) {
+					break;
+				}
+
 				this.pos++;
 				continue;
 			}
@@ -1060,10 +1095,15 @@ export class Tokenizer {
 			return;
 		}
 
+		/*
+		 * The rule is `IdentifierStart` or a decimal digit, not
+		 * `IdentifierPart`, which is why the ASCII mask covers the digits and
+		 * the fallback asks about a start.
+		 */
 		const isIdentifierChar =
 			code < ASCII_LIMIT
 				? (CHAR_FLAGS[code] & MASK_ID_PART) !== 0
-				: isNonAsciiIdStart(code);
+				: isNonAsciiIdStart(this.source.codePointAt(this.pos)!);
 
 		if (isIdentifierChar) {
 			throw this.error(
@@ -1447,7 +1487,7 @@ export class Tokenizer {
 		const isNameStart =
 			code < ASCII_LIMIT
 				? (CHAR_FLAGS[code] & MASK_ID_START) !== 0
-				: isNonAsciiIdStart(code);
+				: isNonAsciiIdStart(this.source.codePointAt(this.pos)!);
 
 		if (this.pos >= this.length || !isNameStart) {
 			this.finishSkippedToken(tokenFlags);

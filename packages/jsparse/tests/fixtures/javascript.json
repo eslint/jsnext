@@ -187,5 +187,20 @@
  "class C { async\n m() {} }",
  "[a = 1] = b;",
  "({x: a = 1} = b);",
- "class C { \"constructor\"() {} }"
+ "class C { \"constructor\"() {} }",
+ "class A {} /re/.test(s);",
+ "function f() {} /re/.test(s);",
+ "isNaN(function () { return 1; } / {});",
+ "x = function () {} / 2;",
+ "for (const [a = b in c] of d) {}",
+ "for (const { a = b in c } of d) {}",
+ "for (a[b in c] of d) {}",
+ "for (f(a in b); false; ) {}",
+ "for (`${a in b}`; false; ) {}",
+ "for ({ [a in b]: c } = d; false; ) {}",
+ "for (p = import(\"m\", \"a\" in {}); false; ) {}",
+ "var 𐌏 = 1;",
+ "class C { #𝑓; m() { return this.#𝑓; } }",
+ "function* g() { s = `1${yield}3${4}5`; }",
+ "1_0 + 0x1_2 + 0b1_1 + 0o1_7 + 1_0.2_5e1_0 + 1_0n;"
 ]
