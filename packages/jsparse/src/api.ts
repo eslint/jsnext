@@ -126,6 +126,20 @@ export interface ParseOptions {
 	 * [`docs/embedded-source.md`](../docs/embedded-source.md).
 	 */
 	embedSource?: boolean;
+
+	/**
+	 * Whether to derive the parent of every node and store it in the buffer.
+	 *
+	 * Defaults to `false`. Deriving it is a pass over every node record, which
+	 * costs a few percent of a parse, and a consumer that walks down from the
+	 * root already knows every parent it passed through. Turn it on for a tool
+	 * that starts from a node and needs its context — the enclosing statement,
+	 * the function it belongs to — without having walked there.
+	 *
+	 * `AstReader#parent()` and `readParents()` throw on a buffer parsed without
+	 * it, rather than reporting that every node has no parent.
+	 */
+	parents?: boolean;
 }
 
 /**
@@ -155,6 +169,7 @@ export function parse(code: string, options: ParseOptions = {}): ParseResult {
 		lineCount: tokenizer.lineCount,
 		source: code,
 		embedSource: options.embedSource ?? false,
+		parents: options.parents ?? false,
 	});
 }
 

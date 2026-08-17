@@ -41,6 +41,7 @@ import {
 	AstReader,
 	TokenReader,
 	readLineStarts,
+	readParents,
 } from "@eslint/jsparse";
 
 const code = `const greeting: string = "hello";`;
@@ -52,6 +53,9 @@ result; // ArrayBuffer: the AST, the tokens, and the line offsets
 new AstReader(result); // the binary AST
 new TokenReader(result); // every token, including comments
 readLineStarts(result); // Uint32Array: the offset each line begins at
+
+// Each node's parent, for a parse that was asked for one.
+readParents(parse(code, { parents: true }));
 
 // Phase 2: context-dependent checks.
 const problems = validate(result, { sourceType: "module", dialect: "ts" });
@@ -71,13 +75,15 @@ ast.body[0].declarations[0].id.typeAnnotation.type; // "TSTypeAnnotation"
 ### `parse(code, options?)`
 
 Returns one `ArrayBuffer` holding the encoded AST, the encoded token stream,
-the offset of every line, and — when asked for — a copy of the source text.
-`AstReader`, `TokenReader`, and `readLineStarts()` read the regions; each takes
-the whole buffer and finds its own.
+the offset of every line, and — when asked for — a copy of the source text and
+each node's parent. `AstReader`, `TokenReader`, `readLineStarts()`, and
+`readParents()` read the regions; each takes the whole buffer and finds its
+own.
 
 | Option | Default | Meaning |
 | ------ | ------- | ------- |
 | `embedSource` | `false` | Copy the source text into the buffer, so it can be read in a process that did not parse it. |
+| `parents` | `false` | Derive each node's parent, so a tool can climb from a node to its context. |
 
 Reading text off a buffer works either way in the process that parsed, because
 the original string is cached against the buffer. Turn `embedSource` on when
@@ -298,10 +304,24 @@ Comments are recorded in source order alongside everything else.
 
 ### Node records
 
-Fixed 48-byte records, followed by a list region holding child indexes. Each
-record is twelve 32-bit words: start, end, kind, flags, and eight slots whose
-meaning depends on the kind. Node index `0` is the "no node" sentinel, so a
-slot holding `0` always decodes to `null`.
+Fixed 48-byte records, followed by the optional parent table and a list region
+holding child indexes. Each record is twelve 32-bit words: start, end, kind,
+flags, and eight slots whose meaning depends on the kind. Node index `0` is the
+"no node" sentinel, so a slot holding `0` always decodes to `null`.
+
+### The parent table
+
+One word per node: the index of the node that holds it. `reader.parent(node)`
+reads one entry and `readParents(result)` returns the whole table as a view
+onto the buffer, so a tool can climb to an enclosing function or statement
+without having walked down from the root to get there. The root's parent is
+`NO_NODE`.
+
+The region is only there when `parse()` was given `{ parents: true }`, because
+deriving it is a pass over every node record and costs a few percent of a
+parse. Both readers throw on a buffer that was parsed without it — reporting
+`NO_NODE` for everything would be indistinguishable from a tree in which no
+node has a parent.
 
 ### The source text
 
@@ -313,17 +333,29 @@ the buffer safe to transfer to a worker. It does not by default; see
 ### Reading the buffer directly
 
 ```js
-import { parse, AstReader, N_Identifier } from "@eslint/jsparse";
+import { parse, AstReader, N_Identifier, NO_NODE } from "@eslint/jsparse";
 
-const reader = new AstReader(parse("const answer = 42;"));
+// `parents` is what makes the guard below possible; it is off by default.
+const reader = new AstReader(parse("const answer = 42;", { parents: true }));
 
 // Walk without materializing a single node object.
 for (let node = 1; node < reader.nodeCount; node++) {
+	if (reader.parent(node) === NO_NODE && node !== reader.root) {
+		continue; // a record the parser allocated and abandoned
+	}
+
 	if (reader.kind(node) === N_Identifier) {
 		console.log(reader.text(node)); // "answer"
 	}
 }
 ```
+
+`nodeCount` counts index slots, not nodes in the tree: the sentinel at 0, every
+live node, and the occasional record the parser allocated and then walked away
+from. Those are unreachable from the root, so `toAST()` and `validate()` never
+see one, but an index walk does — in `new Map()` the `new` is one, and without
+the guard above it comes back as a third `Identifier`. They are about 0.3% of
+the records in a large corpus, and having no parent is what identifies them.
 
 ## Performance
 

@@ -110,6 +110,10 @@ define(
 );
 ```
 
+This one entry feeds three things: generic walks, and both of the tables
+`define()` fills. Describe a child as `D` and validation stops descending into
+it *and* its children come back from `reader.parent()` with no parent at all.
+
 **3. The parser** — `parser.ts` for statements and declarations,
 `parser-expressions.ts`, `parser-types.ts`, or `parser-jsx.ts` otherwise.
 Allocate, fill slots, finish:

@@ -32,6 +32,8 @@ covers the public API; this document covers the machinery behind it.
   - [Node records](#node-records)
   - [The flags word](#the-flags-word)
   - [The list region](#the-list-region)
+  - [The parent table](#the-parent-table)
+  - [Records that are not in the tree](#records-that-are-not-in-the-tree)
   - [The embedded source text](#the-embedded-source-text)
   - [Reading a buffer](#reading-a-buffer)
 - [Validation](#validation)
@@ -281,6 +283,13 @@ becomes a binding pattern: `({a, b} = c)` is parsed as an `ObjectExpression`
 and then retyped to `ObjectPattern` once the `=` is seen, without rebuilding
 anything.
 
+`discard(index)` goes the other way, for a node that turned out not to belong
+in the tree at all after its children were handed to another node. The index
+cannot be reclaimed, so the record is zeroed in place and every generic pass
+skips it. See
+[records that are not in the tree](#records-that-are-not-in-the-tree) for when
+that is required and what goes wrong without it.
+
 ### Building child lists
 
 A node slot cannot hold a variable number of children, so children go in a
@@ -408,15 +417,17 @@ divergence.
 
 ### The header
 
-Six regions, in order, each beginning on a word boundary.
+Seven regions, in order, each beginning on a word boundary.
 
 ```text
-Header (64 bytes, 16 words)
+Header (68 bytes, 17 words)
   word 0   magic          0x4250534A  ("JSPB" little-endian)
   word 1   version        1
   word 2   flags          bit 0: PARSE_FLAG_SOURCE_EMBEDDED
+                          bit 1: PARSE_FLAG_PARENTS
   word 3   root           index of the root node
-  word 4   nodeCount      includes the reserved node at index 0
+  word 4   nodeCount      index slots: the reserved node 0, the tree, and the
+                          records that are not in it
   word 5   nodeBytes      48
   word 6   nodesOffset    byte offset of the node region
   word 7   listCount      length of the list region, in words
@@ -428,14 +439,20 @@ Header (64 bytes, 16 words)
   word 13  linesOffset    byte offset of the line offset table
   word 14  sourceLength   length of the text, in UTF-16 code units
   word 15  sourceOffset   byte offset of the embedded source text
+  word 16  parentsOffset  byte offset of the parent table
 
 Node region     nodeCount * 48 bytes
+Parent region   nodeCount * 4 bytes, or absent when parents were not asked for
 List region     listCount * 4 bytes
 Token region    tokenCount * 16 bytes
 Line region     lineCount * 4 bytes
 Source region   sourceLength * 2 bytes, padded up to a word boundary,
                 or absent entirely when the source is not embedded
 ```
+
+The parent table has no count of its own: it is one word per node, so
+`nodeCount` sizes it. Like the source text, it is present only when it was
+asked for, and the flag in word 2 is what says so.
 
 `sourceLength` describes the *program*, not the region: it is recorded whether
 or not the text is present, and the flag in word 2 is what says whether the
@@ -495,7 +512,10 @@ word 11  slot H   /
 
 Node index `0` is reserved as the "no node" sentinel and its record is left
 zeroed, so a slot holding `0` always decodes to `null`. This is why node
-indices start at 1 and `nodeCount` includes the unused record.
+indices start at 1 and `nodeCount` includes the unused record — along with a
+handful of others that are not in the tree either, which
+[has its own section](#records-that-are-not-in-the-tree) because an index walk
+reaches them.
 
 Node kinds are partitioned like token kinds: `N_Program = 1`, JavaScript kinds
 run up through 74, JSX occupies 75–89 (`N_JSXElement = 75` … `N_JSXText = 89`),
@@ -506,7 +526,10 @@ the dialect is `"js"` without enumerating kinds.
 A slot's meaning is per kind and is documented by `SLOT_TABLE` in `slots.ts`,
 which records for each kind whether each slot is a child node (`SLOT_NODE`), a
 list handle (`SLOT_LIST`), or opaque data (`SLOT_DATA`). Generic passes such as
-validation walk the tree from that table alone, with no per-kind switch.
+validation walk the tree from that table alone, with no per-kind switch, and
+[the parent table](#the-parent-table) is derived from it. `SLOT_DESCRIPTORS`
+carries the same answers packed two bits per slot, for a pass that reads every
+slot of every node rather than asking about one at a time.
 
 Two slot conventions are worth calling out because they are easy to trip over:
 
@@ -569,6 +592,99 @@ A *handle* is the word index `h`, relative to the start of the list region.
 Handle `0` means the empty list, so no list is ever stored with size zero.
 Elements are node indices; a `0` element is an array hole, as in `[a, , b]`.
 
+### The parent table
+
+One word per node, indexed by node index: the node that holds this one as a
+child. `AstReader#parent()` reads a single entry and `readParents()` returns
+the whole table as a view onto the buffer.
+
+**It is there only when `parse()` was given `{ parents: true }`.** Deriving it
+is a pass over every node record, which costs a few percent of a parse, and a
+consumer that walks down from the root already knows every parent it went
+through — so, like the embedded source text, it is not carried unless it is
+asked for. Both readers throw on a buffer that has no table rather than
+reporting `NO_NODE`, which is a real answer meaning
+[not in the tree](#records-that-are-not-in-the-tree) and would make every node
+look abandoned. `AstReader` resolves the table on first use for the same reason
+it resolves the source text that way: a reader over a buffer without one is
+perfectly usable for everything else.
+
+The parser cannot fill this in as it goes, because a node is very often
+allocated *after* its children — `a + b` parses both operands before the
+`BinaryExpression` that owns them exists, and `retype()` can change what a
+finished node even is. So `fillParentTable()` derives it once during buffer
+assembly, in a linear sweep over the node region that hands each node's own
+index to every child its slots point at. `SLOT_DESCRIPTORS` is what makes that
+sweep cheap: the whole slot layout of a kind in one 16-bit word, shifted out
+two bits at a time, so a leaf kind costs one read. It is the same information
+`SLOT_TABLE` holds, filled from the same definition.
+
+Three consequences worth knowing:
+
+- **It is a region, not a thirteenth word of every node.** Node records stay 48
+  bytes for the passes that never ask about a parent, and walking up an
+  ancestor chain touches four bytes per level instead of a whole record.
+- **`NO_NODE` means one of two things.** The root has no parent — and neither
+  does a record that is not in the tree at all, which is the next section. So
+  `parent(node) === NO_NODE && node !== root` is the test that identifies one,
+  and the parent table is the first thing that ever made them visible.
+- **A node can be its parent's child twice.** Shorthand `import { a }` stores
+  one `Identifier` in both the `imported` and `local` slots of its specifier.
+  Both writes name the same parent, so the table is unambiguous even though the
+  decoder emits two ESTree objects for it.
+
+### Records that are not in the tree
+
+**A parse buffer contains a few node records that no slot points at, and
+`nodeCount` counts them.** They are 0.3% of the records in the corpus and
+appear in about one file in five, so a pass that walks node indices rather than
+the tree has to expect them.
+
+They exist because `alloc()` hands out an index at the moment the parser
+decides to *try* a production, and an index is a position: once a later node
+has one, an earlier one cannot be given back. The usual escape hatch is
+`rewind()`, which rolls `count` back so the indices are reused — which is why
+speculation leaves nothing behind, not even for a whole abandoned arrow
+function. A record survives only where the parse moved forward past a node it
+turned out not to need. There are three such places:
+
+| Where | What is left | Why |
+| ----- | ------------ | --- |
+| `parseNewExpression()` | an `Identifier` covering `new` | `parseWordAsIdentifier()` must consume the keyword before the parser can see whether `.target` follows, and that node *is* the `meta` slot of a `MetaProperty` if it does |
+| `parseImportExpression()` | an `Identifier` covering `import` | the same shape, for `import.meta` |
+| `parseNewExpression()` | a zeroed record | `new Map<K, V>()` parses its callee as a `TSInstantiationExpression`, then lifts the callee and type arguments into the `NewExpression` |
+
+The first two are the common case by far — a little over 22,000 of them across
+7.4 million nodes — and both are leaves, so they cost 48 bytes and mislead
+nothing that reads their slots.
+
+The third is different in kind, and is the reason `discard()` exists. The
+wrapper's slots still named the callee and the type arguments after the
+`NewExpression` took them, and because the wrapper is allocated *after* the
+node that now owns them, it won the parent sweep's last write and handed both
+children a parent that is not in the tree. `parseNewExpression()` therefore
+zeroes it, kind `0` and all, exactly as `rewind()` zeroes a speculative parse.
+**Any future site that moves children from one node to another owes the same
+call.**
+
+Nothing that descends from the root can see any of this: `validate()` and
+`toAST()` never reach an unreferenced record, which is why the ESTree output
+and every conformance comparison are unaffected. An index walk does see them,
+though, and in `new Map()` the `new` comes back looking like an ordinary
+`Identifier`. Telling one apart takes the parent table, so a walk that cares
+has to ask for it:
+
+```js
+const reader = new AstReader(parse(code, { parents: true }));
+
+for (let node = 1; node < reader.nodeCount; node++) {
+	if (reader.parent(node) === NO_NODE && node !== reader.root) {
+		continue; // not in the tree
+	}
+	// …
+}
+```
+
 ### The embedded source text
 
 The parse buffer *can* carry a copy of the source as little-endian UTF-16 code
@@ -612,7 +728,22 @@ for (let node = 1; node < reader.nodeCount; node++) {
 ```
 
 Iterating node indices from 1 upward visits every node with no traversal at
-all, which is often what a tool wants.
+all, which is often what a tool wants — plus the
+[records that are not in the tree](#records-that-are-not-in-the-tree), which
+such a walk has to skip for itself.
+
+`reader.parent(node)` is what turns an index walk into context — the enclosing
+node, and from there the whole ancestor chain, without having walked down to
+get there. It needs `{ parents: true }`, which is the price of asking:
+
+```js
+const reader = new AstReader(parse(code, { parents: true }));
+let scope = reader.parent(node);
+
+while (scope !== NO_NODE && reader.kind(scope) !== N_FunctionDeclaration) {
+	scope = reader.parent(scope);
+}
+```
 
 ## Validation
 
@@ -665,6 +796,15 @@ Things that will break subtly if violated:
    `!` assertions extend it after the fact.
 7. **Reused flag bits must be documented where they are defined**, as
    `NF_SELF_CLOSING` is.
+8. **The parent table is derived from `slots.ts`, not from the parser.** A
+   child in a slot described as `SLOT_DATA` gets no parent, and nothing else
+   reports it.
+9. **A node abandoned after its children moved elsewhere must be discarded.**
+   `writer.discard()` zeroes the record so it stops claiming them; leaving it
+   in place hands those children a parent that is not in the tree. See
+   [records that are not in the tree](#records-that-are-not-in-the-tree).
+10. **`nodeCount` is a count of index slots, not of nodes in the tree.** A walk
+    over indices reaches records that no slot points at.
 
 ## Extending the format
 
@@ -688,7 +828,7 @@ TypeScript at or above `TS_FIRST`), raise `NODE_KIND_COUNT`, add its name to
 declare its interface in `ast-types.ts`. Forgetting the `slots.ts` entry is the
 failure mode to watch for: the node decodes correctly but generic walks
 silently do not descend into it, so validation quietly stops checking that
-subtree.
+subtree and its children come back with no parent.
 
 The `ast-types.ts` entry is the one thing on that list nothing else depends on
 at runtime, so it is also the easiest to skip. Two scripts stop it drifting:

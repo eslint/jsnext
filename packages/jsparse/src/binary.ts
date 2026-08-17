@@ -8,9 +8,14 @@
  * must honor the recorded sizes and offsets rather than assuming constants,
  * which is what makes it possible to grow a record — or the header itself — in
  * a later version without breaking existing consumers.
+ *
+ * One region is derived rather than written by the parser: the parent table,
+ * one word per node, built here because a node's parent is not known until the
+ * whole tree is.
  */
 
-import { NODE_BYTES } from "./node-kinds.js";
+import { NODE_A, NODE_BYTES, NODE_KIND, NODE_WORDS } from "./node-kinds.js";
+import { SLOT_DATA, SLOT_DESCRIPTORS, SLOT_LIST } from "./slots.js";
 
 //-----------------------------------------------------------------------------
 // Parse Buffer Header
@@ -23,7 +28,7 @@ export const PARSE_MAGIC = 0x4250534a;
 export const PARSE_VERSION = 1;
 
 /** Size of the parse buffer header in bytes. */
-export const PARSE_HEADER_BYTES = 64;
+export const PARSE_HEADER_BYTES = 68;
 
 /*
  * Header word offsets, in 32-bit words from the start of the buffer. Every
@@ -46,6 +51,7 @@ export const PARSE_HEADER_LINE_COUNT = 12;
 export const PARSE_HEADER_LINES_OFFSET = 13;
 export const PARSE_HEADER_SOURCE_LENGTH = 14;
 export const PARSE_HEADER_SOURCE_OFFSET = 15;
+export const PARSE_HEADER_PARENTS_OFFSET = 16;
 
 /**
  * `PARSE_HEADER_FLAGS` bit: the buffer carries its own copy of the source text.
@@ -55,6 +61,14 @@ export const PARSE_HEADER_SOURCE_OFFSET = 15;
  * [`docs/embedded-source.md`](../docs/embedded-source.md).
  */
 export const PARSE_FLAG_SOURCE_EMBEDDED = 1;
+
+/**
+ * `PARSE_HEADER_FLAGS` bit: the buffer carries a parent table.
+ *
+ * When it is clear, the parent region has zero length. Deriving the table
+ * costs a pass over every node, so it is only there when it was asked for.
+ */
+export const PARSE_FLAG_PARENTS = 1 << 1;
 
 /**
  * Views a parse buffer as words after checking that it is one.
@@ -293,6 +307,88 @@ export function alignWords(bytes: number): number {
 	return (bytes + 3) & ~3;
 }
 
+//-----------------------------------------------------------------------------
+// Parent Table
+//-----------------------------------------------------------------------------
+
+/**
+ * Derives the parent of every node from the node and list regions.
+ *
+ * The parser cannot record parents as it goes, because a node is very often
+ * allocated after its children — `a + b` parses both operands before the
+ * `BinaryExpression` that owns them exists. So the table is built once, at
+ * assembly time, by the only pass that can see the finished tree: a linear
+ * sweep over the node region that hands each node's own index to every child
+ * it points at. Every node is visited exactly once, in index order, with no
+ * traversal stack.
+ *
+ * The table is filled in place rather than returned, so that assembly can
+ * point it straight at the finished buffer instead of building it and copying
+ * it in.
+ * @param parents A zeroed table of `nodeCount` words to fill.
+ * @param nodes The node records, `NODE_WORDS` words each.
+ * @param nodeCount The number of nodes, including the sentinel at index 0.
+ * @param lists The list region.
+ * @returns The table that was passed in. The root and the sentinel at index 0
+ *      keep `NO_NODE`, as does any node the parser allocated and abandoned.
+ */
+export function fillParentTable(
+	parents: Uint32Array,
+	nodes: Uint32Array,
+	nodeCount: number,
+	lists: Uint32Array,
+): Uint32Array {
+	for (let node = 1; node < nodeCount; node++) {
+		const base = node * NODE_WORDS;
+
+		/*
+		 * Every slot of every node is examined here, so the whole layout is
+		 * read as one word and shifted out two bits at a time. A kind with no
+		 * children leaves nothing to shift and costs one read.
+		 */
+		let descriptors = SLOT_DESCRIPTORS[nodes[base + NODE_KIND]];
+
+		for (
+			let word = base + NODE_A;
+			descriptors !== 0;
+			word++, descriptors >>>= 2
+		) {
+			const descriptor = descriptors & 3;
+
+			if (descriptor === SLOT_DATA) {
+				continue;
+			}
+
+			const value = nodes[word];
+
+			/*
+			 * Zero is the empty list under `SLOT_LIST` and the absent child
+			 * under `SLOT_NODE`, so one test covers both.
+			 */
+			if (value === 0) {
+				continue;
+			}
+
+			if (descriptor === SLOT_LIST) {
+				const size = lists[value];
+
+				for (let i = 1; i <= size; i++) {
+					const child = lists[value + i];
+
+					// A zero element is an array hole, as in `[a, , b]`.
+					if (child !== 0) {
+						parents[child] = node;
+					}
+				}
+			} else {
+				parents[value] = node;
+			}
+		}
+	}
+
+	return parents;
+}
+
 /**
  * Everything a parse produced, before it is laid out in one buffer.
  *
@@ -330,6 +426,9 @@ export interface ParseBufferInput {
 
 	/** Whether to copy the source text into the buffer. */
 	embedSource: boolean;
+
+	/** Whether to derive the parent table and store it in the buffer. */
+	parents: boolean;
 }
 
 /**
@@ -339,15 +438,17 @@ export interface ParseBufferInput {
  *      offsets, and — when asked for — the source text.
  */
 export function buildParseBuffer(input: ParseBufferInput): ArrayBuffer {
-	const { source, embedSource } = input;
+	const { source, embedSource, parents } = input;
 	const nodesBytes = input.nodeCount * NODE_BYTES;
+	const parentBytes = parents ? input.nodeCount * 4 : 0;
 	const listBytes = input.lists.length * 4;
 	const tokenBytes = input.tokenCount * TOKEN_BYTES;
 	const lineBytes = input.lineCount * 4;
 	const sourceBytes = embedSource ? alignWords(source.length * 2) : 0;
 
 	const nodesOffset = PARSE_HEADER_BYTES;
-	const listOffset = nodesOffset + nodesBytes;
+	const parentsOffset = nodesOffset + nodesBytes;
+	const listOffset = parentsOffset + parentBytes;
 	const tokensOffset = listOffset + listBytes;
 	const linesOffset = tokensOffset + tokenBytes;
 	const sourceOffset = linesOffset + lineBytes;
@@ -357,11 +458,14 @@ export function buildParseBuffer(input: ParseBufferInput): ArrayBuffer {
 
 	view[PARSE_HEADER_MAGIC] = PARSE_MAGIC;
 	view[PARSE_HEADER_VERSION] = PARSE_VERSION;
-	view[PARSE_HEADER_FLAGS] = embedSource ? PARSE_FLAG_SOURCE_EMBEDDED : 0;
+	view[PARSE_HEADER_FLAGS] =
+		(embedSource ? PARSE_FLAG_SOURCE_EMBEDDED : 0) |
+		(parents ? PARSE_FLAG_PARENTS : 0);
 	view[PARSE_HEADER_ROOT] = input.root;
 	view[PARSE_HEADER_NODE_COUNT] = input.nodeCount;
 	view[PARSE_HEADER_NODE_BYTES] = NODE_BYTES;
 	view[PARSE_HEADER_NODES_OFFSET] = nodesOffset;
+	view[PARSE_HEADER_PARENTS_OFFSET] = parentsOffset;
 	view[PARSE_HEADER_LIST_COUNT] = input.lists.length;
 	view[PARSE_HEADER_LIST_OFFSET] = listOffset;
 	view[PARSE_HEADER_TOKEN_COUNT] = input.tokenCount;
@@ -379,6 +483,16 @@ export function buildParseBuffer(input: ParseBufferInput): ArrayBuffer {
 	view[PARSE_HEADER_SOURCE_OFFSET] = sourceOffset;
 
 	view.set(input.nodes.words.subarray(0, nodesBytes / 4), nodesOffset / 4);
+
+	if (parents) {
+		fillParentTable(
+			new Uint32Array(buffer, parentsOffset, input.nodeCount),
+			input.nodes.words,
+			input.nodeCount,
+			input.lists.words,
+		);
+	}
+
 	view.set(input.lists.words.subarray(0, input.lists.length), listOffset / 4);
 	view.set(
 		input.tokens.words.subarray(0, tokenBytes / 4),
@@ -403,6 +517,43 @@ export function buildParseBuffer(input: ParseBufferInput): ArrayBuffer {
 	cacheSource(buffer, source);
 
 	return buffer;
+}
+
+/**
+ * Reads the parent table out of a parse buffer.
+ *
+ * The result is a view onto the buffer rather than a copy, so it costs nothing
+ * to ask for and stays valid as long as the buffer does. Walking up from a node
+ * touches four bytes per level here rather than a whole node record, which is
+ * why the parents are a region of their own rather than a thirteenth word of
+ * every node.
+ * @param buffer The buffer returned by `parse()` with `{ parents: true }`.
+ * @returns The parent of each node, indexed by node index. The root's entry is
+ *      `NO_NODE`, as is the sentinel at index 0.
+ * @throws {TypeError} When the buffer is not a jsparse parse buffer, or was
+ *      parsed without `parents`.
+ */
+export function readParents(buffer: ArrayBufferLike): Uint32Array {
+	const words = parseHeader(buffer);
+
+	/*
+	 * The absent region is zero-length, so a view over it would be empty and
+	 * reading past it would report `NO_NODE` for every node — which is the
+	 * spelling of "not in the tree". Every node would look abandoned and no
+	 * caller would have any way to tell. This is the same reason `readSource()`
+	 * refuses a buffer that carries no text.
+	 */
+	if ((words[PARSE_HEADER_FLAGS] & PARSE_FLAG_PARENTS) === 0) {
+		throw new TypeError(
+			"This parse buffer carries no parent table. Re-parse with `{ parents: true }` to ask for one.",
+		);
+	}
+
+	return new Uint32Array(
+		buffer,
+		words[PARSE_HEADER_PARENTS_OFFSET],
+		words[PARSE_HEADER_NODE_COUNT],
+	);
 }
 
 /**

@@ -9,10 +9,12 @@ export type { Position, SourceLocation } from "./locations.js";
 export { AstReader, TokenReader } from "./reader.js";
 
 /*
- * The line offset table lives inside the parse buffer, so reading it is a
- * function over the buffer rather than a property of the result.
+ * The line offset table and the parent table both live inside the parse
+ * buffer, so reading either is a function over the buffer rather than a
+ * property of the result. `AstReader#parent()` is the point-query form of the
+ * second one.
  */
-export { readLineStarts } from "./binary.js";
+export { readLineStarts, readParents } from "./binary.js";
 
 /*
  * The shape of everything `toAST()` produces, node by node. Type-only, so a

@@ -18,6 +18,7 @@ import {
 	PARSE_HEADER_TOKEN_BYTES,
 	PARSE_HEADER_TOKEN_COUNT,
 	parseHeader,
+	readParents,
 	readSource,
 } from "./binary.js";
 import {
@@ -51,6 +52,9 @@ export class AstReader {
 
 	/** The source text once resolved, or `null` until it is first asked for. */
 	private sourceText: string | null = null;
+
+	/** The parent table once resolved, or `null` until it is first asked for. */
+	private parentTable: Uint32Array | null = null;
 
 	/**
 	 * Creates a reader over a parse buffer.
@@ -128,6 +132,30 @@ export class AstReader {
 	 */
 	end(node: number): number {
 		return this.words[this.nodesBase + node * this.nodeWords + NODE_END];
+	}
+
+	/**
+	 * The node that holds a node as one of its children.
+	 *
+	 * Parents live in a region of their own, so climbing to an ancestor reads
+	 * one word per level instead of a whole node record. The table is resolved
+	 * on first use for the same reason the source text is: a reader over a
+	 * buffer parsed without `parents` is perfectly usable for everything else,
+	 * and only asking for a parent is an error.
+	 * @param node The node index.
+	 * @returns The index of the parent node, or `NO_NODE` for the root and for
+	 *      a record that is not in the tree.
+	 * @throws {TypeError} When the buffer was parsed without `parents`.
+	 */
+	parent(node: number): number {
+		let table = this.parentTable;
+
+		if (table === null) {
+			table = readParents(this.words.buffer);
+			this.parentTable = table;
+		}
+
+		return table[node];
 	}
 
 	/**

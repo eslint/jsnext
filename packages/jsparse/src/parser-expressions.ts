@@ -1345,11 +1345,14 @@ export abstract class ExpressionParser extends TypeParser {
 		 * A callee parsed without its call arguments swallows a type argument
 		 * list as an instantiation expression, because `Array<V>` on its own
 		 * is one. Under `new` it is not: the type arguments belong to the
-		 * `new` itself, so the wrapper is unwrapped again here.
+		 * `new` itself, so the wrapper is unwrapped again here and discarded —
+		 * its slots still name the callee and the type arguments, and a record
+		 * that is no longer in the tree must not go on claiming them.
 		 */
 		if (this.writer.get(callee, NODE_KIND) === N_TSInstantiationExpression) {
 			this.writer.set(node, NODE_A, this.writer.get(callee, NODE_A));
 			this.writer.set(node, NODE_C, this.writer.get(callee, NODE_B));
+			this.writer.discard(callee);
 		} else {
 			this.writer.set(node, NODE_A, callee);
 

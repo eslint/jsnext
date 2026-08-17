@@ -117,6 +117,24 @@ export class NodeWriter {
 	}
 
 	/**
+	 * Abandons an already-allocated node, leaving an inert record behind.
+	 *
+	 * Its index cannot be reclaimed — later nodes already have theirs — so the
+	 * record is zeroed instead, which is what `rewind()` does to a speculative
+	 * parse and for the same reason: a record that is no longer part of the
+	 * tree must not be read back as though it were. Kind `0` is the "no node"
+	 * kind, so every generic pass skips it, and above all a node whose children
+	 * were handed to another node stops claiming them in the parent table.
+	 * @param index The node index to abandon.
+	 * @returns Nothing.
+	 */
+	discard(index: number): void {
+		const base = index * NODE_WORDS;
+
+		this.nodes.words.fill(0, base, base + NODE_WORDS);
+	}
+
+	/**
 	 * Changes the kind of an already-allocated node, which is how expressions
 	 * are reinterpreted as binding patterns.
 	 * @param index The node index.

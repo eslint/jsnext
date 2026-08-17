@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+	PARSE_FLAG_PARENTS,
 	PARSE_FLAG_SOURCE_EMBEDDED,
 	PARSE_HEADER_BYTES,
 	PARSE_HEADER_FLAGS,
@@ -15,6 +16,7 @@ import {
 	PARSE_HEADER_NODE_BYTES,
 	PARSE_HEADER_NODE_COUNT,
 	PARSE_HEADER_NODES_OFFSET,
+	PARSE_HEADER_PARENTS_OFFSET,
 	PARSE_HEADER_ROOT,
 	PARSE_HEADER_SOURCE_LENGTH,
 	PARSE_HEADER_SOURCE_OFFSET,
@@ -28,12 +30,23 @@ import {
 	WordBuffer,
 	alignWords,
 	buildParseBuffer,
+	fillParentTable,
 	parseHeader,
 	readLineStarts,
+	readParents,
 	readSource,
 	writeSource,
 } from "./binary.js";
-import { NODE_BYTES } from "./node-kinds.js";
+import {
+	NODE_A,
+	NODE_BYTES,
+	NODE_KIND,
+	NODE_WORDS,
+	N_ArrayExpression,
+	N_BinaryExpression,
+	N_Identifier,
+	N_Program,
+} from "./node-kinds.js";
 
 describe("WordBuffer", () => {
 	it("starts empty at the requested capacity", () => {
@@ -137,6 +150,9 @@ interface BuildOptions {
 
 	/** Whether to copy the text into the buffer. */
 	embedSource?: boolean;
+
+	/** Whether to derive the parent table. */
+	parents?: boolean;
 }
 
 /**
@@ -152,6 +168,7 @@ function build(options: BuildOptions = {}): ArrayBuffer {
 		lineStarts = [0],
 		source = "a;",
 		embedSource = true,
+		parents = true,
 	} = options;
 	const nodes = new WordBuffer(64);
 
@@ -180,6 +197,7 @@ function build(options: BuildOptions = {}): ArrayBuffer {
 		lineCount: lineStarts.length,
 		source,
 		embedSource,
+		parents,
 	});
 }
 
@@ -204,13 +222,15 @@ describe("buildParseBuffer()", () => {
 			}),
 		);
 		const nodesOffset = view[PARSE_HEADER_NODES_OFFSET];
+		const parentsOffset = view[PARSE_HEADER_PARENTS_OFFSET];
 		const listOffset = view[PARSE_HEADER_LIST_OFFSET];
 		const tokensOffset = view[PARSE_HEADER_TOKENS_OFFSET];
 		const linesOffset = view[PARSE_HEADER_LINES_OFFSET];
 		const sourceOffset = view[PARSE_HEADER_SOURCE_OFFSET];
 
 		expect(nodesOffset).toBe(PARSE_HEADER_BYTES);
-		expect(listOffset).toBe(nodesOffset + 2 * NODE_BYTES);
+		expect(parentsOffset).toBe(nodesOffset + 2 * NODE_BYTES);
+		expect(listOffset).toBe(parentsOffset + 2 * 4);
 		expect(tokensOffset).toBe(listOffset + 3 * 4);
 		expect(linesOffset).toBe(tokensOffset + 2 * TOKEN_BYTES);
 		expect(sourceOffset).toBe(linesOffset + 2 * 4);
@@ -261,6 +281,7 @@ describe("buildParseBuffer()", () => {
 			lineCount: 1,
 			source: "",
 			embedSource: false,
+			parents: false,
 		});
 
 		expect(buffer.byteLength).toBe(PARSE_HEADER_BYTES + TOKEN_BYTES + 4);
@@ -410,6 +431,180 @@ describe("readLineStarts()", () => {
 		expect(() => readLineStarts(new ArrayBuffer(64))).toThrow(
 			/Not a jsparse parse buffer/u,
 		);
+	});
+});
+
+/**
+ * Builds a node region from records written as a kind followed by its slots.
+ * @param records One record per node, node 1 first.
+ * @returns The node region, with the zeroed sentinel record at index 0.
+ */
+function nodeRegion(records: number[][]): Uint32Array {
+	const nodes = new Uint32Array((records.length + 1) * NODE_WORDS);
+
+	for (let i = 0; i < records.length; i++) {
+		const record = records[i];
+		const base = (i + 1) * NODE_WORDS;
+
+		nodes[base + NODE_KIND] = record[0];
+
+		for (let slot = 1; slot < record.length; slot++) {
+			nodes[base + NODE_A + slot - 1] = record[slot];
+		}
+	}
+
+	return nodes;
+}
+
+describe("fillParentTable()", () => {
+	it("points each child at the node that holds it", () => {
+		// `a + b`, whose operands sit in slots A and B.
+		const nodes = nodeRegion([
+			[N_BinaryExpression, 2, 3],
+			[N_Identifier],
+			[N_Identifier],
+		]);
+
+		expect(
+			Array.from(
+				fillParentTable(
+					new Uint32Array(4),
+					nodes,
+					4,
+					new Uint32Array([0]),
+				),
+			),
+		).toEqual([0, 0, 1, 1]);
+	});
+
+	it("leaves the root and the sentinel without a parent", () => {
+		const nodes = nodeRegion([[N_BinaryExpression, 2, 3]]);
+		const parents = fillParentTable(
+			new Uint32Array(4),
+			nodes,
+			4,
+			new Uint32Array([0]),
+		);
+
+		expect(parents[0]).toBe(0);
+		expect(parents[1]).toBe(0);
+	});
+
+	it("walks the elements of a list slot", () => {
+		// Handle 1 holds three elements, the middle one an array hole.
+		const nodes = nodeRegion([
+			[N_ArrayExpression, 1],
+			[N_Identifier],
+			[N_Identifier],
+		]);
+		const lists = new Uint32Array([0, 3, 2, 0, 3]);
+
+		expect(
+			Array.from(fillParentTable(new Uint32Array(4), nodes, 4, lists)),
+		).toEqual([0, 0, 1, 1]);
+	});
+
+	it("ignores an empty list slot", () => {
+		const nodes = nodeRegion([[N_ArrayExpression, 0]]);
+
+		expect(
+			Array.from(
+				fillParentTable(
+					new Uint32Array(2),
+					nodes,
+					2,
+					new Uint32Array([0]),
+				),
+			),
+		).toEqual([0, 0]);
+	});
+
+	it("ignores a data slot holding a number that looks like a node", () => {
+		/*
+		 * Slot A of an `Identifier` is the offset at which its name ends, so it
+		 * routinely holds a small number that is also a valid node index.
+		 */
+		const nodes = nodeRegion([
+			[N_Program, 1],
+			[N_Identifier, 3],
+			[N_Identifier],
+		]);
+		const lists = new Uint32Array([0, 1, 2]);
+
+		expect(
+			Array.from(fillParentTable(new Uint32Array(4), nodes, 4, lists)),
+		).toEqual([0, 0, 1, 0]);
+	});
+
+	it("reads the slots of a node from its own kind", () => {
+		// Slot B of an `Identifier` is its type annotation, a child node.
+		const nodes = nodeRegion([
+			[N_Identifier, 3, 2],
+			[N_Identifier],
+		]);
+
+		expect(
+			Array.from(
+				fillParentTable(
+					new Uint32Array(3),
+					nodes,
+					3,
+					new Uint32Array([0]),
+				),
+			),
+		).toEqual([0, 0, 1]);
+	});
+});
+
+describe("readParents()", () => {
+	it("has one entry per node", () => {
+		expect(readParents(build({ nodeCount: 3 }))).toHaveLength(3);
+	});
+
+	it("views the buffer rather than copying it", () => {
+		const buffer = build();
+
+		expect(readParents(buffer).buffer).toBe(buffer);
+	});
+
+	it("refuses a buffer that is not a parse buffer", () => {
+		expect(() => readParents(new ArrayBuffer(64))).toThrow(
+			/Not a jsparse parse buffer/u,
+		);
+	});
+
+	it("refuses a buffer built without a parent table", () => {
+		expect(() => readParents(build({ parents: false }))).toThrow(
+			/carries no parent table/u,
+		);
+	});
+});
+
+describe("the parent region", () => {
+	it("is recorded in the header flags when it is there", () => {
+		const view = new Uint32Array(build({ parents: true }));
+
+		expect(view[PARSE_HEADER_FLAGS] & PARSE_FLAG_PARENTS).toBe(
+			PARSE_FLAG_PARENTS,
+		);
+	});
+
+	it("takes no space at all when it is not asked for", () => {
+		const withTable = new Uint32Array(build({ nodeCount: 8 }));
+		const without = new Uint32Array(
+			build({ nodeCount: 8, parents: false }),
+		);
+
+		expect(without[PARSE_HEADER_FLAGS] & PARSE_FLAG_PARENTS).toBe(0);
+
+		// The region is empty, so the list region starts where it starts.
+		expect(without[PARSE_HEADER_LIST_OFFSET]).toBe(
+			without[PARSE_HEADER_PARENTS_OFFSET],
+		);
+		expect(
+			withTable[PARSE_HEADER_LIST_OFFSET] -
+				without[PARSE_HEADER_LIST_OFFSET],
+		).toBe(8 * 4);
 	});
 });
 

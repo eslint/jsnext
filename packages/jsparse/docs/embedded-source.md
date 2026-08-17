@@ -173,6 +173,17 @@ That is the reason for the laziness. Resolving in the constructor would have
 been simpler, but it would refuse a whole class of legitimate work — node
 counting, shape diffing, complexity metrics — that never needs a character.
 
+## The parent table works the same way
+
+`parents` is the buffer's other opt-in region, and every decision above was
+made again the same way: off by default because deriving it costs a pass over
+every node record that most consumers do not need, resolved on first use so a
+reader without one still works, and loud rather than silent when it is missing.
+The failure mode is the reason it cannot be silent — `NO_NODE` is a real answer
+meaning "not in the tree", so handing it back for a buffer with no table would
+report every node as unreachable. See
+[the parent table](./architecture.md#the-parent-table).
+
 ## Related
 
 - [`architecture.md`](./architecture.md) — the binary format field by field.

@@ -168,18 +168,39 @@ export const SLOT_COUNT = 8;
 export const SLOT_TABLE = new Uint8Array(NODE_KIND_COUNT * SLOT_COUNT);
 
 /**
+ * The whole slot layout of a kind in one word, two bits per slot.
+ *
+ * This is `SLOT_TABLE` again in a shape that suits a different access pattern:
+ * one read per *node* rather than one per slot, with the descriptors shifted
+ * out two bits at a time and the loop ending as soon as the remaining bits are
+ * zero. A pass that touches every slot of every node — building the parent
+ * table is one — runs measurably faster this way, and a leaf kind costs a
+ * single read. Reach for `SLOT_TABLE` when a walk asks about one slot at a
+ * time; both are filled from the same definition below, so they cannot drift.
+ */
+export const SLOT_DESCRIPTORS = new Uint16Array(NODE_KIND_COUNT);
+
+/**
  * Records the slot layout of one or more node kinds.
  * @param kinds The node kinds that share this layout.
  * @param slots The descriptor for each slot, in order.
  * @returns Nothing.
  */
 function define(kinds: number[], slots: number[]): void {
+	let descriptors = 0;
+
+	for (let slot = 0; slot < slots.length; slot++) {
+		descriptors |= slots[slot] << (slot * 2);
+	}
+
 	for (let i = 0; i < kinds.length; i++) {
 		const base = kinds[i] * SLOT_COUNT;
 
 		for (let slot = 0; slot < slots.length; slot++) {
 			SLOT_TABLE[base + slot] = slots[slot];
 		}
+
+		SLOT_DESCRIPTORS[kinds[i]] = descriptors;
 	}
 }
 
