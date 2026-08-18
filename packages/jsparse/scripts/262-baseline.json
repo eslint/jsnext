@@ -23,12 +23,10 @@
 	"test/language/module-code": 14,
 	"test/language/module-code/import-attributes": 3,
 	"test/language/reserved-words": 3,
-	"test/language/statements/await-using": 11,
 	"test/language/statements/class": 6,
 	"test/language/statements/do-while": 1,
 	"test/language/statements/generators": 1,
 	"test/language/statements/if": 1,
 	"test/language/statements/switch": 1,
-	"test/language/statements/using": 11,
 	"test/language/statements/while": 1
 }

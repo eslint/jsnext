@@ -512,5 +512,16 @@
 	{ "code": "var \\u{110000};", "sourceType": "script" },
 	{ "code": "class C { \\u0023f; }", "sourceType": "script" },
 	{ "code": "class C { #\\u0023x; }", "sourceType": "script" },
-	{ "code": "a.\\u0023b;", "sourceType": "script" }
+	{ "code": "a.\\u0023b;", "sourceType": "script" },
+
+	{ "code": "{ using a; }", "sourceType": "script" },
+	{ "code": "{ using a = 1, b; }", "sourceType": "script" },
+	{ "code": "{ using a = 1, [b] = []; }", "sourceType": "script" },
+	{ "code": "{ using a = 1, {b} = {}; }", "sourceType": "script" },
+	{ "code": "for (using a in {});", "sourceType": "script" },
+	{ "code": "for (using a;;);", "sourceType": "script" },
+	{ "code": "using a = 1;", "sourceType": "script" },
+	{ "code": "switch (q) { case 1: using a = 1; }", "sourceType": "script" },
+	{ "code": "switch (q) { default: using a = 1; }", "sourceType": "module" },
+	{ "code": "async function f() { await using a; }", "sourceType": "script" }
 ]

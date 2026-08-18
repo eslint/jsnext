@@ -501,6 +501,14 @@ const valid: [string, "script" | "module"][] = [
 	["var a\\u200D;", "script"],
 	["var a\\u200C;", "script"],
 	["class C { #\\u0061; }", "script"],
+
+	// A `using` takes every place that closes a scope, and no other.
+	["{ using a = 1; }", "script"],
+	["for (using a of []) ;", "script"],
+	["for (using a = 1;;) ;", "script"],
+	["function f() { using a = 1; }", "script"],
+	["class C { static { using a = 1; } }", "script"],
+	["using a = 1;", "module"],
 ];
 
 describe("test262 positive tests", () => {

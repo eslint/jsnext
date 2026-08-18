@@ -64,7 +64,7 @@ export const KNOWN_OVERZEALOUS = 0;
  * — where no tree should have been built at all, and those are the parser's.
  *
  * The run reports which phase catches what it does catch, so the balance is
- * visible: today it is 1,285 from `parse()` against 2,988 from `validate()`.
+ * visible: today it is 1,285 from `parse()` against 3,010 from `validate()`.
  *
  * Counts are approximate: a test usually violates one rule but the families
  * overlap at the edges, and the authority on the totals is
@@ -76,9 +76,6 @@ export const KNOWN_OVERZEALOUS = 0;
  *   on an optional chain, and assignment to something that cannot be
  *   assigned to — `this`, `true`, an arrow function, a parenthesized object
  *   literal.
- * - **`using` declarations** (~22, mixed). Where one may stand and what it may
- *   bind: not a destructuring pattern, not a `for-in` head, not a `switch`
- *   case, not the top level of a script.
  * - **Module code** (~17, `validate()`). A name exported twice over, an export
  *   that names nothing the module declares, and a module specifier holding an
  *   unpaired surrogate.

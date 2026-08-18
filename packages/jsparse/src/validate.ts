@@ -12,7 +12,10 @@ import { TF_LEGACY_OCTAL } from "./binary.js";
 import {
 	LIT_REGEXP,
 	LIT_STRING,
+	DECL_AWAIT_USING,
 	DECL_CONST,
+	DECL_KIND_NAMES,
+	DECL_USING,
 	DECL_MASK,
 	DECL_SHIFT,
 	DECL_VAR,
@@ -567,7 +570,7 @@ class Validator {
 		}
 
 		this.checkTokens();
-		this.hoist(this.reader.field(root, NODE_A));
+		this.hoist(this.reader.field(root, NODE_A), this.sourceType === "module");
 		this.visitModuleItems(this.reader.field(root, NODE_A));
 	}
 
@@ -733,7 +736,7 @@ class Validator {
 
 			case N_BlockStatement:
 				this.enterScope(false);
-				this.hoist(reader.field(node, NODE_A));
+				this.hoist(reader.field(node, NODE_A), true);
 				this.visitChildren(node, kind);
 				this.exitScope();
 				return;
@@ -808,7 +811,7 @@ class Validator {
 				}
 
 				this.enterScope(true);
-				this.hoist(reader.field(node, NODE_A));
+				this.hoist(reader.field(node, NODE_A), true);
 
 				/*
 				 * A namespace body is the one place other than the top level
@@ -848,7 +851,10 @@ class Validator {
 				this.enterScope(false);
 
 				for (let i = 0; i < size; i++) {
-					this.hoist(reader.field(reader.listItem(cases, i), NODE_B));
+					this.hoist(
+						reader.field(reader.listItem(cases, i), NODE_B),
+						false,
+					);
 				}
 
 				this.switchDepth++;
@@ -917,7 +923,7 @@ class Validator {
 				this.visit(param);
 
 				if (body !== 0) {
-					this.hoist(reader.field(body, NODE_A));
+					this.hoist(reader.field(body, NODE_A), true);
 					this.visitList(reader.field(body, NODE_A));
 				}
 
@@ -1280,7 +1286,7 @@ class Validator {
 		}
 
 		if (body !== 0 && reader.kind(body) === N_BlockStatement) {
-			this.hoist(reader.field(body, NODE_A));
+			this.hoist(reader.field(body, NODE_A), true);
 			this.visitList(reader.field(body, NODE_A));
 		} else {
 			this.visit(body);
@@ -1428,7 +1434,7 @@ class Validator {
 	 * @param handle The list handle of the statements.
 	 * @returns Nothing.
 	 */
-	private hoist(handle: number): void {
+	private hoist(handle: number, usingAllowed: boolean): void {
 		const reader = this.reader;
 		const size = reader.listSize(handle);
 
@@ -1452,6 +1458,10 @@ class Validator {
 
 			switch (kind) {
 				case N_VariableDeclaration:
+					if (!usingAllowed) {
+						this.checkUsingPlacement(statement);
+					}
+
 					this.declareVariableDeclaration(statement, true);
 					break;
 
@@ -1511,6 +1521,35 @@ class Validator {
 	}
 
 	/**
+	 * Reports a `using` declaration written where none may stand.
+	 *
+	 * A `using` is a `Declaration` with a shorter reach than the others. In a
+	 * script it has to be inside something — a block, a function body, a
+	 * `for` head, a class static block — because the top level of a script is
+	 * not a scope anything is disposed at the end of. A module has such an
+	 * end, so the top level of one takes it. And a `CaseClause` never does,
+	 * in either goal: the cases of a `switch` share one scope, so a `using`
+	 * in the first would be disposed at a point the later ones run past.
+	 * @param node The `VariableDeclaration` node index.
+	 * @returns Nothing.
+	 */
+	private checkUsingPlacement(node: number): void {
+		const reader = this.reader;
+		const declarationKind =
+			(reader.flags(node) & DECL_MASK) >>> DECL_SHIFT;
+
+		if (
+			declarationKind === DECL_USING ||
+			declarationKind === DECL_AWAIT_USING
+		) {
+			this.report(
+				`A '${DECL_KIND_NAMES[declarationKind]}' declaration may only appear inside a block, a function body, a for head, or the top level of a module.`,
+				reader.start(node),
+			);
+		}
+	}
+
+	/**
 	 * Declares every name introduced by a variable declaration.
 	 * @param node The `VariableDeclaration` node index.
 	 * @param checkInitializer Whether a `const` here needs an initializer,
@@ -1526,6 +1565,9 @@ class Validator {
 		const declarationKind = (flags & DECL_MASK) >>> DECL_SHIFT;
 		const binding =
 			declarationKind === DECL_VAR ? BINDING_VAR : BINDING_LEXICAL;
+		const isUsing =
+			declarationKind === DECL_USING ||
+			declarationKind === DECL_AWAIT_USING;
 		const declarations = reader.field(node, NODE_A);
 		const size = reader.listSize(declarations);
 		const previousAmbient = this.ambient;
@@ -1535,7 +1577,26 @@ class Validator {
 		for (let i = 0; i < size; i++) {
 			const declarator = reader.listItem(declarations, i);
 
-			this.declarePattern(reader.field(declarator, NODE_A), binding);
+			const target = reader.field(declarator, NODE_A);
+
+			this.declarePattern(target, binding);
+
+			/*
+			 * A `using` disposes of what its name holds when the scope ends,
+			 * so it needs one name and one value: `BindingList` for these two
+			 * kinds is written `~Pattern`, and every element of it carries an
+			 * `Initializer`.
+			 */
+			if (isUsing) {
+				if (reader.kind(target) !== N_Identifier) {
+					this.report(
+						`A '${DECL_KIND_NAMES[declarationKind]}' declaration may only bind an identifier.`,
+						reader.start(target),
+					);
+				}
+			} else if (declarationKind !== DECL_CONST) {
+				continue;
+			}
 
 			/*
 			 * An ambient `const` names something declared elsewhere, so it
@@ -1544,13 +1605,12 @@ class Validator {
 			 */
 			if (
 				checkInitializer &&
-				declarationKind === DECL_CONST &&
 				reader.field(declarator, NODE_B) === 0 &&
 				(reader.flags(declarator) & NF_DEFINITE) === 0 &&
 				!this.ambient
 			) {
 				this.report(
-					"Missing initializer in const declaration.",
+					`Missing initializer in ${DECL_KIND_NAMES[declarationKind]} declaration.`,
 					reader.start(declarator),
 				);
 			}
@@ -2858,6 +2918,25 @@ class Validator {
 			);
 
 			return;
+		}
+
+		/*
+		 * A `for-of` head hands each value to the binding, which is what a
+		 * `using` needs; a `for-in` head hands it a key, and disposing of a
+		 * property name is not a thing to want.
+		 */
+		if (!isForOf) {
+			const headKind = (reader.flags(left) & DECL_MASK) >>> DECL_SHIFT;
+
+			if (
+				headKind === DECL_USING ||
+				headKind === DECL_AWAIT_USING
+			) {
+				this.report(
+					`A '${DECL_KIND_NAMES[headKind]}' declaration may not head a for-in loop.`,
+					reader.start(left),
+				);
+			}
 		}
 
 		const declarator = size === 0 ? 0 : reader.listItem(declarations, 0);

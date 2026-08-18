@@ -1044,6 +1044,81 @@ describe("rest elements", () => {
 	});
 });
 
+describe("using declarations", () => {
+	const script = { sourceType: "script" } as const;
+
+	/*
+	 * A `using` disposes of what its name holds when the scope ends, so it
+	 * needs one name and one value: its `BindingList` is written `~Pattern`
+	 * and every element of it carries an initializer.
+	 */
+	it("requires an initializer on every binding", () => {
+		expect(messages("{ using a; }", script)).toEqual([
+			"Missing initializer in using declaration.",
+		]);
+		expect(messages("{ using a = 1, b; }", script)).toHaveLength(1);
+		expect(messages("for (using a;;) ;", script)).toHaveLength(1);
+		expect(
+			messages("async function f() { await using a; }", script),
+		).toEqual(["Missing initializer in await using declaration."]);
+	});
+
+	it("does not require one where a for-of head supplies the value", () => {
+		expect(messages("for (using a of []) ;", script)).toEqual([]);
+	});
+
+	it("refuses a destructuring pattern", () => {
+		expect(messages("{ using a = 1, [b] = []; }", script)).toEqual([
+			"A 'using' declaration may only bind an identifier.",
+		]);
+		expect(messages("{ using a = 1, {b} = {}; }", script)).toHaveLength(1);
+	});
+
+	/*
+	 * A `for-of` head hands each value to the binding; a `for-in` head hands
+	 * it a key, and a property name is not a thing to dispose of.
+	 */
+	it("refuses a for-in head", () => {
+		expect(messages("for (using a in {}) ;", script)).toEqual([
+			"A 'using' declaration may not head a for-in loop.",
+		]);
+		expect(messages("for (await using a in {}) ;", script)).toHaveLength(1);
+	});
+
+	/*
+	 * The top level of a script is not a scope anything is disposed at the
+	 * end of, and the cases of a `switch` share one scope — so a `using` in
+	 * the first case would be disposed at a point the later ones run past.
+	 */
+	it("refuses the top level of a script and takes it in a module", () => {
+		expect(messages("using a = 1;", script)).toEqual([
+			expect.stringMatching(/may only appear inside a block/u),
+		]);
+		expect(messages("using a = 1;")).toEqual([]);
+	});
+
+	it("refuses a switch case in either goal", () => {
+		expect(
+			messages("switch (q) { case 1: using a = 1; }", script),
+		).toHaveLength(1);
+		expect(messages("switch (q) { default: using a = 1; }")).toHaveLength(
+			1,
+		);
+	});
+
+	it("takes every place that does close a scope", () => {
+		expect(messages("{ using a = 1; }", script)).toEqual([]);
+		expect(messages("function f() { using a = 1; }", script)).toEqual([]);
+		expect(messages("try {} catch (e) { using a = 1; }", script)).toEqual(
+			[],
+		);
+		expect(
+			messages("class C { static { using a = 1; } }", script),
+		).toEqual([]);
+		expect(messages("for (using a = 1;;) ;", script)).toEqual([]);
+	});
+});
+
 describe("template literals", () => {
 	/*
 	 * The tokenizer records an escape it cannot read instead of throwing,
