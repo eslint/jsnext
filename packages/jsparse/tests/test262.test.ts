@@ -483,6 +483,17 @@ const valid: [string, "script" | "module"][] = [
 	["switch (0) { case 1: function f() {} default: function f() {} }", "script"],
 	["function g() { function* f() {} function* f() {} }", "script"],
 	["{ function* f() {} } { function* f() {} }", "script"],
+
+	/*
+	 * A tag receives the raw text along with the cooked value, so an escape
+	 * that has no cooked value is only a problem without one.
+	 */
+	['tag`\\u1`;', "script"],
+	['tag`\\01`;', "script"],
+	['tag`a${1}\\xZ`;', "script"],
+	['tag`a`.b`\\u1`;', "script"],
+	['"\\u{0000000041}";', "script"],
+	['"\\u{10FFFF}";', "script"],
 ];
 
 describe("test262 positive tests", () => {

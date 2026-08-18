@@ -493,5 +493,17 @@
 	{ "code": "{ async function f() {} async function f() {} }", "sourceType": "script" },
 	{ "code": "{ async function* f() {} async function* f() {} }", "sourceType": "script" },
 	{ "code": "switch (0) { case 1: function f() {} default: function* f() {} }", "sourceType": "script" },
-	{ "code": "switch (0) { case 1: async function f() {} default: function f() {} }", "sourceType": "script" }
+	{ "code": "switch (0) { case 1: async function f() {} default: function f() {} }", "sourceType": "script" },
+
+	{ "code": "\"\\u1\";", "sourceType": "script" },
+	{ "code": "\"\\u000G\";", "sourceType": "script" },
+	{ "code": "\"\\u{}\";", "sourceType": "script" },
+	{ "code": "\"\\u{1F_639}\";", "sourceType": "script" },
+	{ "code": "\"\\u{110000}\";", "sourceType": "script" },
+	{ "code": "\"\\x1\";", "sourceType": "script" },
+	{ "code": "`\\u1`;", "sourceType": "script" },
+	{ "code": "`\\u{}`;", "sourceType": "script" },
+	{ "code": "`\\xZ`;", "sourceType": "script" },
+	{ "code": "`\\01`;", "sourceType": "script" },
+	{ "code": "`${x}\\u{}`;", "sourceType": "script" }
 ]

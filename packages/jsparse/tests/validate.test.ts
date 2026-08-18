@@ -1044,6 +1044,50 @@ describe("rest elements", () => {
 	});
 });
 
+describe("template literals", () => {
+	/*
+	 * The tokenizer records an escape it cannot read instead of throwing,
+	 * because a tagged template is handed the raw text and takes `undefined`
+	 * for the cooked value. Untagged there is no one to hand it to.
+	 */
+	it("reports an escape an untagged template cannot cook", () => {
+		for (const code of [
+			"`\\u1`",
+			"`\\u{}`",
+			"`\\u{110000}`",
+			"`\\xZ`",
+			"`\\01`",
+			"`\\8`",
+			"`${x}\\u{}`",
+		]) {
+			expect(messages(code)).toEqual([
+				expect.stringMatching(/untagged template literal/u),
+			]);
+		}
+	});
+
+	it("allows every one of them under a tag", () => {
+		for (const code of [
+			"tag`\\u1`",
+			"tag`\\u{110000}`",
+			"tag`a${1}\\xZ`",
+			"tag`\\01`",
+		]) {
+			expect(messages(code)).toEqual([]);
+		}
+	});
+
+	/*
+	 * The tag is walked before the template it is applied to is marked, so a
+	 * tag that ends in a tagged template of its own does not take the mark.
+	 */
+	it("sees which template a tag reaches when tags are chained", () => {
+		expect(messages("tag`a`.b`\\u1`")).toEqual([]);
+		expect(messages("`${ tag`\\u1` }`")).toEqual([]);
+		expect(messages("tag`${ `\\u1` }`")).toHaveLength(1);
+	});
+});
+
 describe("ambient declarations", () => {
 	/*
 	 * Nothing under a `declare`, and nothing at all in a `.d.ts`, brings

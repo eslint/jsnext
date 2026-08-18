@@ -196,6 +196,9 @@ const CTX_TEMPLATE = 5;
 /** Words per token record. */
 const TOKEN_WORDS = 4;
 
+/** The largest code point a `\u{...}` escape may name. */
+const MAX_CODE_POINT = 0x10ffff;
+
 /**
  * A snapshot of tokenizer state, used to rewind after speculative scanning.
  */
@@ -1211,6 +1214,7 @@ export class Tokenizer {
 	 */
 	private scanStringEscape(): void {
 		const source = this.source;
+		const escapeStart = this.pos;
 
 		this.pos++;
 
@@ -1256,6 +1260,79 @@ export class Tokenizer {
 		}
 
 		this.pos++;
+
+		/*
+		 * A string has no reading in which a malformed `\x` or `\u` is legal,
+		 * so this is a lexical error rather than something for `validate()`.
+		 * A template is the other case, and the difference is a tag: one
+		 * receives the raw text and `undefined` for the cooked value.
+		 */
+		if (
+			(code === CH_X_LOWER || code === CH_U_LOWER) &&
+			!this.scanCharacterEscape(code)
+		) {
+			throw this.error(
+				"Invalid escape sequence in string",
+				escapeStart,
+			);
+		}
+	}
+
+	/**
+	 * Consumes a `\x` or `\u` escape, starting just past the `x` or the `u`.
+	 *
+	 * The two callers differ only in what they do with the answer: a string
+	 * throws, and a template records a flag, because a tagged template is
+	 * handed the raw text and takes `undefined` for its cooked value.
+	 * @param code The character that opened the escape, `x` or `u`.
+	 * @returns `true` when the escape was well formed.
+	 */
+	private scanCharacterEscape(code: number): boolean {
+		const source = this.source;
+
+		if (code === CH_X_LOWER) {
+			return this.consumeHexDigits(2);
+		}
+
+		if (source.charCodeAt(this.pos) !== CH_BRACE_OPEN) {
+			return this.consumeHexDigits(4);
+		}
+
+		this.pos++;
+
+		const digitsStart = this.pos;
+
+		while (
+			this.pos < this.length &&
+			(CHAR_FLAGS[source.charCodeAt(this.pos)] & MASK_HEX_DIGIT) !== 0
+		) {
+			this.pos++;
+		}
+
+		if (
+			this.pos === digitsStart ||
+			source.charCodeAt(this.pos) !== CH_BRACE_CLOSE
+		) {
+			return false;
+		}
+
+		const digits = this.pos - digitsStart;
+
+		this.pos++;
+
+		/*
+		 * `\u{...}` names a code point, so it stops at `0x10FFFF` however it is
+		 * written. Five digits cannot reach that, and leading zeros can carry
+		 * a small one past five, so the text is read only when it is long
+		 * enough to be out of range.
+		 */
+		return (
+			digits < 6 ||
+			Number.parseInt(
+				source.slice(digitsStart, digitsStart + digits),
+				16,
+			) <= MAX_CODE_POINT
+		);
 	}
 
 	/**
@@ -1365,40 +1442,8 @@ export class Tokenizer {
 
 		switch (code) {
 			case CH_X_LOWER:
-				if (!this.consumeHexDigits(2)) {
-					this.flags |= TF_INVALID_ESCAPE;
-				}
-
-				return;
-
 			case CH_U_LOWER:
-				if (source.charCodeAt(this.pos) === CH_BRACE_OPEN) {
-					this.pos++;
-
-					const digitsStart = this.pos;
-
-					while (
-						this.pos < this.length &&
-						(CHAR_FLAGS[source.charCodeAt(this.pos)] &
-							MASK_HEX_DIGIT) !==
-							0
-					) {
-						this.pos++;
-					}
-
-					if (
-						this.pos === digitsStart ||
-						source.charCodeAt(this.pos) !== CH_BRACE_CLOSE
-					) {
-						this.flags |= TF_INVALID_ESCAPE;
-						return;
-					}
-
-					this.pos++;
-					return;
-				}
-
-				if (!this.consumeHexDigits(4)) {
+				if (!this.scanCharacterEscape(code)) {
 					this.flags |= TF_INVALID_ESCAPE;
 				}
 

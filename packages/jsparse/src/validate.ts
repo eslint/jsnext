@@ -32,6 +32,7 @@ import {
 	NF_DEFINITE,
 	NF_GENERATOR,
 	NF_IDENTIFIER_NAME,
+	NF_INVALID_ESCAPE,
 	NF_METHOD,
 	NF_PARENTHESIZED,
 	NF_SHORTHAND,
@@ -81,6 +82,8 @@ import {
 	N_StaticBlock,
 	N_Super,
 	N_SwitchStatement,
+	N_TaggedTemplateExpression,
+	N_TemplateLiteral,
 	N_TSAbstractPropertyDefinition,
 	N_TSAbstractAccessorProperty,
 	N_TSDeclareFunction,
@@ -444,6 +447,17 @@ class Validator {
 	private switchDepth = 0;
 
 	/**
+	 * The one `TemplateLiteral` a tag is applied to, if the walk is inside a
+	 * `TaggedTemplateExpression`.
+	 *
+	 * A tag is handed the raw text along with the cooked value, so a malformed
+	 * escape leaves the cooked value `undefined` instead of ending the parse.
+	 * Nothing else may hold one, and node indices are unique, so remembering
+	 * the single template the tag reached is enough to tell the two apart.
+	 */
+	private taggedQuasi = 0;
+
+	/**
 	 * Whether the class body being walked has declared its constructor.
 	 *
 	 * Saved and restored around each class, so a constructor in a nested one
@@ -695,6 +709,19 @@ class Validator {
 				this.labels.pop();
 				return;
 			}
+
+			/*
+			 * The tag has to be walked before the template it is applied to
+			 * is marked as tagged, because the tag may end in a tagged
+			 * template of its own — `` tag`a`.b`c` `` — and that one would
+			 * otherwise take the mark meant for this one.
+			 */
+			case N_TaggedTemplateExpression:
+				this.visit(reader.field(node, NODE_A));
+				this.visit(reader.field(node, NODE_C));
+				this.taggedQuasi = reader.field(node, NODE_B);
+				this.visit(this.taggedQuasi);
+				return;
 
 			case N_FunctionDeclaration:
 			case N_FunctionExpression:
@@ -3116,6 +3143,38 @@ class Validator {
 			case N_ContinueStatement:
 				this.checkBreakOrContinue(node, kind === N_ContinueStatement);
 				return;
+
+			/*
+			 * `\u`, `\x`, and a legacy octal escape all have readings a
+			 * template may not take, and the tokenizer marks the element it
+			 * found one in rather than throwing, because a *tagged* template
+			 * may take them: its tag is handed the raw text, and the cooked
+			 * value is `undefined`. Untagged, there is nothing to hand it to.
+			 */
+			case N_TemplateLiteral: {
+				if (node === this.taggedQuasi) {
+					return;
+				}
+
+				const reader = this.reader;
+				const quasis = reader.field(node, NODE_A);
+				const size = reader.listSize(quasis);
+
+				for (let i = 0; i < size; i++) {
+					const quasi = reader.listItem(quasis, i);
+
+					if ((reader.flags(quasi) & NF_INVALID_ESCAPE) !== 0) {
+						this.report(
+							"Invalid escape sequence in untagged template literal.",
+							reader.start(quasi),
+						);
+
+						return;
+					}
+				}
+
+				return;
+			}
 
 			case N_WithStatement:
 				if (this.strict) {

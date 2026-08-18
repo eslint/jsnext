@@ -286,6 +286,49 @@ describe("syntax errors", () => {
 	});
 
 	/*
+	 * A string has no reading in which a malformed `\x` or `\u` is legal, so
+	 * the tokenizer is where this ends. A template is the other case: an
+	 * escape it cannot read leaves the parse standing, because a tag may
+	 * still be applied to it.
+	 */
+	it("throws for a malformed escape in a string", () => {
+		for (const escape of [
+			"\\u1",
+			"\\u",
+			"\\u000G",
+			"\\u{}",
+			"\\u{1F_639}",
+			"\\u{110000}",
+			"\\x1",
+			"\\xZZ",
+		]) {
+			expect(() => parse(`"${escape}"`)).toThrow(
+				/Invalid escape sequence/u,
+			);
+		}
+	});
+
+	it("accepts the escapes a string may hold", () => {
+		for (const escape of [
+			"\\u0041",
+			"\\x41",
+			"\\u{41}",
+			"\\u{0000000041}",
+			"\\u{10FFFF}",
+			"\\1",
+			"\\8",
+		]) {
+			expect(() =>
+				parse(`"${escape}"`, { sourceType: "script" }),
+			).not.toThrow();
+		}
+	});
+
+	it("does not throw for a malformed escape in a template", () => {
+		expect(() => parse("tag`\\u1`")).not.toThrow();
+	});
+
+	/*
 	 * `new` takes a `MemberExpression` and `import(...)` is a call, so there
 	 * is no tree to build for the pair — which is what puts this in `parse()`
 	 * rather than beside the other rules about `import`.

@@ -64,19 +64,20 @@ export const KNOWN_OVERZEALOUS = 0;
  * — where no tree should have been built at all, and those are the parser's.
  *
  * The run reports which phase catches what it does catch, so the balance is
- * visible: today it is 1,225 from `parse()` against 2,974 from `validate()`.
+ * visible: today it is 1,236 from `parse()` against 2,990 from `validate()`.
  *
  * Counts are approximate: a test usually violates one rule but the families
  * overlap at the edges, and the authority on the totals is
  * `262-baseline.json`. They are here to say what implementing one would be
  * worth, not to be summed.
  *
- * - **Lexical grammar** (~75, `parse()`). A numeric separator in a position that
- *   does not admit one, a legacy octal escape in a string or a template, an
- *   escape standing in for the `#` of a private name, the `!` of a hashbang,
- *   or the `.` of `new.target`. What these have in common is that the escape
- *   is asked to stand for punctuation rather than for a letter, which it
- *   never may.
+ * - **Lexical grammar** (~36, `parse()`). A numeric separator in a position that
+ *   does not admit one, an escape standing in for the `#` of a private name,
+ *   the `!` of a hashbang, or the `.` of `new.target`, and a character the
+ *   grammar does not treat as whitespace written where whitespace is needed.
+ * - **Legacy octal escapes** (~12, `validate()`). `"\1"` and `"\8"` in code
+ *   that is strict — including a directive prologue whose own `"use strict"`
+ *   comes after them.
  * - **Private names outside a class** (~43, mixed). A `#x` read in an object
  *   literal's method, a private field read out of a destructuring pattern,
  *   `#x in obj` where no class body encloses it.

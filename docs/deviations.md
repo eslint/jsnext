@@ -220,6 +220,27 @@ diagnostics, and the differential corpus compares trees.
 
 ---
 
+### The cooked value of an unreadable template escape
+
+**Reference:** `@typescript-eslint/parser` gives a `TemplateElement` whose
+escape it cannot read a `cooked` value equal to its `raw` text.
+
+```ts
+String.raw`\u{}`;   // cooked: "\\u{}"
+```
+
+**Here:** `cooked` is `null`, which is what `espree` produces and what the
+specification calls for: `TV` of a `TemplateCharacters` containing a
+`NotEscapeSequence` is undefined, which is exactly why a tag may be applied to
+a template no untagged one may hold. Evaluating the tag in V8 confirms it —
+`(s => s[0])` `` `\u{}` `` is `undefined`, not the raw text.
+
+**How conformance absorbs it:** the differential corpus would see this, but
+`node_modules` contains no tagged template with an unreadable escape.
+`tests/validate.test.ts` and `tests/parse.test.ts` pin the behaviour instead.
+
+---
+
 ## Scope analysis
 
 `jsscope` reproduces two analyzers that disagree with each other in three
@@ -289,8 +310,8 @@ The last one comes from test262, which is the only corpus that tests what the
 parser *rejects*. No valid program is rejected — that count is zero and has to
 stay there — so what is left is invalid programs accepted in silence.
 
-- **Most of ECMAScript's early errors.** Around 211 test262 files are invalid
-  programs that both phases accept: a legacy octal escape in a string, a
+- **Most of ECMAScript's early errors.** Around 184 test262 files are invalid
+  programs that both phases accept: a legacy octal escape in strict code, a
   private name written outside a class body, a name a module exports twice.
   The families are enumerated with rough counts in
   [`packages/jsparse/scripts/262-exclusions.mjs`](../packages/jsparse/scripts/262-exclusions.mjs),
