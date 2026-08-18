@@ -339,6 +339,75 @@ describe("catch clauses", () => {
 	});
 });
 
+describe("eval and arguments", () => {
+	it("names the word and the rule when a binding is refused", () => {
+		expect(messages("var eval;")).toEqual([
+			"'eval' cannot be bound in strict mode.",
+		]);
+	});
+
+	it("names the word and the rule when an assignment is refused", () => {
+		expect(messages("arguments = 1;")).toEqual([
+			"'arguments' cannot be assigned to in strict mode.",
+		]);
+	});
+
+	it("reports where the initializer mentions arguments, not the field", () => {
+		const problems = validate(
+			parse("class C { x = () => arguments; }", {
+				sourceType: "script",
+			}),
+			{ sourceType: "script" },
+		);
+
+		expect(problems).toEqual([
+			{
+				message:
+					"'arguments' cannot be used in a class field initializer.",
+				lineNumber: 1,
+				column: 21,
+			},
+		]);
+	});
+
+	it("reports arguments in a class static block", () => {
+		expect(
+			messages("class C { static { arguments; } }", {
+				sourceType: "script",
+			}),
+		).toEqual(["'arguments' cannot be used in a class static block."]);
+	});
+
+	/*
+	 * These rules govern what a program *binds*, and an ambient declaration
+	 * binds nothing — it describes something declared elsewhere. TypeScript's
+	 * own `lib.es5.d.ts` opens with `declare function eval(x: string): any`,
+	 * so reading these as ordinary declarations would report the standard
+	 * library.
+	 */
+	it("allows eval as the name of an ambient declaration", () => {
+		expect(messages("declare function eval(x: string): any;")).toEqual([]);
+	});
+
+	it("allows arguments as an overload signature's parameter", () => {
+		expect(
+			messages(
+				"declare function f(...arguments: unknown[]): void;",
+			),
+		).toEqual([]);
+	});
+
+	it("allows eval as the name of an ambient variable", () => {
+		expect(messages("declare var eval: unknown;")).toEqual([]);
+	});
+
+	it("still reports a signature that has a body", () => {
+		expect(messages("function eval(x: string): any {}")).toEqual([
+			"'eval' cannot be bound in strict mode.",
+		]);
+	});
+});
+
 describe("overload signatures", () => {
 	it("allows signatures followed by an implementation", () => {
 		expect(

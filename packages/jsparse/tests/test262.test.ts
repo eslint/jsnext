@@ -323,6 +323,37 @@ const valid: [string, "script" | "module"][] = [
 	["/[[a]--[b]]/v;", "script"],
 	["/[\\q{a|bc}]/v;", "script"],
 	["/(?i-m:a)/;", "script"],
+
+	/*
+	 * Neither `eval` nor `arguments` is a reserved word. Sloppy code binds
+	 * both freely, and the strictest code there is still reads both: what
+	 * strict mode bans is putting a value into one.
+	 */
+	["var eval;", "script"],
+	["eval = 1;", "script"],
+	["function eval() {}", "script"],
+	["function f(arguments) {}", "script"],
+	["'use strict'; eval(1);", "script"],
+	["'use strict'; arguments[0];", "script"],
+	["'use strict'; ({ eval: 1 });", "script"],
+	["'use strict'; o.eval = 1;", "script"],
+	["'use strict'; eval: 1;", "script"],
+	["var x; export { x as eval };", "module"],
+	["var x; export { x as arguments };", "module"],
+
+	/*
+	 * A class field initializer bans `arguments` only as far as the next
+	 * function that has one of its own, which is every kind but an arrow.
+	 */
+	["class C { m() { return arguments; } }", "script"],
+	["class C { m(a = arguments) {} }", "script"],
+	["class C { [arguments] = 1; }", "script"],
+	["class C { x = function () { return arguments; }; }", "script"],
+	["class C { x = { m() { return arguments; } }; }", "script"],
+	["class C { x = { arguments: 1 }; }", "script"],
+	["class C { x = o.arguments; }", "script"],
+	["class C { x = () => { function g() { return arguments; } }; }", "script"],
+	["class C { static { function f() { return arguments; } } }", "script"],
 ];
 
 describe("test262 positive tests", () => {

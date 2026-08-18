@@ -25,6 +25,7 @@ import {
 	MKIND_SHIFT,
 	NF_ASYNC,
 	NF_COMPUTED,
+	NF_DECLARE,
 	NF_GENERATOR,
 	NF_IDENTIFIER_NAME,
 	NF_METHOD,
@@ -133,6 +134,16 @@ const BINDING_CATCH = 6;
 
 /** The character that hides a letter, as in `yield`. */
 const CH_BACKSLASH = 0x5c;
+
+/**
+ * The letters `arguments` and `eval` begin with.
+ *
+ * Either word may be written with an escape, and one written that way begins
+ * with the backslash that hides its first letter instead, so three characters
+ * rule out every identifier that is neither word.
+ */
+const CH_a = 0x61;
+const CH_e = 0x65;
 
 /**
  * Which characters an identifier that might be a reserved word can start with.
@@ -347,6 +358,27 @@ class Validator {
 	private inParameters = false;
 
 	/**
+	 * Whether the declaration being visited declares nothing at run time.
+	 *
+	 * A TypeScript overload signature, an ambient declaration, and a method
+	 * signature all describe something that exists elsewhere rather than
+	 * introducing it, so the rules about what a binding may be named do not
+	 * reach them: `declare function eval(x: string): any` is TypeScript's own
+	 * declaration of `eval`, in `lib.es5.d.ts`.
+	 */
+	private ambient = false;
+
+	/**
+	 * Whether the source could hold an `arguments` at all.
+	 *
+	 * A class field initializer and a static block each need a search of
+	 * their own for one, and almost no program has anything to find. Two
+	 * scans of the text settle it once for the whole program: the word
+	 * itself, or the `\u` that any escape hiding a letter of it must carry.
+	 */
+	private readonly mentionsArguments: boolean;
+
+	/**
 	 * The reader for regular expression patterns, made on first use.
 	 *
 	 * Most programs have no regular expression literal at all, and the one
@@ -375,6 +407,9 @@ class Validator {
 		this.dialect = dialect;
 		this.jsx = jsx;
 		this.strict = sourceType === "module";
+		this.mentionsArguments =
+			reader.source.includes("arguments") ||
+			reader.source.includes("\\u");
 
 		// A module reserves `await` everywhere in it, function or no function.
 		this.awaitReserved = sourceType === "module";
@@ -526,6 +561,12 @@ class Validator {
 					// A static block has a home object but no constructor.
 					this.superPropertyAllowed = true;
 					this.superCallAllowed = false;
+					this.checkNoArguments(
+						this.findArgumentsInList(
+							reader.field(node, NODE_A),
+						),
+						"a class static block",
+					);
 				}
 
 				this.enterScope(true);
@@ -675,6 +716,10 @@ class Validator {
 				const wasSuperCall = this.superCallAllowed;
 
 				this.visit(reader.field(node, NODE_A));
+				this.checkNoArguments(
+					this.findArguments(reader.field(node, NODE_B)),
+					"a class field initializer",
+				);
 				this.superPropertyAllowed = true;
 				this.superCallAllowed = false;
 				this.visit(reader.field(node, NODE_B));
@@ -703,6 +748,7 @@ class Validator {
 				 * not.
 				 */
 				this.strict = true;
+				this.checkRestrictedName(reader.field(node, NODE_A), "bound");
 				this.visit(reader.field(node, NODE_A));
 				this.visit(reader.field(node, NODE_B));
 
@@ -792,6 +838,7 @@ class Validator {
 		const previousAsync = this.inAsync;
 		const previousAwait = this.awaitReserved;
 		const previousParameters = this.inParameters;
+		const previousAmbient = this.ambient;
 		const isMethod = this.inMethod;
 		const isDerivedConstructor = this.inDerivedConstructor;
 		const previousSuperProperty = this.superPropertyAllowed;
@@ -820,6 +867,17 @@ class Validator {
 		if (directive) {
 			this.strict = true;
 		}
+
+		// A function with no body is a signature, not a definition.
+		this.ambient = previousAmbient || body === 0;
+
+		/*
+		 * A function's name is checked here rather than where it is bound,
+		 * because a `"use strict"` directive in the body reaches back over
+		 * it: `function eval() { "use strict"; }` is an error although the
+		 * `eval` it binds lands in a scope that is not strict at all.
+		 */
+		this.checkRestrictedName(reader.field(node, NODE_A), "bound");
 
 		const params = reader.field(node, NODE_B);
 		const size = reader.listSize(params);
@@ -928,6 +986,7 @@ class Validator {
 		this.inAsync = previousAsync;
 		this.awaitReserved = previousAwait;
 		this.inParameters = previousParameters;
+		this.ambient = previousAmbient;
 		this.superPropertyAllowed = previousSuperProperty;
 		this.superCallAllowed = previousSuperCall;
 	}
@@ -1130,6 +1189,9 @@ class Validator {
 			declarationKind === DECL_VAR ? BINDING_VAR : BINDING_LEXICAL;
 		const declarations = reader.field(node, NODE_A);
 		const size = reader.listSize(declarations);
+		const previousAmbient = this.ambient;
+
+		this.ambient = previousAmbient || (flags & NF_DECLARE) !== 0;
 
 		for (let i = 0; i < size; i++) {
 			const declarator = reader.listItem(declarations, i);
@@ -1149,6 +1211,8 @@ class Validator {
 				);
 			}
 		}
+
+		this.ambient = previousAmbient;
 	}
 
 	/**
@@ -1169,15 +1233,15 @@ class Validator {
 			 * one second; a default or namespace specifier has only the local
 			 * name.
 			 */
-			this.declare(
-				reader.field(
-					specifier,
-					reader.kind(specifier) === N_ImportSpecifier
-						? NODE_B
-						: NODE_A,
-				),
-				BINDING_LEXICAL,
+			const local = reader.field(
+				specifier,
+				reader.kind(specifier) === N_ImportSpecifier
+					? NODE_B
+					: NODE_A,
 			);
+
+			this.checkRestrictedName(local, "bound");
+			this.declare(local, BINDING_LEXICAL);
 		}
 	}
 
@@ -1197,6 +1261,7 @@ class Validator {
 
 		switch (kind) {
 			case N_Identifier:
+				this.checkRestrictedName(node, "bound");
 				this.declare(node, binding);
 				return;
 
@@ -1571,6 +1636,194 @@ class Validator {
 	}
 
 	//-------------------------------------------------------------------------
+	// `eval` and `arguments`
+	//-------------------------------------------------------------------------
+
+	/*
+	 * Neither word is reserved, so both are ordinary names to read: `eval(x)`
+	 * and `arguments[0]` are legal in the strictest code there is. What strict
+	 * mode bans is putting a value *into* one — binding it or assigning to it
+	 * — because an engine that could not see which `eval` a call names could
+	 * not optimize anything around it.
+	 *
+	 * A class field initializer and a class static block ban `arguments`
+	 * outright, mention included. Both are compiled into a function of their
+	 * own that the surrounding code never calls, so an `arguments` written
+	 * there would name that hidden function's argument list rather than the
+	 * enclosing method's, which is never what anyone meant.
+	 */
+
+	/**
+	 * The name an identifier spells, with any escape in it decoded.
+	 *
+	 * An `Identifier` runs to the end of whatever TypeScript hung off it — an
+	 * `x!` or an `x: number` — so slot A carries where the name itself stops
+	 * when that is not the end of the node.
+	 * @param node The `Identifier` node index.
+	 * @returns The name.
+	 */
+	private identifierName(node: number): string {
+		const reader = this.reader;
+		const nameEnd = reader.field(node, NODE_A);
+		const raw = reader.source.slice(
+			reader.start(node),
+			nameEnd === 0 ? reader.end(node) : nameEnd,
+		);
+
+		return raw.indexOf("\\") === -1 ? raw : decodeEscapes(raw, false);
+	}
+
+	/**
+	 * Reports `eval` or `arguments` where strict mode will not have it.
+	 * @param node The `Identifier` node index, or `0`.
+	 * @param verb What is being done to it, for the message.
+	 * @returns Nothing.
+	 */
+	private checkRestrictedName(node: number, verb: string): void {
+		if (node === 0 || !this.strict || this.ambient) {
+			return;
+		}
+
+		const reader = this.reader;
+		const start = reader.start(node);
+		const first = reader.source.charCodeAt(start);
+
+		if (first !== CH_a && first !== CH_e && first !== CH_BACKSLASH) {
+			return;
+		}
+
+		const name = this.identifierName(node);
+
+		if (name === "eval" || name === "arguments") {
+			this.report(`'${name}' cannot be ${verb} in strict mode.`, start);
+		}
+	}
+
+	/**
+	 * Finds the `arguments` that bans a field initializer or a static block.
+	 *
+	 * This is the specification's `ContainsArguments`, which is a search
+	 * rather than a state the walk could carry: it crosses an arrow function,
+	 * because an arrow has no argument list of its own to name, and stops at
+	 * every other kind of function, because one written here would answer for
+	 * its own `arguments`. A method contributes only its name, the key being
+	 * evaluated outside the body it belongs to.
+	 *
+	 * What it looks for is the word rather than a reference to it, so a
+	 * `var arguments` or a statement labelled `arguments` counts as well.
+	 * The specification counts an `IdentifierReference` alone, but both
+	 * `espree` and V8 read it this way, and telling the two apart would mean
+	 * naming every position that binds a name in either language for the sake
+	 * of programs no engine accepts. A binding is reported twice for it —
+	 * once here and once by the strict mode rule that a class body always
+	 * turns on — which is the whole of the difference in practice.
+	 * @param node The node to search, or `0`.
+	 * @returns The offending `Identifier`, or `0` if there is none.
+	 */
+	private findArguments(node: number): number {
+		if (node === 0 || !this.mentionsArguments) {
+			return 0;
+		}
+
+		const reader = this.reader;
+		const kind = reader.kind(node);
+
+		switch (kind) {
+			case N_Identifier:
+				return (reader.flags(node) & NF_IDENTIFIER_NAME) === 0 &&
+					this.identifierName(node) === "arguments"
+					? node
+					: 0;
+
+			/*
+			 * A function of its own brings its own `arguments`, so nothing
+			 * inside one belongs to the initializer being searched. An arrow
+			 * is missing from this list on purpose.
+			 */
+			case N_FunctionDeclaration:
+			case N_FunctionExpression:
+			case N_TSDeclareFunction:
+			case N_TSEmptyBodyFunctionExpression:
+				return 0;
+
+			/*
+			 * A nested field or static block is searched on its own account,
+			 * so only what sits outside its value — the key, and any
+			 * decorator — is this one's to answer for. Reporting it twice is
+			 * what this avoids; the specification counts it for both.
+			 */
+			case N_PropertyDefinition:
+			case N_AccessorProperty:
+			case N_TSAbstractPropertyDefinition:
+				return (
+					this.findArguments(reader.field(node, NODE_A)) ||
+					this.findArgumentsInList(reader.field(node, NODE_C))
+				);
+
+			case N_StaticBlock:
+				return 0;
+
+			default:
+				break;
+		}
+
+		const base = kind * SLOT_COUNT;
+
+		for (let slot = 0; slot < SLOT_COUNT; slot++) {
+			const descriptor = SLOT_TABLE[base + slot];
+			let found = 0;
+
+			if (descriptor === SLOT_NODE) {
+				found = this.findArguments(reader.field(node, NODE_A + slot));
+			} else if (descriptor === SLOT_LIST) {
+				found = this.findArgumentsInList(
+					reader.field(node, NODE_A + slot),
+				);
+			}
+
+			if (found !== 0) {
+				return found;
+			}
+		}
+
+		return 0;
+	}
+
+	/**
+	 * Searches every element of a list for a banned `arguments`.
+	 * @param handle The list handle.
+	 * @returns The offending `Identifier`, or `0` if there is none.
+	 */
+	private findArgumentsInList(handle: number): number {
+		const size = this.reader.listSize(handle);
+
+		for (let i = 0; i < size; i++) {
+			const found = this.findArguments(this.reader.listItem(handle, i));
+
+			if (found !== 0) {
+				return found;
+			}
+		}
+
+		return 0;
+	}
+
+	/**
+	 * Reports an `arguments` written where it can only mean the wrong thing.
+	 * @param found The offending `Identifier`, or `0` if there is none.
+	 * @param where What contains it, for the message.
+	 * @returns Nothing.
+	 */
+	private checkNoArguments(found: number, where: string): void {
+		if (found !== 0) {
+			this.report(
+				`'arguments' cannot be used in ${where}.`,
+				this.reader.start(found),
+			);
+		}
+	}
+
+	//-------------------------------------------------------------------------
 	// JSX
 	//-------------------------------------------------------------------------
 
@@ -1838,6 +2091,9 @@ class Validator {
 
 		switch (reader.kind(node)) {
 			case N_Identifier:
+				this.checkRestrictedName(node, "assigned to");
+				return;
+
 			case N_MemberExpression:
 				return;
 

@@ -64,22 +64,18 @@ export const KNOWN_OVERZEALOUS = 0;
  * — where no tree should have been built at all, and those are the parser's.
  *
  * The run reports which phase catches what it does catch, so the balance is
- * visible: today it is 1,160 from `parse()` against 2,118 from `validate()`.
+ * visible: today it is 1,160 from `parse()` against 2,324 from `validate()`.
  *
  * Counts are approximate: a test usually violates one rule but the families
  * overlap at the edges, and the authority on the totals is
  * `262-baseline.json`. They are here to say what implementing one would be
  * worth, not to be summed.
  *
- * - **`eval` and `arguments`** (~180, `validate()`). Strict code may not bind either
- *   or assign to either, and a class field initializer may not so much as
- *   mention `arguments`. The binding half is a few lines beside the reserved
- *   word check; the rest needs the field-initializer context.
- * - **`let` as a name** (~70, `validate()`). Reserved in strict code, and banned as
- *   the binding of a `let`, `const`, or `class` declaration even in sloppy
- *   code, where a plain `var let` is still fine.
- * - **`import()` call shape** (~45, `parse()`). No argument, three arguments, a rest
- *   argument, `new import(x)`, an escape in the `import` keyword.
+ * - **Binding pattern shape** (~250, `validate()`). A rest element that is not the
+ *   last one, a rest element with a default, an elision after one. The same
+ *   rules are already enforced on the left of an assignment; what is missing
+ *   is the *binding* half — a parameter list, a `var` declaration, a `for-of`
+ *   head — which reaches them through a different path.
  * - **Lexical grammar** (~140, `parse()`). A numeric separator in a position that
  *   does not admit one, a legacy octal escape in a string or a template, an
  *   escape standing in for the `#` of a private name or the `!` of a hashbang,
@@ -89,10 +85,22 @@ export const KNOWN_OVERZEALOUS = 0;
  * - **Declaration and redeclaration** (~110, `validate()`). `let let`, a lexical
  *   declaration as the body of an `if`, a function declaration where only a
  *   statement is allowed, `const` without an initializer in a `for-in` head.
- * - **Statement placement** (~105, mostly `validate()`). `break` and `continue` with no enclosing
+ * - **`import` and `export` placement** (~105, `validate()`). Neither may be written
+ *   anywhere but at the top level of a module, and `parse()` reads both
+ *   wherever a statement may go.
+ * - **`for` statement heads** (~100, mostly `validate()`). `for (let x = 1 of y)`, an initializer on
+ *   a `for-in` head outside sloppy Annex B, `let` as the target of a `for-of`,
+ *   `for await` outside an async function.
+ * - **`let` as a name** (~70, `validate()`). Reserved in strict code, and banned as
+ *   the binding of a `let`, `const`, or `class` declaration even in sloppy
+ *   code, where a plain `var let` is still fine.
+ * - **Class element grammar** (~55, mixed). A static method named `prototype`, a
+ *   private name whose `#` is written as an escape, a constructor that is also
+ *   a generator or an accessor.
+ * - **`import()` call shape** (~45, `parse()`). No argument, three arguments, a rest
+ *   argument, `new import(x)`, an escape in the `import` keyword.
+ * - **Statement placement** (~35, mostly `validate()`). `break` and `continue` with no enclosing
  *   iteration or label, a duplicate label, `return` in module code.
- * - **`for` statement heads** (~70, mostly `validate()`). `for (let x = 1 of y)`, an initializer on
- *   a `for-in` head outside sloppy Annex B, `let` as the target of a `for-of`.
  * - **Expression-level grammar** (~20, `parse()`). `a ?? b || c` without parentheses,
  *   `-a ** b`, `this++`, `delete x` in strict mode, `#x in obj` outside a
  *   class body, an update expression on an optional chain.

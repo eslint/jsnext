@@ -195,6 +195,31 @@ and `packages/jsparse/tests/test262.test.ts` pins both halves.
 
 ---
 
+### `eval` and `arguments` where `espree` misses them
+
+**Reference:** `espree` implements the strict mode rules about these two names,
+and two of its checks fall short. It rejects a class *declaration* named
+`eval` but accepts the expression, and it does not look inside an arrow
+function for the `arguments` that a class static block bans.
+
+```js
+(class eval {});                          // espree accepts
+class C { static { () => arguments; } }   // espree accepts
+```
+
+**Here:** both are reported. Every part of a class is strict mode code whether
+it is a declaration or an expression, and `ContainsArguments` reaches through
+an arrow function precisely because an arrow has no argument list of its own to
+name. V8 rejects both, and `espree` rejects the neighbouring spelling of each —
+`class eval {}` and `class C { static { arguments; } }` — so these read as
+oversights rather than as decisions.
+
+**How conformance absorbs it:** it does not have to. Both are `validate()`
+diagnostics, and the differential corpus compares trees.
+`tests/fixtures/invalid-javascript.json` pins them.
+
+---
+
 ## Scope analysis
 
 `jsscope` reproduces two analyzers that disagree with each other in three
@@ -264,9 +289,10 @@ The last one comes from test262, which is the only corpus that tests what the
 parser *rejects*. No valid program is rejected — that count is zero and has to
 stay there — so what is left is invalid programs accepted in silence.
 
-- **Most of ECMAScript's early errors.** Around 1,132 test262 files are invalid
-  programs that both phases accept: `eval` assigned to in strict code, `break`
-  with nothing to break out of, a lexical declaration as the body of an `if`.
+- **Most of ECMAScript's early errors.** Around 926 test262 files are invalid
+  programs that both phases accept: a rest element that is not the last one in
+  a binding pattern, `break` with nothing to break out of, a lexical
+  declaration as the body of an `if`.
   The families are enumerated with rough counts in
   [`packages/jsparse/scripts/262-exclusions.mjs`](../packages/jsparse/scripts/262-exclusions.mjs),
   and the per-directory counts are pinned in `262-baseline.json` so that the
