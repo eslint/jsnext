@@ -571,5 +571,13 @@
 	{ "code": "0_0;", "sourceType": "script" },
 	{ "code": "0_9;", "sourceType": "script" },
 	{ "code": "0_0123456789;", "sourceType": "script" },
-	{ "code": "0_1n;", "sourceType": "script" }
+	{ "code": "0_1n;", "sourceType": "script" },
+
+	{ "code": "-a ** b;", "sourceType": "script" },
+	{ "code": "typeof a ** b;", "sourceType": "script" },
+	{ "code": "delete a.b ** c;", "sourceType": "script" },
+	{ "code": "a ?? b || c;", "sourceType": "script" },
+	{ "code": "a ?? b && c;", "sourceType": "script" },
+	{ "code": "a || b ?? c;", "sourceType": "script" },
+	{ "code": "a && b ?? c;", "sourceType": "script" }
 ]

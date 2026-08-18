@@ -351,6 +351,58 @@ describe("syntax errors", () => {
 	});
 
 	/*
+	 * `ExponentiationExpression` takes an `UpdateExpression` on the left, and
+	 * `CoalesceExpression` takes a `BitwiseORExpression` on either side. Both
+	 * refuse an operand whose reading would be a guess, and parentheses are
+	 * what settle it.
+	 */
+	it("throws for a unary expression as the base of an exponentiation", () => {
+		for (const code of [
+			"-a ** b;",
+			"+a ** b;",
+			"!a ** b;",
+			"~a ** b;",
+			"typeof a ** b;",
+			"void a ** b;",
+			"delete a.b ** c;",
+			"async function f() { await a ** b; }",
+		]) {
+			expect(() => parse(code, { sourceType: "script" })).toThrow(
+				/may not be the base of an exponentiation/u,
+			);
+		}
+	});
+
+	it("throws for '??' mixed with '||' or '&&'", () => {
+		for (const code of [
+			"a ?? b || c;",
+			"a ?? b && c;",
+			"a || b ?? c;",
+			"a && b ?? c;",
+		]) {
+			expect(() => parse(code, { sourceType: "script" })).toThrow(
+				/may not be mixed with/u,
+			);
+		}
+	});
+
+	it("accepts each of them once parentheses settle the reading", () => {
+		for (const code of [
+			"(-a) ** b;",
+			"a ** -b;",
+			"a-- ** b;",
+			"a ** b ** c;",
+			"(a ?? b) || c;",
+			"a ?? (b || c);",
+			"a ?? (b && c);",
+			"a ?? b ?? c;",
+			"a && b || c;",
+		]) {
+			expect(() => parse(code, { sourceType: "script" })).not.toThrow();
+		}
+	});
+
+	/*
 	 * `DecimalIntegerLiteral` admits a separator only after a `NonZeroDigit`,
 	 * so a lone `0` ends the integer part. The other bases are unaffected:
 	 * `0x1_0` separates hex digits rather than the leading zero.

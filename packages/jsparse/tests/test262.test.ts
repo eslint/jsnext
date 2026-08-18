@@ -552,6 +552,16 @@ const valid: [string, "script" | "module"][] = [
 	["0o1_0;", "script"],
 	["0.1_1;", "script"],
 	["1_0e1_0;", "script"],
+
+	// Parentheses settle both of the readings the grammar refuses to guess.
+	["(-a) ** b;", "script"],
+	["a ** -b;", "script"],
+	["a-- ** b;", "script"],
+	["a ** b ** c;", "script"],
+	["(a ?? b) || c;", "script"],
+	["a ?? (b || c);", "script"],
+	["a ?? b ?? c;", "script"],
+	["a && b || c;", "script"],
 ];
 
 describe("test262 positive tests", () => {

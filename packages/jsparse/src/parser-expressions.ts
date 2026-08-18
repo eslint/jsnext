@@ -41,6 +41,7 @@ import {
 	NODE_E,
 	NODE_F,
 	NODE_END,
+	NODE_FLAGS,
 	NODE_G,
 	NODE_KIND,
 	NODE_START,
@@ -341,6 +342,9 @@ export abstract class ExpressionParser extends TypeParser {
 				operator === T_AMPAMP ||
 				operator === T_PIPEPIPE ||
 				operator === T_QQ;
+
+			this.checkOperandMixing(left, operator);
+
 			const node = this.writer.alloc(
 				isLogical ? N_LogicalExpression : N_BinaryExpression,
 				start,
@@ -355,17 +359,82 @@ export abstract class ExpressionParser extends TypeParser {
 			 */
 			const rightPrecedence =
 				operator === T_STARSTAR ? precedence - 1 : precedence;
+			const right = this.parseBinaryExpression(rightPrecedence);
 
-			this.writer.set(
-				node,
-				NODE_B,
-				this.parseBinaryExpression(rightPrecedence),
-			);
+			/*
+			 * `??` is the one operator that has to look right as well. It
+			 * binds as loosely as `||`, so `a || b ?? c` is caught on the
+			 * left, but `&&` binds tighter and `a ?? b && c` puts the
+			 * offending operator under the right operand instead.
+			 */
+			if (operator === T_QQ) {
+				this.checkOperandMixing(right, operator);
+			}
+
+			this.writer.set(node, NODE_B, right);
 			this.writer.set(node, NODE_C, operator);
 			left = this.writer.finish(node, this.lastEnd);
 		}
 
 		return left;
+	}
+
+	/**
+	 * Reports an operand an operator's grammar does not admit.
+	 *
+	 * Two productions ask for something narrower than the precedence table
+	 * gives them, and both are about a reading that would be a guess.
+	 * `ExponentiationExpression` takes an `UpdateExpression` on the left, so
+	 * `-a ** b` has no parse — `(-a) ** b` and `-(a ** b)` are both plausible
+	 * and the grammar refuses to pick. `CoalesceExpression` takes a
+	 * `BitwiseORExpression` on either side, so `??` may not sit beside `||`
+	 * or `&&` without parentheses for the same reason.
+	 *
+	 * Parentheses are what resolve both, which is why a parenthesized operand
+	 * is always fine.
+	 * @param operand The operand node index.
+	 * @param operator The operator token kind it belongs to.
+	 * @returns Nothing.
+	 * @throws {ParseError} When the operand is one the production excludes.
+	 */
+	private checkOperandMixing(operand: number, operator: number): void {
+		if ((this.writer.get(operand, NODE_FLAGS) & NF_PARENTHESIZED) !== 0) {
+			return;
+		}
+
+		const kind = this.writer.get(operand, NODE_KIND);
+
+		if (operator === T_STARSTAR) {
+			if (
+				kind === N_UnaryExpression ||
+				kind === N_AwaitExpression
+			) {
+				throw this.error(
+					"A unary expression may not be the base of an exponentiation; parenthesize it.",
+					this.writer.get(operand, NODE_START),
+				);
+			}
+
+			return;
+		}
+
+		if (kind !== N_LogicalExpression) {
+			return;
+		}
+
+		const inner = this.writer.get(operand, NODE_C);
+
+		if (
+			operator === T_QQ
+				? inner === T_AMPAMP || inner === T_PIPEPIPE
+				: (operator === T_AMPAMP || operator === T_PIPEPIPE) &&
+					inner === T_QQ
+		) {
+			throw this.error(
+				"'??' may not be mixed with '||' or '&&' without parentheses.",
+				this.writer.get(operand, NODE_START),
+			);
+		}
 	}
 
 	/**
