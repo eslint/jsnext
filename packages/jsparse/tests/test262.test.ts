@@ -522,6 +522,13 @@ const valid: [string, "script" | "module"][] = [
 	["({a: {b}} = x);", "script"],
 	["(a) = 1;", "script"],
 	["a.b &&= 1;", "script"],
+
+	// Only the spelling that sets the prototype counts as setting it.
+	["({__proto__: 1});", "script"],
+	["({__proto__: 1, ['__proto__']: 2});", "script"],
+	["({__proto__() {}, __proto__: 1});", "script"],
+	["({__proto__, __proto__: 1});", "script"],
+	["({a = 1} = x);", "script"],
 ];
 
 describe("test262 positive tests", () => {

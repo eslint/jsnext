@@ -76,6 +76,7 @@ import {
 	N_JSXFragment,
 	N_LabeledStatement,
 	N_Literal,
+	N_ObjectExpression,
 	N_ObjectPattern,
 	N_Program,
 	N_Property,
@@ -120,6 +121,7 @@ import {
 	KEYWORD_LAST,
 	KEYWORD_NAMES,
 	KIND_KEYWORD_FLAGS,
+	KW_RESERVED,
 	KW_STRICT_RESERVED,
 	T_ASSIGN,
 	T_ASSIGN_AMPAMP,
@@ -1997,25 +1999,6 @@ class Validator {
 	}
 
 	/**
-	 * Reports names that may not be bound under the current rules.
-	 * @param name The name being bound.
-	 * @param start The offset of the identifier.
-	 * @returns Nothing.
-	 */
-	private checkReservedBinding(name: string, start: number): void {
-		let hash = 0;
-
-		for (let i = 0; i < name.length; i++) {
-			hash = hashChar(hash, name.charCodeAt(i));
-		}
-
-		this.checkReservedWord(
-			lookupKeyword(name, 0, name.length, hash),
-			start,
-		);
-	}
-
-	/**
 	 * Reports a word that may not be an identifier where it was written.
 	 *
 	 * Three rules meet here. Strict mode reserves a fixed list. A generator
@@ -2143,15 +2126,26 @@ class Validator {
 	 * @returns Nothing.
 	 */
 	private checkWordAt(node: number): void {
-		const reader = this.reader;
-		const source = reader.source;
-		const start = reader.start(node);
+		const source = this.reader.source;
+		const start = this.reader.start(node);
 		const first = source.charCodeAt(start);
 
 		if (first >= RESERVED_INITIALS.length || RESERVED_INITIALS[first] === 0) {
 			return;
 		}
 
+		this.checkReservedWord(this.keywordAt(node), start);
+	}
+
+	/**
+	 * Reads which keyword an identifier's text spells, if it spells one.
+	 * @param node The `Identifier` node index.
+	 * @returns The keyword kind, or a value outside the keyword range.
+	 */
+	private keywordAt(node: number): number {
+		const reader = this.reader;
+		const source = reader.source;
+		const start = reader.start(node);
 		const nameEnd = reader.field(node, NODE_A);
 		const end = nameEnd === 0 ? reader.end(node) : nameEnd;
 		let hash = 0;
@@ -2167,21 +2161,139 @@ class Validator {
 			hash = hashChar(hash, code);
 		}
 
+		if (!escaped) {
+			return lookupKeyword(source, start, end, hash);
+		}
+
 		/*
 		 * A word written with an escape is the word it spells, so `yield`
 		 * is `yield` and is reserved wherever `yield` is. Decoding costs a
 		 * string, which is why it waits until an escape is known to be there.
 		 */
-		if (escaped) {
-			this.checkReservedBinding(
-				decodeEscapes(source.slice(start, end), false),
-				start,
+		const name = decodeEscapes(source.slice(start, end), false);
+		let decodedHash = 0;
+
+		for (let i = 0; i < name.length; i++) {
+			decodedHash = hashChar(decodedHash, name.charCodeAt(i));
+		}
+
+		return lookupKeyword(name, 0, name.length, decodedHash);
+	}
+
+	/**
+	 * Checks the name a shorthand property is written with.
+	 *
+	 * `{ a }` means `{ a: a }`, so the one word is a name and a reference at
+	 * once and has to be able to be both. A computed key, a string, and a
+	 * number are names the shorthand cannot spell back out as a reference,
+	 * and a reserved word is a name that is not one.
+	 * @param node The `Property` node index.
+	 * @returns Nothing.
+	 */
+	private checkShorthandName(node: number): void {
+		const reader = this.reader;
+		const key = reader.field(node, NODE_A);
+
+		if (
+			(reader.flags(node) & NF_COMPUTED) !== 0 ||
+			key === 0 ||
+			reader.kind(key) !== N_Identifier
+		) {
+			this.report(
+				"A shorthand property must be written as a plain identifier.",
+				reader.start(node),
 			);
 
 			return;
 		}
 
-		this.checkReservedWord(lookupKeyword(source, start, end, hash), start);
+		const keyword = this.keywordAt(key);
+
+		if (
+			keyword >= KEYWORD_FIRST &&
+			keyword <= KEYWORD_LAST &&
+			(KIND_KEYWORD_FLAGS[keyword] & KW_RESERVED) !== 0
+		) {
+			this.report(
+				`Unexpected reserved word '${KEYWORD_NAMES[keyword - KEYWORD_FIRST]}'.`,
+				reader.start(key),
+			);
+
+			return;
+		}
+
+		this.checkReservedWord(keyword, reader.start(key));
+	}
+
+	/**
+	 * Checks the properties of an object literal.
+	 *
+	 * Two rules need to know that the literal was never reparsed as a
+	 * pattern. `{ a = 1 }` is a `CoverInitializedName`, which only means
+	 * something once the cover grammar is refined into a pattern; and
+	 * `__proto__: v` sets the prototype rather than a property, so writing it
+	 * twice is writing two different things into one place.
+	 * @param node The `ObjectExpression` node index.
+	 * @returns Nothing.
+	 */
+	private checkObjectLiteral(node: number): void {
+		const reader = this.reader;
+		const properties = reader.field(node, NODE_A);
+		const size = reader.listSize(properties);
+		let sawProto = false;
+
+		for (let i = 0; i < size; i++) {
+			const property = reader.listItem(properties, i);
+
+			// A spread carries no name of its own.
+			if (reader.kind(property) !== N_Property) {
+				continue;
+			}
+
+			const flags = reader.flags(property);
+
+			if ((flags & NF_SHORTHAND) !== 0) {
+				const value = reader.field(property, NODE_B);
+
+				if (
+					value !== 0 &&
+					reader.kind(value) === N_AssignmentPattern
+				) {
+					this.report(
+						"A shorthand property may only take a default inside a destructuring pattern.",
+						reader.start(property),
+					);
+				}
+
+				continue;
+			}
+
+			/*
+			 * Only `__proto__: v` sets the prototype. A computed key does not,
+			 * because the name is not known until the literal is evaluated,
+			 * and neither a method nor an accessor does — those define an
+			 * ordinary property that happens to be spelled that way.
+			 */
+			const accessor = (flags & MKIND_MASK) >>> MKIND_SHIFT;
+
+			if (
+				(flags & (NF_COMPUTED | NF_METHOD)) !== 0 ||
+				accessor === MKIND_GET ||
+				accessor === MKIND_SET ||
+				this.propertyName(property) !== "__proto__"
+			) {
+				continue;
+			}
+
+			if (sawProto) {
+				this.report(
+					"An object literal may only set '__proto__' once.",
+					reader.start(property),
+				);
+			}
+
+			sawProto = true;
+		}
 	}
 
 	//-------------------------------------------------------------------------
@@ -3562,9 +3674,13 @@ class Validator {
 			 */
 			case N_Property:
 				if ((this.reader.flags(node) & NF_SHORTHAND) !== 0) {
-					this.checkSharedName(node);
+					this.checkShorthandName(node);
 				}
 
+				return;
+
+			case N_ObjectExpression:
+				this.checkObjectLiteral(node);
 				return;
 
 			case N_ImportSpecifier:

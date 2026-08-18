@@ -540,5 +540,16 @@
 	{ "code": "f() &&= 1;", "sourceType": "script" },
 	{ "code": "f() ||= 1;", "sourceType": "script" },
 	{ "code": "f() ??= 1;", "sourceType": "script" },
-	{ "code": "(f()) &&= 1;", "sourceType": "script" }
+	{ "code": "(f()) &&= 1;", "sourceType": "script" },
+
+	{ "code": "({0});", "sourceType": "script" },
+	{ "code": "({[x]});", "sourceType": "script" },
+	{ "code": "({this});", "sourceType": "script" },
+	{ "code": "({null});", "sourceType": "script" },
+	{ "code": "({true});", "sourceType": "script" },
+	{ "code": "({false});", "sourceType": "script" },
+	{ "code": "({default}) => {};", "sourceType": "script" },
+	{ "code": "({extends}) => {};", "sourceType": "script" },
+	{ "code": "({a = 1});", "sourceType": "script" },
+	{ "code": "({__proto__: 1, '__proto__': 2});", "sourceType": "script" }
 ]

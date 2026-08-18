@@ -1044,6 +1044,71 @@ describe("rest elements", () => {
 	});
 });
 
+describe("object literals", () => {
+	/*
+	 * `{ a }` means `{ a: a }`, so the one word is a name and a reference at
+	 * once. A computed key, a string, and a number are names the shorthand
+	 * cannot spell back out; a reserved word is a name that is not a
+	 * reference.
+	 */
+	it("requires a shorthand property to be a plain identifier", () => {
+		expect(messages("({0});")).toEqual([
+			"A shorthand property must be written as a plain identifier.",
+		]);
+		expect(messages("({[x]});")).toHaveLength(1);
+	});
+
+	it("refuses a reserved word as a shorthand name", () => {
+		for (const word of ["this", "null", "true", "false"]) {
+			expect(messages(`({${word}});`)).toEqual([
+				`Unexpected reserved word '${word}'.`,
+			]);
+		}
+	});
+
+	it("refuses one in a pattern too", () => {
+		expect(messages("({default}) => {};")).toHaveLength(1);
+		expect(messages("({extends}) => {};")).toHaveLength(1);
+		expect(messages("var x = { default } = y;")).toHaveLength(1);
+	});
+
+	it("still reports a word reserved only by position", () => {
+		expect(messages("function* g() { ({yield} = x); }")).toEqual([
+			expect.stringMatching(/'yield' cannot be used/u),
+		]);
+	});
+
+	/*
+	 * `{ a = 1 }` is a `CoverInitializedName`, which means something only
+	 * once the cover grammar is refined into a pattern.
+	 */
+	it("refuses a default outside a destructuring pattern", () => {
+		expect(messages("({a = 1});")).toEqual([
+			"A shorthand property may only take a default inside a destructuring pattern.",
+		]);
+		expect(messages("({a = 1} = x);")).toEqual([]);
+	});
+
+	/*
+	 * `__proto__: v` sets the prototype rather than a property, so writing it
+	 * twice writes two different things into one place. Only the plain form
+	 * does that — the name has to be known before the literal is evaluated,
+	 * and a method or an accessor defines an ordinary property.
+	 */
+	it("refuses a repeated __proto__", () => {
+		expect(messages("({__proto__: 1, '__proto__': 2});")).toEqual([
+			"An object literal may only set '__proto__' once.",
+		]);
+	});
+
+	it("counts only the spelling that sets the prototype", () => {
+		expect(messages("({__proto__: 1});")).toEqual([]);
+		expect(messages("({__proto__: 1, ['__proto__']: 2});")).toEqual([]);
+		expect(messages("({__proto__() {}, __proto__: 1});")).toEqual([]);
+		expect(messages("({__proto__, __proto__: 1});")).toEqual([]);
+	});
+});
+
 describe("assignment targets", () => {
 	const script = { sourceType: "script" } as const;
 
