@@ -579,5 +579,15 @@
 	{ "code": "a ?? b || c;", "sourceType": "script" },
 	{ "code": "a ?? b && c;", "sourceType": "script" },
 	{ "code": "a || b ?? c;", "sourceType": "script" },
-	{ "code": "a && b ?? c;", "sourceType": "script" }
+	{ "code": "a && b ?? c;", "sourceType": "script" },
+
+	{ "code": "function f() { new.t\\u0061rget; }", "sourceType": "script" },
+	{ "code": "import.m\\u0065ta;", "sourceType": "module" },
+	{ "code": "import.meta;", "sourceType": "script" },
+	{ "code": "new.target;", "sourceType": "script" },
+	{ "code": "() => { new.target; };", "sourceType": "script" },
+	{ "code": "new.target;", "sourceType": "module" },
+	{ "code": "function f() { class C { static { return; } } }", "sourceType": "script" },
+	{ "code": "async function f() { class C { static { await 0; } } }", "sourceType": "script" },
+	{ "code": "function* g() { class C { static { yield; } } }", "sourceType": "script" }
 ]

@@ -1091,6 +1091,102 @@ describe("rest elements", () => {
 	});
 });
 
+describe("new.target and import.meta", () => {
+	const script = { sourceType: "script" } as const;
+
+	/*
+	 * Both are spelled out in the grammar as two literal words rather than
+	 * derived from an identifier, so an escape in the second half spells
+	 * nothing at all.
+	 */
+	it("refuses an escape in either name", () => {
+		expect(
+			messages("function f() { new.t\\u0061rget; }", script),
+		).toEqual(["'new.target' may not be written with an escape."]);
+		expect(messages("import.m\\u0065ta;")).toEqual([
+			"'import.meta' may not be written with an escape.",
+		]);
+	});
+
+	/*
+	 * `new.target` names the constructor a call was made through, so it needs
+	 * something callable around it. An arrow has none of its own and reads
+	 * the enclosing one, which is why an arrow at the top level is no help.
+	 */
+	it("refuses new.target outside anything callable", () => {
+		expect(messages("new.target;", script)).toEqual([
+			expect.stringMatching(/'new\.target' may only appear/u),
+		]);
+		expect(messages("() => { new.target; };", script)).toHaveLength(1);
+		expect(messages("new.target;")).toHaveLength(1);
+	});
+
+	it("takes new.target in every body that has one", () => {
+		expect(messages("function f() { new.target; }", script)).toEqual([]);
+		expect(messages("class C { m() { new.target; } }", script)).toEqual([]);
+		expect(
+			messages("function f() { () => new.target; }", script),
+		).toEqual([]);
+		expect(messages("class C { static { new.target; } }", script)).toEqual(
+			[],
+		);
+		expect(messages("class C { p = new.target; }", script)).toEqual([]);
+	});
+
+	it("refuses import.meta outside a module", () => {
+		expect(messages("import.meta;", script)).toEqual([
+			expect.stringMatching(/'import\.meta' may only appear/u),
+		]);
+		expect(messages("import.meta;")).toEqual([]);
+	});
+});
+
+describe("class static blocks", () => {
+	const script = { sourceType: "script" } as const;
+
+	/*
+	 * A static block runs while the class is being defined, which leaves it
+	 * nothing to return from and nothing to suspend — however async or
+	 * generative the function around the class is.
+	 */
+	it("refuses return, await, and yield", () => {
+		expect(
+			messages("function f() { class C { static { return; } } }", script),
+		).toEqual(["'return' outside of function."]);
+		expect(
+			messages(
+				"async function f() { class C { static { await 0; } } }",
+				script,
+			),
+		).toEqual([
+			"An await expression may not appear in a class static block.",
+		]);
+		expect(
+			messages(
+				"function* g() { class C { static { yield; } } }",
+				script,
+			),
+		).toEqual([
+			"A yield expression may not appear in a class static block.",
+		]);
+	});
+
+	it("stops at the first function inside it", () => {
+		expect(
+			messages(
+				"class C { static { async function g() { await 0; } } }",
+				script,
+			),
+		).toEqual([]);
+		expect(
+			messages("class C { static { function* g() { yield; } } }", script),
+		).toEqual([]);
+		expect(
+			messages("class C { static { () => { return 1; } } }", script),
+		).toEqual([]);
+	});
+});
+
 describe("module exports", () => {
 	it("reports a name exported twice", () => {
 		expect(messages("var x; export { x }; export { x };")).toEqual([

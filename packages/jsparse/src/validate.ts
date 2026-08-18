@@ -102,6 +102,7 @@ import {
 	N_VariableDeclarator,
 	N_WhileStatement,
 	N_MemberExpression,
+	N_MetaProperty,
 	N_MethodDefinition,
 	N_PrivateIdentifier,
 	N_TSAbstractMethodDefinition,
@@ -480,6 +481,26 @@ class Validator {
 	private inParameters = false;
 
 	/**
+	 * Whether the walk is inside a class static block, no function between.
+	 *
+	 * A static block runs while the class is being defined, so there is
+	 * nothing for a `yield` or an `await` in one to suspend — the same reason
+	 * a parameter list bans both.
+	 */
+	private inStaticBlock = false;
+
+	/**
+	 * Whether `new.target` may stand where the walk is.
+	 *
+	 * It names the constructor a call was made through, so it needs
+	 * something that can be called: any function but an arrow, which has no
+	 * `new.target` of its own and reads the enclosing one, plus the two
+	 * class bodies that are compiled into functions — a static block and a
+	 * field initializer.
+	 */
+	private newTargetAllowed = false;
+
+	/**
 	 * The labels a `break` may name, outermost first.
 	 *
 	 * Emptied at every function boundary and at a class static block, because
@@ -807,10 +828,23 @@ class Validator {
 						: null;
 				const previousIterationDepth = this.iterationDepth;
 				const previousSwitchDepth = this.switchDepth;
+				const previousFunctionDepth = this.functionDepth;
+				const previousStaticBlock = this.inStaticBlock;
+				const previousNewTarget = this.newTargetAllowed;
 
 				if (kind === N_StaticBlock) {
 					this.awaitReserved = true;
 					this.inGenerator = false;
+
+					/*
+					 * A static block runs while the class is being defined,
+					 * which leaves it nothing to return from and nothing to
+					 * suspend — and gives it a `new.target` of its own, which
+					 * is `undefined`.
+					 */
+					this.functionDepth = 0;
+					this.inStaticBlock = true;
+					this.newTargetAllowed = true;
 
 					/*
 					 * A static block is a boundary for `break` and `continue`
@@ -852,6 +886,9 @@ class Validator {
 					this.labels.push(...outerLabels);
 					this.iterationDepth = previousIterationDepth;
 					this.switchDepth = previousSwitchDepth;
+					this.functionDepth = previousFunctionDepth;
+					this.inStaticBlock = previousStaticBlock;
+					this.newTargetAllowed = previousNewTarget;
 				}
 
 				this.awaitReserved = wasAwait;
@@ -1015,9 +1052,15 @@ class Validator {
 					this.findArguments(reader.field(node, NODE_B)),
 					"a class field initializer",
 				);
+				const wasNewTarget = this.newTargetAllowed;
+
 				this.superPropertyAllowed = true;
 				this.superCallAllowed = false;
+
+				// An initializer is compiled into a function of its own.
+				this.newTargetAllowed = true;
 				this.visit(reader.field(node, NODE_B));
+				this.newTargetAllowed = wasNewTarget;
 				this.superPropertyAllowed = wasSuperProperty;
 				this.superCallAllowed = wasSuperCall;
 				this.visitList(reader.field(node, NODE_C));
@@ -1184,6 +1227,19 @@ class Validator {
 		this.functionDepth++;
 		this.enterScope(true);
 
+		const previousStaticBlock = this.inStaticBlock;
+		const previousNewTarget = this.newTargetAllowed;
+
+		this.inStaticBlock = false;
+
+		/*
+		 * An arrow has no `new.target` of its own and reads the enclosing
+		 * one, so it neither grants the permission nor takes it away.
+		 */
+		if (!isArrow) {
+			this.newTargetAllowed = true;
+		}
+
 		/*
 		 * A label names a statement, and nothing inside a nested function can
 		 * leave a statement outside it, so the whole set is put aside for the
@@ -1323,6 +1379,8 @@ class Validator {
 		this.inAsync = previousAsync;
 		this.awaitReserved = previousAwait;
 		this.inParameters = previousParameters;
+		this.inStaticBlock = previousStaticBlock;
+		this.newTargetAllowed = previousNewTarget;
 		this.labels.push(...outerLabels);
 		this.iterationDepth = previousIterationDepth;
 		this.switchDepth = previousSwitchDepth;
@@ -4064,17 +4122,24 @@ class Validator {
 			 * of suspension may appear in one.
 			 */
 			case N_YieldExpression:
-			case N_AwaitExpression:
-				if (this.inParameters) {
+			case N_AwaitExpression: {
+				const where = this.inParameters
+					? "a parameter list"
+					: this.inStaticBlock
+						? "a class static block"
+						: null;
+
+				if (where !== null) {
 					this.report(
 						kind === N_YieldExpression
-							? "A yield expression may not appear in a parameter list."
-							: "An await expression may not appear in a parameter list.",
+							? `A yield expression may not appear in ${where}.`
+							: `An await expression may not appear in ${where}.`,
 						this.reader.start(node),
 					);
 				}
 
 				return;
+			}
 
 			/*
 			 * Shorthand reuses one node for both halves, and that node was
@@ -4092,6 +4157,50 @@ class Validator {
 			case N_ObjectExpression:
 				this.checkObjectLiteral(node);
 				return;
+
+			/*
+			 * `new.target` and `import.meta` are each spelled out in the
+			 * grammar as two literal words rather than derived from an
+			 * identifier, so an escape in the second half spells nothing at
+			 * all. Where each may stand is the other question: `new.target`
+			 * names the constructor a call was made through, and
+			 * `import.meta` is the module record, which a script has none of.
+			 */
+			case N_MetaProperty: {
+				const reader = this.reader;
+				const property = reader.field(node, NODE_B);
+				const isImport =
+					reader.text(reader.field(node, NODE_A)) === "import";
+
+				if (reader.text(property).indexOf("\\") !== -1) {
+					this.report(
+						`'${isImport ? "import.meta" : "new.target"}' may not be written with an escape.`,
+						reader.start(property),
+					);
+
+					return;
+				}
+
+				if (isImport) {
+					if (this.sourceType !== "module") {
+						this.report(
+							`'import.meta' may only appear when sourceType is "module".`,
+							reader.start(node),
+						);
+					}
+
+					return;
+				}
+
+				if (!this.newTargetAllowed) {
+					this.report(
+						"'new.target' may only appear inside a function, a class field initializer, or a class static block.",
+						reader.start(node),
+					);
+				}
+
+				return;
+			}
 
 			case N_ImportSpecifier:
 			case N_ExportSpecifier:

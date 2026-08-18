@@ -562,6 +562,16 @@ const valid: [string, "script" | "module"][] = [
 	["a ?? (b || c);", "script"],
 	["a ?? b ?? c;", "script"],
 	["a && b || c;", "script"],
+
+	// Every body `new.target` has one of, and the boundary a static block is.
+	["function f() { new.target; }", "script"],
+	["class C { m() { new.target; } }", "script"],
+	["function f() { () => new.target; }", "script"],
+	["class C { static { new.target; } }", "script"],
+	["class C { p = new.target; }", "script"],
+	["import.meta;", "module"],
+	["class C { static { async function g() { await 0; } } }", "script"],
+	["class C { static { () => { return 1; } } }", "script"],
 ];
 
 describe("test262 positive tests", () => {

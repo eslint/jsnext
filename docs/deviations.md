@@ -310,9 +310,10 @@ The last one comes from test262, which is the only corpus that tests what the
 parser *rejects*. No valid program is rejected — that count is zero and has to
 stay there — so what is left is invalid programs accepted in silence.
 
-- **Most of ECMAScript's early errors.** Around 26 test262 files are invalid
-  programs that both phases accept: `new.target` outside a function, a line
-  terminator between `yield` and its `*`, `delete x` in strict mode.
+- **Most of ECMAScript's early errors.** Seventeen test262 files are invalid
+  programs that both phases accept: a line terminator between `yield` and its
+  `*`, `delete x` in strict mode, a template literal in the tail position of
+  an optional chain.
   The families are enumerated with rough counts in
   [`packages/jsparse/scripts/262-exclusions.mjs`](../packages/jsparse/scripts/262-exclusions.mjs),
   and the per-directory counts are pinned in `262-baseline.json` so that the
