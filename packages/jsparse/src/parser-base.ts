@@ -13,7 +13,7 @@
  * here, which lets the layers reference each other without circular imports.
  */
 
-import { TF_NEWLINE_BEFORE } from "./binary.js";
+import { TF_HAS_ESCAPE, TF_NEWLINE_BEFORE } from "./binary.js";
 import { ParseError } from "./errors.js";
 import { NodeWriter } from "./node-writer.js";
 import {
@@ -31,6 +31,7 @@ import {
 	N_PrivateIdentifier,
 } from "./node-kinds.js";
 import { Tokenizer } from "./tokenizer.js";
+import { decodeEscapes } from "./values.js";
 import {
 	KEYWORD_FIRST,
 	KEYWORD_LAST,
@@ -50,6 +51,8 @@ import {
 	T_null,
 	T_true,
 	describeKind,
+	hashChar,
+	lookupKeyword,
 } from "./token-kinds.js";
 
 /**
@@ -328,6 +331,18 @@ export abstract class ParserBase {
 			throw this.unexpected();
 		}
 
+		/*
+		 * A reserved word written with an escape is still that word: the
+		 * tokenizer skips the keyword table when it sees one, so `\u0073uper`
+		 * arrives here as an ordinary identifier and `atBindingName()` lets it
+		 * through. The specification does not — "a code point in a
+		 * ReservedWord cannot be expressed by a UnicodeEscapeSequence" — so
+		 * the word has to be spelled out and looked up again.
+		 */
+		if ((this.tokenizer.flags & TF_HAS_ESCAPE) !== 0) {
+			this.checkEscapedWord(this.tokenizer.start, this.tokenizer.end);
+		}
+
 		const node = this.writer.alloc(N_Identifier, this.tokenizer.start);
 		const end = this.tokenizer.end;
 
@@ -335,6 +350,41 @@ export abstract class ParserBase {
 		this.tokenizer.next();
 
 		return this.writer.finish(node, end);
+	}
+
+	/**
+	 * Rejects a reserved word that was written with an escape.
+	 *
+	 * `yield` and `await` are the two the rule leaves alone, and neither is a
+	 * `ReservedWord` in the table — both are reserved by where they appear
+	 * rather than outright, which `validate()` decides, so they fall through
+	 * here whatever they are spelled with.
+	 * @param start Where the word begins.
+	 * @param end Where it ends.
+	 * @returns Nothing.
+	 * @throws {ParseError} When the word is a reserved word.
+	 */
+	protected checkEscapedWord(start: number, end: number): void {
+		const raw = this.source.slice(start, end);
+		const name = decodeEscapes(raw, false);
+		let hash = 0;
+
+		for (let i = 0; i < name.length; i++) {
+			hash = hashChar(hash, name.charCodeAt(i));
+		}
+
+		const kind = lookupKeyword(name, 0, name.length, hash);
+
+		if (
+			kind >= KEYWORD_FIRST &&
+			kind <= KEYWORD_LAST &&
+			(KIND_KEYWORD_FLAGS[kind] & KW_RESERVED) !== 0
+		) {
+			throw this.error(
+				`Keyword '${name}' cannot be written with an escape sequence.`,
+				start,
+			);
+		}
 	}
 
 	/**

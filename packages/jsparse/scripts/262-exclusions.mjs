@@ -64,18 +64,13 @@ export const KNOWN_OVERZEALOUS = 0;
  * — where no tree should have been built at all, and those are the parser's.
  *
  * The run reports which phase catches what it does catch, so the balance is
- * visible: today it is 1,006 from `parse()` against 2,118 from `validate()`.
+ * visible: today it is 1,160 from `parse()` against 2,118 from `validate()`.
  *
  * Counts are approximate: a test usually violates one rule but the families
  * overlap at the edges, and the authority on the totals is
  * `262-baseline.json`. They are here to say what implementing one would be
  * worth, not to be summed.
  *
- * - **A reserved word written with an escape** (~206, `parse()`). `\u0073uper` is not
- *   `super`, and neither is it an identifier: a reserved word may not be
- *   spelled with an escape at all. The tokenizer already knows an escape was
- *   there — `TF_HAS_ESCAPE` — so this is a check at the point a word is
- *   accepted as an identifier rather than new machinery.
  * - **`eval` and `arguments`** (~180, `validate()`). Strict code may not bind either
  *   or assign to either, and a class field initializer may not so much as
  *   mention `arguments`. The binding half is a few lines beside the reserved
@@ -85,9 +80,12 @@ export const KNOWN_OVERZEALOUS = 0;
  *   code, where a plain `var let` is still fine.
  * - **`import()` call shape** (~45, `parse()`). No argument, three arguments, a rest
  *   argument, `new import(x)`, an escape in the `import` keyword.
- * - **Lexical grammar** (~90, `parse()`). A numeric separator in a position that
- *   does not admit one, a legacy octal escape in a template, a line terminator
- *   where automatic semicolon insertion does not reach.
+ * - **Lexical grammar** (~140, `parse()`). A numeric separator in a position that
+ *   does not admit one, a legacy octal escape in a string or a template, an
+ *   escape standing in for the `#` of a private name or the `!` of a hashbang,
+ *   a line terminator where automatic semicolon insertion does not reach. What
+ *   these have in common is that the escape is asked to stand for punctuation
+ *   rather than for a letter, which it never may.
  * - **Declaration and redeclaration** (~110, `validate()`). `let let`, a lexical
  *   declaration as the body of an `if`, a function declaration where only a
  *   statement is allowed, `const` without an initializer in a `for-in` head.

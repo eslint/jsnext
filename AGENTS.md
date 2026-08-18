@@ -249,7 +249,7 @@ npm run conformance:262 --workspace=@eslint/jsparse
 ```
 
 ```
-files=52095 valid=47149 invalid=3124 (parse=1006 validate=2118) skipped=536 missed=1286 overzealous=0
+files=52095 valid=47149 invalid=3278 (parse=1160 validate=2118) skipped=536 missed=1132 overzealous=0
 baseline unchanged
 ```
 

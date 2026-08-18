@@ -202,6 +202,27 @@ const valid: [string, "script" | "module"][] = [
 	["1_0 + 0x1_2 + 0b1_1 + 0o1_7 + 1_0.2_5e1_0 + 1_0n;", "script"],
 
 	/*
+	 * A reserved word may not be spelled with an escape, but `yield` and
+	 * `await` are carved out of that rule — they are reserved by where they
+	 * appear rather than outright, so an escaped one is still just a name
+	 * where a plain one would be. Nor are the contextual words reserved at
+	 * all, and an `IdentifierName` may be any word however it is written.
+	 */
+	["var \\u0079ield = 1;", "script"],
+	["var \\u0061wait = 1;", "script"],
+	["var \\u006cet = 1;", "script"],
+	["var \\u0073tatic = 1;", "script"],
+	["var \\u0061sync = 1;", "script"],
+	["var \\u006ff = 1;", "script"],
+	["o.\\u0073uper;", "script"],
+	["({ \\u0073uper: 1 });", "script"],
+	["({ \\u0063lass() {} });", "script"],
+	["class C { \\u0073uper() {} }", "script"],
+	["let { \\u0073uper: x } = o;", "script"],
+	["import { \\u0073uper as x } from \"m\";", "module"],
+	["var x; export { x as \\u0073uper };", "module"],
+
+	/*
 	 * `super.x` needs a home object, which every method has — an accessor, a
 	 * generator, an async method, an object literal method — and so does a
 	 * field initializer and a static block. `super()` needs a constructor to

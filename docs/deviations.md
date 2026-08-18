@@ -264,7 +264,7 @@ The last one comes from test262, which is the only corpus that tests what the
 parser *rejects*. No valid program is rejected — that count is zero and has to
 stay there — so what is left is invalid programs accepted in silence.
 
-- **Most of ECMAScript's early errors.** Around 1,286 test262 files are invalid
+- **Most of ECMAScript's early errors.** Around 1,132 test262 files are invalid
   programs that both phases accept: `eval` assigned to in strict code, `break`
   with nothing to break out of, a lexical declaration as the body of an `if`.
   The families are enumerated with rough counts in

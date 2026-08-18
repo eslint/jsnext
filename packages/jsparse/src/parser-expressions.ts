@@ -2,6 +2,7 @@
  * @fileoverview The expression, pattern, function, and class grammar.
  */
 
+import { TF_HAS_ESCAPE } from "./binary.js";
 import { AFTER_JSX_EXPRESSION } from "./parser-base.js";
 import { decodeEscapes } from "./values.js";
 import { TypeParser } from "./parser-types.js";
@@ -1163,6 +1164,14 @@ export abstract class ExpressionParser extends TypeParser {
 
 		const node = this.writer.alloc(N_Property, start);
 		const computed = this.at(T_BRACKET_OPEN);
+
+		/*
+		 * Recorded before the key is read, because shorthand reuses the key as
+		 * the reference and by then the flags describe the token after it.
+		 */
+		const keyStart = this.start;
+		const keyEnd = this.end;
+		const keyEscaped = (this.tokenizer.flags & TF_HAS_ESCAPE) !== 0;
 		const key = this.parsePropertyName();
 
 		if (computed) {
@@ -1199,8 +1208,17 @@ export abstract class ExpressionParser extends TypeParser {
 			return this.writer.finish(node, this.lastEnd);
 		}
 
-		// Shorthand, optionally with a default value in a pattern position.
+		/*
+		 * Shorthand, optionally with a default value in a pattern position.
+		 * The key was read as a property name, where any word goes, but
+		 * shorthand makes it the reference too — so a reserved word spelled
+		 * with an escape is an error here and not two characters earlier.
+		 */
 		this.writer.addFlags(node, NF_SHORTHAND);
+
+		if (keyEscaped) {
+			this.checkEscapedWord(keyStart, keyEnd);
+		}
 
 		if (this.at(T_ASSIGN)) {
 			const pattern = this.writer.alloc(N_AssignmentPattern, start);
@@ -2040,6 +2058,11 @@ export abstract class ExpressionParser extends TypeParser {
 			const start = this.start;
 			const property = this.writer.alloc(N_Property, start);
 			const computed = this.at(T_BRACKET_OPEN);
+
+			// See `parseObjectProperty`: shorthand makes the key a binding.
+			const keyStart = this.start;
+			const keyEnd = this.end;
+			const keyEscaped = (this.tokenizer.flags & TF_HAS_ESCAPE) !== 0;
 			const key = this.parsePropertyName();
 
 			if (computed) {
@@ -2052,6 +2075,10 @@ export abstract class ExpressionParser extends TypeParser {
 				this.writer.set(property, NODE_B, this.parseBindingElement());
 			} else {
 				this.writer.addFlags(property, NF_SHORTHAND);
+
+				if (keyEscaped) {
+					this.checkEscapedWord(keyStart, keyEnd);
+				}
 
 				if (this.at(T_ASSIGN)) {
 					const pattern = this.writer.alloc(
