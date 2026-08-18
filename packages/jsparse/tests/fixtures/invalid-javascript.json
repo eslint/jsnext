@@ -523,5 +523,13 @@
 	{ "code": "using a = 1;", "sourceType": "script" },
 	{ "code": "switch (q) { case 1: using a = 1; }", "sourceType": "script" },
 	{ "code": "switch (q) { default: using a = 1; }", "sourceType": "module" },
-	{ "code": "async function f() { await using a; }", "sourceType": "script" }
+	{ "code": "async function f() { await using a; }", "sourceType": "script" },
+
+	{ "code": "var o = { #m() {} };", "sourceType": "script" },
+	{ "code": "var o = { get #m() {} };", "sourceType": "script" },
+	{ "code": "class C { f = { #m() {} } }", "sourceType": "script" },
+	{ "code": "class C { #x; m() { const { #x: y } = this; } }", "sourceType": "script" },
+	{ "code": "class C { #f; m() { #f in #f in this; } }", "sourceType": "script" },
+	{ "code": "(#x);", "sourceType": "script" },
+	{ "code": "class C { [#x]() {} }", "sourceType": "script" }
 ]

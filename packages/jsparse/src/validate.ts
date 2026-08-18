@@ -364,6 +364,19 @@ class Validator {
 	private readonly privateNames: Set<string>[] = [];
 
 	/**
+	 * The `PrivateIdentifier` nodes standing somewhere one may.
+	 *
+	 * A private name is not an expression: the three places it may be written
+	 * are a class element's name, the property of a member access, and the
+	 * left of `#x in o`. The parser accepts one wherever an expression can go,
+	 * because telling those apart needs the tree, so every other position is
+	 * reported here. Each of the three registers the node it permits before
+	 * the walk reaches it, and the indices are unique, so a set of them needs
+	 * no unwinding — it is only ever consulted for a node visited once.
+	 */
+	private permittedPrivateNames: Set<number> | null = null;
+
+	/**
 	 * Whether the function being visited is a generator, which reserves
 	 * `yield` even in sloppy code.
 	 */
@@ -2448,6 +2461,8 @@ class Validator {
 				continue;
 			}
 
+			this.permitPrivateName(key);
+
 			const name = this.privateName(key);
 
 			if (name === "#constructor") {
@@ -2546,6 +2561,19 @@ class Validator {
 		return (
 			property !== 0 && reader.kind(property) === N_PrivateIdentifier
 		);
+	}
+
+	/**
+	 * Records that a `PrivateIdentifier` stands somewhere one may.
+	 * @param key The `PrivateIdentifier` node index.
+	 * @returns Nothing.
+	 */
+	private permitPrivateName(key: number): void {
+		if (this.permittedPrivateNames === null) {
+			this.permittedPrivateNames = new Set();
+		}
+
+		this.permittedPrivateNames.add(key);
 	}
 
 	/**
@@ -3224,6 +3252,21 @@ class Validator {
 				return;
 
 			/*
+			 * Reached only where nothing above registered this node, since
+			 * each of the three positions a private name may take does so
+			 * before the walk descends to it.
+			 */
+			case N_PrivateIdentifier:
+				if (this.permittedPrivateNames?.has(node) !== true) {
+					this.report(
+						"A private name may only be a class element's name, the property of a member access, or the left operand of 'in'.",
+						this.reader.start(node),
+					);
+				}
+
+				return;
+
+			/*
 			 * `\u`, `\x`, and a legacy octal escape all have readings a
 			 * template may not take, and the tokenizer marks the element it
 			 * found one in rather than throwing, because a *tagged* template
@@ -3307,6 +3350,7 @@ class Validator {
 					property !== 0 &&
 					this.reader.kind(property) === N_PrivateIdentifier
 				) {
+					this.permitPrivateName(property);
 					this.checkPrivateReference(property);
 
 					/*
@@ -3369,6 +3413,7 @@ class Validator {
 					left !== 0 &&
 					this.reader.kind(left) === N_PrivateIdentifier
 				) {
+					this.permitPrivateName(left);
 					this.checkPrivateReference(left);
 				}
 

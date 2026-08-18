@@ -64,7 +64,7 @@ export const KNOWN_OVERZEALOUS = 0;
  * — where no tree should have been built at all, and those are the parser's.
  *
  * The run reports which phase catches what it does catch, so the balance is
- * visible: today it is 1,285 from `parse()` against 3,010 from `validate()`.
+ * visible: today it is 1,285 from `parse()` against 3,025 from `validate()`.
  *
  * Counts are approximate: a test usually violates one rule but the families
  * overlap at the edges, and the authority on the totals is
@@ -79,9 +79,6 @@ export const KNOWN_OVERZEALOUS = 0;
  * - **Module code** (~17, `validate()`). A name exported twice over, an export
  *   that names nothing the module declares, and a module specifier holding an
  *   unpaired surrogate.
- * - **Private names outside a class** (~16, `validate()`). A `#x` written in an
- *   object literal's method, a private field read out of a destructuring
- *   pattern, `#x in obj` where no class body encloses it.
  * - **Numeric separators** (~12, `parse()`). An `_` in a position that does not
  *   admit one: doubled, trailing, or against the `0` of a legacy octal.
  * - **Legacy octal escapes** (~12, `validate()`). `"\1"` and `"\8"` in code

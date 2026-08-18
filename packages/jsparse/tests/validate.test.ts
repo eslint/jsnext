@@ -1044,6 +1044,56 @@ describe("rest elements", () => {
 	});
 });
 
+describe("private names", () => {
+	/*
+	 * A private name is not an expression. The parser accepts one wherever an
+	 * expression can go — telling `#x in o` from `#x` alone needs the tree —
+	 * so every position but the three the grammar names is reported here.
+	 */
+	it("takes the three positions the grammar gives it", () => {
+		expect(
+			messages("class C { #x = 1; static #y(){} get #z(){} }"),
+		).toEqual([]);
+		expect(messages("class C { #x; m() { return this.#x; } }")).toEqual([]);
+		expect(messages("class C { #x; m() { return #x in this; } }")).toEqual(
+			[],
+		);
+		expect(messages("class C { #x; m() { return this?.#x; } }")).toEqual(
+			[],
+		);
+	});
+
+	it("reports one written as an object literal's key", () => {
+		expect(messages("var o = { #m() {} };")).toEqual([
+			expect.stringMatching(/A private name may only be/u),
+		]);
+		expect(messages("var o = { get #m() {} };")).toHaveLength(1);
+		expect(messages("class C { f = { #m() {} } }")).toHaveLength(1);
+	});
+
+	it("reports one read out of a destructuring pattern", () => {
+		expect(
+			messages("class C { #x; m() { const { #x: y } = this; } }"),
+		).toHaveLength(1);
+	});
+
+	/*
+	 * `in` is left-associative, so `#f in #f in this` is `(#f in #f) in this`
+	 * and the inner right operand is a private name standing on its own.
+	 */
+	it("reports one as the right operand of in", () => {
+		expect(
+			messages("class C { #f; m() { #f in #f in this; } }"),
+		).toHaveLength(1);
+	});
+
+	it("reports one standing anywhere else", () => {
+		expect(messages("(#x);")).toHaveLength(1);
+		expect(messages("x = #y;")).toHaveLength(1);
+		expect(messages("class C { [#x]() {} }")).toHaveLength(1);
+	});
+});
+
 describe("using declarations", () => {
 	const script = { sourceType: "script" } as const;
 

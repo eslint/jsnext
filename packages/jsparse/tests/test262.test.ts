@@ -509,6 +509,12 @@ const valid: [string, "script" | "module"][] = [
 	["function f() { using a = 1; }", "script"],
 	["class C { static { using a = 1; } }", "script"],
 	["using a = 1;", "module"],
+
+	// The three positions a private name may take.
+	["class C { #x = 1; static #y() {} get #z() {} }", "script"],
+	["class C { #x; m() { return this.#x; } }", "script"],
+	["class C { #x; m() { return #x in this; } }", "script"],
+	["class C { #x; m() { return this?.#x; } }", "script"],
 ];
 
 describe("test262 positive tests", () => {
