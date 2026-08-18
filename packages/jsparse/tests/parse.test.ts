@@ -285,6 +285,22 @@ describe("syntax errors", () => {
 		expect(() => parse("3in")).toThrow(/Identifier directly after number/u);
 	});
 
+	/*
+	 * `new` takes a `MemberExpression` and `import(...)` is a call, so there
+	 * is no tree to build for the pair — which is what puts this in `parse()`
+	 * rather than beside the other rules about `import`.
+	 */
+	it("throws for new applied to a dynamic import", () => {
+		expect(() => parse("new import('m');")).toThrow(
+			/'new' cannot be applied to a dynamic import/u,
+		);
+	});
+
+	it("does not throw when parentheses give the call its own expression", () => {
+		expect(() => parse("new (import('m'));")).not.toThrow();
+		expect(() => parse("new import.meta.Foo();")).not.toThrow();
+	});
+
 	it("does not throw for problems that validation handles", () => {
 		expect(() => parse("with (a) { b; }")).not.toThrow();
 		expect(() => parse("let a; let a;")).not.toThrow();

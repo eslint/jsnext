@@ -9,7 +9,6 @@
 	"test/language/expressions/class": 15,
 	"test/language/expressions/coalesce": 4,
 	"test/language/expressions/delete": 2,
-	"test/language/expressions/dynamic-import": 42,
 	"test/language/expressions/exponentiation": 7,
 	"test/language/expressions/generators": 1,
 	"test/language/expressions/import.meta": 2,

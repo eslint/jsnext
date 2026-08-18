@@ -426,6 +426,14 @@ const valid: [string, "script" | "module"][] = [
 	["class C { constructor() {} static constructor() {} }", "script"],
 	["class C { constructor() {} ['constructor']() {} }", "script"],
 	["class C { constructor() { class D { constructor() {} } } }", "script"],
+
+	/*
+	 * `new` takes a `MemberExpression`. Parentheses give the import call back
+	 * its own expression, and `import.meta` is a member access to begin with.
+	 */
+	["new (import(''));", "module"],
+	["new import.meta.Foo();", "module"],
+	["import('');", "module"],
 ];
 
 describe("test262 positive tests", () => {

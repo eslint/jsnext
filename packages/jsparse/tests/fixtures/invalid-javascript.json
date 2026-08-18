@@ -433,5 +433,11 @@
 	{ "code": "class C { constructor = 1; }", "sourceType": "script" },
 	{ "code": "class C { accessor constructor; }", "sourceType": "script" },
 	{ "code": "class C { constructor() {} constructor() {} }", "sourceType": "script" },
-	{ "code": "class C { 'constructor'() {} constructor() {} }", "sourceType": "script" }
+	{ "code": "class C { 'constructor'() {} constructor() {} }", "sourceType": "script" },
+
+	{ "code": "new import('');", "sourceType": "module" },
+	{ "code": "new import('').prop;", "sourceType": "module" },
+	{ "code": "new import('', {});", "sourceType": "module" },
+	{ "code": "let f = () => new import('');", "sourceType": "module" },
+	{ "code": "async function f() { await new import(''); }", "sourceType": "module" }
 ]

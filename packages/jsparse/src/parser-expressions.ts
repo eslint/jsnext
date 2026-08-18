@@ -1404,6 +1404,32 @@ export abstract class ExpressionParser extends TypeParser {
 			return this.writer.finish(node, this.lastEnd);
 		}
 
+		/*
+		 * `new` takes a `MemberExpression`, and `import(...)` is a
+		 * `CallExpression` — there is no production that joins the two, and
+		 * no tree to build for the pair. Parentheses give the call back its
+		 * own expression, so `new (import(""))` is a different reading and a
+		 * legal one; `import.meta.Foo` is a member access and legal too,
+		 * which is why this looks past the word for the `(`.
+		 */
+		if (this.at(T_import)) {
+			const importStart = this.start;
+			const state = this.tokenizer.save();
+
+			this.next();
+
+			const isCall = this.at(T_PAREN_OPEN);
+
+			this.tokenizer.restore(state);
+
+			if (isCall) {
+				throw this.error(
+					"'new' cannot be applied to a dynamic import.",
+					importStart,
+				);
+			}
+		}
+
 		const node = this.writer.alloc(N_NewExpression, start);
 		const callee = this.parseCallOrMemberExpression(true);
 
