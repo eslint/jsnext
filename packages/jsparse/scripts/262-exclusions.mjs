@@ -64,27 +64,37 @@ export const KNOWN_OVERZEALOUS = 0;
  * — where no tree should have been built at all, and those are the parser's.
  *
  * The run reports which phase catches what it does catch, so the balance is
- * visible: today it is 1,225 from `parse()` against 2,944 from `validate()`.
+ * visible: today it is 1,225 from `parse()` against 2,974 from `validate()`.
  *
  * Counts are approximate: a test usually violates one rule but the families
  * overlap at the edges, and the authority on the totals is
  * `262-baseline.json`. They are here to say what implementing one would be
  * worth, not to be summed.
  *
- * - **Lexical grammar** (~140, `parse()`). A numeric separator in a position that
+ * - **Lexical grammar** (~75, `parse()`). A numeric separator in a position that
  *   does not admit one, a legacy octal escape in a string or a template, an
- *   escape standing in for the `#` of a private name or the `!` of a hashbang,
- *   a line terminator where automatic semicolon insertion does not reach. What
- *   these have in common is that the escape is asked to stand for punctuation
- *   rather than for a letter, which it never may.
- * - **Declaration and redeclaration** (~70, `validate()`). `let let`, a redeclaration
- *   across a `switch` case, `const` without an initializer in a `for-in` head.
- * - **Class element grammar** (~40, mixed). A private name whose `#` is written
- *   as an escape, a private field read out of an object destructuring pattern,
- *   a zero-width joiner inside a field name.
- * - **Expression-level grammar** (~20, `parse()`). `a ?? b || c` without parentheses,
- *   `-a ** b`, `this++`, `delete x` in strict mode, `#x in obj` outside a
- *   class body, an update expression on an optional chain.
- * - **`new.target` and `import.meta`** (~15, `validate()`). Each is legal only inside
- *   a particular kind of body.
+ *   escape standing in for the `#` of a private name, the `!` of a hashbang,
+ *   or the `.` of `new.target`. What these have in common is that the escape
+ *   is asked to stand for punctuation rather than for a letter, which it
+ *   never may.
+ * - **Private names outside a class** (~43, mixed). A `#x` read in an object
+ *   literal's method, a private field read out of a destructuring pattern,
+ *   `#x in obj` where no class body encloses it.
+ * - **Expression-level grammar** (~37, mixed). `a ?? b || c` without
+ *   parentheses, `-a ** b`, `delete x` in strict mode, an update expression
+ *   on an optional chain, and assignment to something that cannot be
+ *   assigned to — `this`, `true`, an arrow function, a parenthesized object
+ *   literal.
+ * - **`using` declarations** (~22, mixed). Where one may stand and what it may
+ *   bind: not a destructuring pattern, not a `for-in` head, not a `switch`
+ *   case, not the top level of a script.
+ * - **Module code** (~17, `validate()`). A name exported twice over, an export
+ *   that names nothing the module declares, and a module specifier holding an
+ *   unpaired surrogate.
+ * - **ASI restrictions** (~11, `parse()`). A line terminator where the grammar
+ *   forbids one: between `yield` and its `*`, between `async` and the `(` of
+ *   a method's parameters, before the `=>` of an arrow function.
+ * - **`new.target`, `import.meta`, and static blocks** (~6, `validate()`). Each
+ *   is legal only inside a particular kind of body, and a class static block
+ *   is the body that admits the fewest of them.
  */

@@ -152,6 +152,15 @@ const BINDING_CATCH = 6;
  */
 const BINDING_AMBIENT_CLASS = 7;
 
+/**
+ * A generator or async function declaration, which binds exactly as a plain
+ * one does everywhere but Annex B. The web-legacy rule that lets two function
+ * declarations share a block in sloppy code names `FunctionDeclaration`
+ * alone, so a `function*` or an `async function` beside another declaration
+ * of the same name is a redeclaration however the code is written.
+ */
+const BINDING_ASYNC_OR_GENERATOR = 8;
+
 /** The character that hides a letter, as in `yield`. */
 const CH_BACKSLASH = 0x5c;
 
@@ -191,6 +200,21 @@ function isIteration(kind: number): boolean {
 		kind === N_ForOfStatement ||
 		kind === N_WhileStatement ||
 		kind === N_DoWhileStatement
+	);
+}
+
+/**
+ * Determines whether a binding is one a function declaration made.
+ *
+ * The two spellings differ only under Annex B, and everywhere else — merging
+ * with an overload signature, colliding with a `var` — they answer alike.
+ * @param binding How the name was introduced.
+ * @returns `true` when a function declaration introduced it.
+ */
+function isFunctionBinding(binding: number): boolean {
+	return (
+		binding === BINDING_FUNCTION ||
+		binding === BINDING_ASYNC_OR_GENERATOR
 	);
 }
 
@@ -1412,7 +1436,11 @@ class Validator {
 					this.declare(
 						reader.field(statement, NODE_A),
 						this.scope.functionsAreLexical
-							? BINDING_FUNCTION
+							? (reader.flags(statement) &
+									(NF_ASYNC | NF_GENERATOR)) !==
+								0
+								? BINDING_ASYNC_OR_GENERATOR
+								: BINDING_FUNCTION
 							: BINDING_VAR,
 					);
 					break;
@@ -1749,7 +1777,11 @@ class Validator {
 		 * record of the implementation, or a second implementation would go
 		 * unreported.
 		 */
-		if (binding === BINDING_SIGNATURE && existing === BINDING_FUNCTION) {
+		if (
+			binding === BINDING_SIGNATURE &&
+			existing !== undefined &&
+			isFunctionBinding(existing)
+		) {
 			return;
 		}
 
@@ -1799,7 +1831,7 @@ class Validator {
 		return (
 			binding !== BINDING_LEXICAL &&
 			binding !== BINDING_AMBIENT_CLASS &&
-			binding !== BINDING_FUNCTION
+			!isFunctionBinding(binding)
 		);
 	}
 
@@ -1842,13 +1874,21 @@ class Validator {
 		}
 
 		if (
-			(existing === BINDING_FUNCTION || existing === BINDING_SIGNATURE) &&
-			(incoming === BINDING_FUNCTION || incoming === BINDING_SIGNATURE)
+			(isFunctionBinding(existing) || existing === BINDING_SIGNATURE) &&
+			(isFunctionBinding(incoming) || incoming === BINDING_SIGNATURE)
 		) {
+			/*
+			 * Two implementations of the same name in one block are what
+			 * Annex B forgives, and only as it is written there: the rule
+			 * names `FunctionDeclaration`, so a generator or an async
+			 * function on either side takes the pair back out of it.
+			 */
 			return (
-				this.strict &&
-				existing === BINDING_FUNCTION &&
-				incoming === BINDING_FUNCTION
+				isFunctionBinding(existing) &&
+				isFunctionBinding(incoming) &&
+				(this.strict ||
+					existing === BINDING_ASYNC_OR_GENERATOR ||
+					incoming === BINDING_ASYNC_OR_GENERATOR)
 			);
 		}
 

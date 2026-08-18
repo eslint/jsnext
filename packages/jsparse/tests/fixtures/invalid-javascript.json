@@ -484,5 +484,14 @@
 	{ "code": "try {} catch (e) { break L2; L2: do {} while (0); }", "sourceType": "script" },
 	{ "code": "label: while (false) { class C { static { break; } } }", "sourceType": "script" },
 	{ "code": "a: a: while (0);", "sourceType": "script" },
-	{ "code": "L: switch (0) { default: continue L; }", "sourceType": "script" }
+	{ "code": "L: switch (0) { default: continue L; }", "sourceType": "script" },
+
+	{ "code": "{ function f() {} function* f() {} }", "sourceType": "script" },
+	{ "code": "{ function* f() {} function f() {} }", "sourceType": "script" },
+	{ "code": "{ function* f() {} function* f() {} }", "sourceType": "script" },
+	{ "code": "{ async function f() {} function f() {} }", "sourceType": "script" },
+	{ "code": "{ async function f() {} async function f() {} }", "sourceType": "script" },
+	{ "code": "{ async function* f() {} async function* f() {} }", "sourceType": "script" },
+	{ "code": "switch (0) { case 1: function f() {} default: function* f() {} }", "sourceType": "script" },
+	{ "code": "switch (0) { case 1: async function f() {} default: function f() {} }", "sourceType": "script" }
 ]

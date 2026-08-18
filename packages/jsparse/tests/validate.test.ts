@@ -348,6 +348,47 @@ describe("function declarations", () => {
 		expect(messages("{ function a(){} function a(){} }")).toHaveLength(1);
 	});
 
+	/*
+	 * Annex B forgives two function declarations sharing a sloppy block, and
+	 * it names `FunctionDeclaration` alone. A generator or an async function
+	 * on either side is outside the rule and collides as any other lexical
+	 * binding would.
+	 */
+	it("reports a generator or async function repeated in a sloppy block", () => {
+		const script = { sourceType: "script" } as const;
+
+		expect(
+			messages("{ function a(){} function* a(){} }", script),
+		).toHaveLength(1);
+		expect(
+			messages("{ function* a(){} function a(){} }", script),
+		).toHaveLength(1);
+		expect(
+			messages("{ function* a(){} function* a(){} }", script),
+		).toHaveLength(1);
+		expect(
+			messages("{ async function a(){} async function a(){} }", script),
+		).toHaveLength(1);
+		expect(
+			messages("{ async function* a(){} function a(){} }", script),
+		).toHaveLength(1);
+	});
+
+	it("reports a generator repeated across sloppy switch cases", () => {
+		expect(
+			messages(
+				"switch (q) { case 1: function a(){} default: function* a(){} }",
+				{ sourceType: "script" },
+			),
+		).toHaveLength(1);
+	});
+
+	it("still allows a generator repeated in a function scope", () => {
+		expect(
+			messages("function g(){ function* a(){} function* a(){} }"),
+		).toEqual([]);
+	});
+
 	it("reports a var that a block-scoped function shadows", () => {
 		expect(messages("{ function a(){} var a; }")).toHaveLength(1);
 		expect(messages("{ var a; function a(){} }")).toHaveLength(1);

@@ -474,6 +474,15 @@ const valid: [string, "script" | "module"][] = [
 	["L: switch (0) { default: break L; }", "script"],
 	["for (;;) { switch (0) { default: continue; } }", "script"],
 	["class C { static { L: while (0) break L; } }", "script"],
+
+	/*
+	 * Annex B forgives a plain function declaration written twice in one
+	 * sloppy block, and forgives nothing else about it.
+	 */
+	["{ function f() {} function f() {} }", "script"],
+	["switch (0) { case 1: function f() {} default: function f() {} }", "script"],
+	["function g() { function* f() {} function* f() {} }", "script"],
+	["{ function* f() {} } { function* f() {} }", "script"],
 ];
 
 describe("test262 positive tests", () => {

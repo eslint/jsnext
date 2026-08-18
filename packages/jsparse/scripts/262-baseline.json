@@ -1,5 +1,4 @@
 {
-	"test/language/block-scope/syntax": 15,
 	"test/language/comments/hashbang": 3,
 	"test/language/expressions/arrow-function": 3,
 	"test/language/expressions/assignment": 2,
@@ -33,7 +32,7 @@
 	"test/language/statements/do-while": 1,
 	"test/language/statements/generators": 1,
 	"test/language/statements/if": 1,
-	"test/language/statements/switch": 16,
+	"test/language/statements/switch": 1,
 	"test/language/statements/using": 11,
 	"test/language/statements/while": 1,
 	"test/language/white-space": 5

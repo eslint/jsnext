@@ -289,9 +289,9 @@ The last one comes from test262, which is the only corpus that tests what the
 parser *rejects*. No valid program is rejected — that count is zero and has to
 stay there — so what is left is invalid programs accepted in silence.
 
-- **Most of ECMAScript's early errors.** Around 241 test262 files are invalid
-  programs that both phases accept: `break` with nothing to break out of, a
-  `for-in` head carrying an initializer, a static method named `prototype`.
+- **Most of ECMAScript's early errors.** Around 211 test262 files are invalid
+  programs that both phases accept: a legacy octal escape in a string, a
+  private name written outside a class body, a name a module exports twice.
   The families are enumerated with rough counts in
   [`packages/jsparse/scripts/262-exclusions.mjs`](../packages/jsparse/scripts/262-exclusions.mjs),
   and the per-directory counts are pinned in `262-baseline.json` so that the
