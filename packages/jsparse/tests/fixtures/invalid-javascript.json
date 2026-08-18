@@ -439,5 +439,19 @@
 	{ "code": "new import('').prop;", "sourceType": "module" },
 	{ "code": "new import('', {});", "sourceType": "module" },
 	{ "code": "let f = () => new import('');", "sourceType": "module" },
-	{ "code": "async function f() { await new import(''); }", "sourceType": "module" }
+	{ "code": "async function f() { await new import(''); }", "sourceType": "module" },
+
+	{ "code": "'use strict'; for (var a = 0 in {});", "sourceType": "script" },
+	{ "code": "for (var [a] = 0 in {});", "sourceType": "script" },
+	{ "code": "for (var {a} = 0 in {});", "sourceType": "script" },
+	{ "code": "for (let a = 0 in {});", "sourceType": "script" },
+	{ "code": "for (const a = 0 in {});", "sourceType": "script" },
+	{ "code": "for (var a = 0 of []);", "sourceType": "script" },
+	{ "code": "for (let a = 0 of []);", "sourceType": "script" },
+	{ "code": "for (let x, y in {});", "sourceType": "script" },
+	{ "code": "for (let x = 3, y in {});", "sourceType": "script" },
+	{ "code": "for (var x, y in {});", "sourceType": "script" },
+	{ "code": "for (let x, y of []);", "sourceType": "script" },
+	{ "code": "for (const x, y in {});", "sourceType": "script" },
+	{ "code": "for (async of [1]);", "sourceType": "script" }
 ]

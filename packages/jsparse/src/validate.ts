@@ -33,6 +33,7 @@ import {
 	NF_GENERATOR,
 	NF_IDENTIFIER_NAME,
 	NF_METHOD,
+	NF_PARENTHESIZED,
 	NF_SHORTHAND,
 	NF_STATIC,
 	NF_TYPE_ONLY,
@@ -2528,6 +2529,93 @@ class Validator {
 	}
 
 	//-------------------------------------------------------------------------
+	// `for` Statement Heads
+	//-------------------------------------------------------------------------
+
+	/**
+	 * Reports a `for-in` or `for-of` head that declares more than it may.
+	 *
+	 * A C-style head runs its initializer once and then tests; these two take
+	 * their values from something else entirely, so a binding with an
+	 * initializer has nowhere for the value to go and a second binding has
+	 * nothing to bind. Annex B keeps the one spelling the web already had —
+	 * `for (var x = 1 in y)` in sloppy code, and only for a plain name, since
+	 * a pattern would have to be destructured before the loop could start.
+	 * @param node The `ForInStatement` or `ForOfStatement` node index.
+	 * @param isForOf Whether it is a `for-of`, which Annex B does not reach.
+	 * @returns Nothing.
+	 */
+	private checkForHead(node: number, isForOf: boolean): void {
+		const reader = this.reader;
+		const left = reader.field(node, NODE_A);
+
+		if (left === 0) {
+			return;
+		}
+
+		if (reader.kind(left) !== N_VariableDeclaration) {
+			/*
+			 * `for (async of x)` is the one thing the grammar looks ahead to
+			 * rule out, so that it never has to be told from the `for await`
+			 * that was arriving at the same time. It is a restriction on the
+			 * *token*, so all three ways out of it are lexical: parentheses
+			 * make it an expression rather than the lookahead, an escape
+			 * makes it a different token, and `for await (async of x)` is a
+			 * production the restriction was never put on.
+			 */
+			if (
+				isForOf &&
+				(reader.flags(node) & NF_ASYNC) === 0 &&
+				reader.kind(left) === N_Identifier &&
+				(reader.flags(left) & NF_PARENTHESIZED) === 0 &&
+				reader.text(left) === "async"
+			) {
+				this.report(
+					"'async' may not be the target of a for-of loop.",
+					reader.start(left),
+				);
+			}
+
+			return;
+		}
+
+		const declarations = reader.field(left, NODE_A);
+		const size = reader.listSize(declarations);
+
+		if (size > 1) {
+			this.report(
+				"A for-in or for-of head may declare only one binding.",
+				reader.start(reader.listItem(declarations, 1)),
+			);
+
+			return;
+		}
+
+		const declarator = size === 0 ? 0 : reader.listItem(declarations, 0);
+
+		if (declarator === 0 || reader.field(declarator, NODE_B) === 0) {
+			return;
+		}
+
+		const declarationKind =
+			(reader.flags(left) & DECL_MASK) >>> DECL_SHIFT;
+
+		if (
+			!isForOf &&
+			declarationKind === DECL_VAR &&
+			!this.strict &&
+			reader.kind(reader.field(declarator, NODE_A)) === N_Identifier
+		) {
+			return;
+		}
+
+		this.report(
+			"A for-in or for-of head may not have an initializer.",
+			reader.start(reader.field(declarator, NODE_B)),
+		);
+	}
+
+	//-------------------------------------------------------------------------
 	// Class Element Names
 	//-------------------------------------------------------------------------
 
@@ -2954,6 +3042,7 @@ class Validator {
 					this.checkAssignmentTarget(left, true);
 				}
 
+				this.checkForHead(node, kind === N_ForOfStatement);
 				this.checkStatementBody(this.reader.field(node, NODE_C), false);
 				return;
 			}

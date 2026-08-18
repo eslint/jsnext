@@ -64,7 +64,7 @@ export const KNOWN_OVERZEALOUS = 0;
  * — where no tree should have been built at all, and those are the parser's.
  *
  * The run reports which phase catches what it does catch, so the balance is
- * visible: today it is 1,225 from `parse()` against 2,866 from `validate()`.
+ * visible: today it is 1,225 from `parse()` against 2,899 from `validate()`.
  *
  * Counts are approximate: a test usually violates one rule but the families
  * overlap at the edges, and the authority on the totals is
@@ -79,9 +79,6 @@ export const KNOWN_OVERZEALOUS = 0;
  *   rather than for a letter, which it never may.
  * - **Declaration and redeclaration** (~70, `validate()`). `let let`, a redeclaration
  *   across a `switch` case, `const` without an initializer in a `for-in` head.
- * - **`for` statement heads** (~100, mostly `validate()`). `for (let x = 1 of y)`, an initializer on
- *   a `for-in` head outside sloppy Annex B, `let` as the target of a `for-of`,
- *   `for await` outside an async function.
  * - **`let` as a name** (~70, `validate()`). Reserved in strict code, and banned as
  *   the binding of a `let`, `const`, or `class` declaration even in sloppy
  *   code, where a plain `var let` is still fine.

@@ -458,6 +458,87 @@ describe("eval and arguments", () => {
 	});
 });
 
+describe("for statement heads", () => {
+	/*
+	 * A `for-in` or `for-of` takes its value from something else, so a
+	 * binding with an initializer has nowhere for the value to go and a
+	 * second binding has nothing to bind.
+	 */
+	it("reports an initializer in a lexical for-in head", () => {
+		expect(
+			messages("for (let a = 0 in {});", { sourceType: "script" }),
+		).toEqual(["A for-in or for-of head may not have an initializer."]);
+	});
+
+	it("reports one in any for-of head", () => {
+		expect(
+			messages("for (var a = 0 of []);", { sourceType: "script" }),
+		).toHaveLength(1);
+	});
+
+	it("keeps Annex B's sloppy var form", () => {
+		expect(
+			messages("for (var a = 0 in {});", { sourceType: "script" }),
+		).toEqual([]);
+	});
+
+	it("does not keep it in strict code", () => {
+		expect(
+			messages("'use strict'; for (var a = 0 in {});", {
+				sourceType: "script",
+			}),
+		).toHaveLength(1);
+	});
+
+	it("does not keep it for a pattern", () => {
+		expect(
+			messages("for (var [a] = 0 in {});", { sourceType: "script" }),
+		).toHaveLength(1);
+	});
+
+	it("reports a second binding", () => {
+		expect(
+			messages("for (let x, y in {});", { sourceType: "script" }),
+		).toEqual(["A for-in or for-of head may declare only one binding."]);
+	});
+
+	it("leaves a C-style head alone", () => {
+		expect(
+			messages("for (let x = 1, y = 2; ;);", { sourceType: "script" }),
+		).toEqual([]);
+	});
+
+	/*
+	 * The `async` restriction is on the token, so every way out of it is
+	 * lexical.
+	 */
+	it("reports async as a for-of target", () => {
+		expect(messages("for (async of []);", { sourceType: "script" })).toEqual(
+			["'async' may not be the target of a for-of loop."],
+		);
+	});
+
+	it("allows it in parentheses", () => {
+		expect(
+			messages("for ((async) of []);", { sourceType: "script" }),
+		).toEqual([]);
+	});
+
+	it("allows it written with an escape", () => {
+		expect(
+			messages("for (\\u0061sync of [7]);", { sourceType: "script" }),
+		).toEqual([]);
+	});
+
+	it("allows it after for await, which the rule never covered", () => {
+		expect(
+			messages("async function f() { for await (async of [7]); }", {
+				sourceType: "script",
+			}),
+		).toEqual([]);
+	});
+});
+
 describe("class element names", () => {
 	it("reports a static element named prototype", () => {
 		expect(messages("class C { static prototype() {} }")).toEqual([

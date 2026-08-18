@@ -434,6 +434,20 @@ const valid: [string, "script" | "module"][] = [
 	["new (import(''));", "module"],
 	["new import.meta.Foo();", "module"],
 	["import('');", "module"],
+
+	/*
+	 * Annex B keeps the `for-in` head the web already had, and the three ways
+	 * out of the `async` lookahead are all lexical: parentheses, an escape,
+	 * and the `for await` production the restriction was never put on.
+	 */
+	["for (var a = 0 in {});", "script"],
+	["for ((async) of []);", "script"],
+	["for (async in {});", "script"],
+	["for (async.x of []);", "script"],
+	["for (\\u0061sync of [7]);", "script"],
+	["async function f() { for await (async of [7]); }", "script"],
+	["for (var a = 0, b = 1; ;);", "script"],
+	["for (let x = 1, y = 2; ;);", "script"],
 ];
 
 describe("test262 positive tests", () => {

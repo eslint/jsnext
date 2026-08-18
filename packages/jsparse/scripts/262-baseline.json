@@ -1,6 +1,5 @@
 {
-	"test/annexB/language/statements": 5,
-	"test/language/block-scope/syntax": 20,
+	"test/language/block-scope/syntax": 15,
 	"test/language/comments/hashbang": 3,
 	"test/language/expressions/arrow-function": 3,
 	"test/language/expressions/assignment": 2,
@@ -37,9 +36,8 @@
 	"test/language/statements/continue": 12,
 	"test/language/statements/do-while": 1,
 	"test/language/statements/for": 4,
-	"test/language/statements/for-await-of": 11,
 	"test/language/statements/for-in": 2,
-	"test/language/statements/for-of": 16,
+	"test/language/statements/for-of": 4,
 	"test/language/statements/generators": 1,
 	"test/language/statements/if": 1,
 	"test/language/statements/labeled": 1,
