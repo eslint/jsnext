@@ -139,16 +139,25 @@ Returns an array of `{ message, lineNumber, column }`, in source order. The
 position is spelled the way `ParseError` spells one — both 1-based — so fatal
 and non-fatal problems can be reported through the same code path.
 
-| Option       | Values                                | Default              |
-| ------------ | ------------------------------------- | -------------------- |
-| `sourceType` | `"script"`, `"module"`, `"commonjs"`  | what `parse()` used  |
-| `dialect`    | `"js"`, `"ts"`                        | `"ts"`               |
-| `jsx`        | `true`, `false`                       | `false`              |
+| Option        | Values                                | Default              |
+| ------------- | ------------------------------------- | -------------------- |
+| `sourceType`  | `"script"`, `"module"`, `"commonjs"`  | what `parse()` used  |
+| `dialect`     | `"js"`, `"ts"`                        | `"ts"`               |
+| `jsx`         | `true`, `false`                       | `false`              |
+| `declaration` | `true`, `false`                       | `false`              |
 
 `sourceType` normally need not be passed, since the buffer records what
 `parse()` was told. Its use is to narrow `"script"` to `"commonjs"` — the two
 parse identically and differ only in what is allowed here. Naming the opposite
 side of the module line throws.
+
+`declaration` says the file is a TypeScript declaration file — a `.d.ts`.
+Everything in one is ambient: it describes what exists elsewhere rather than
+bringing anything into being, so `export const x: number;` is a complete
+declaration there while the same line in a `.ts` is a `const` missing its
+initializer. Nothing in the text says which kind of file it is — TypeScript
+goes by the name — so it has to be told, the same way `dialect` and `jsx` do.
+Anything written under a `declare` is ambient without this being set.
 
 It currently reports:
 
@@ -159,7 +168,9 @@ It currently reports:
 - `with` in strict mode, and octal literals in strict mode
 - strict-mode reserved words used as bindings
 - duplicate lexical declarations, and `var`/`let` collisions
-- `const` without an initializer
+- `const` without an initializer, outside an ambient declaration
+- `eval` or `arguments` bound or assigned to in strict code, and `arguments`
+  mentioned in a class field initializer or a static block
 - `return` outside a function
 
 ### `toAST(result, options)`
@@ -186,7 +197,7 @@ export default [
 ];
 ```
 
-It differs from `toAST()` in four ways, each because ESLint requires it:
+It differs from `toAST()` in five ways, each because ESLint requires it:
 
 - **Nodes, tokens, and comments carry `range` and `loc`.** ESLint refuses an
   AST without them. Everywhere else they are still left off.
@@ -198,6 +209,9 @@ It differs from `toAST()` in four ways, each because ESLint requires it:
   are parsed as JavaScript, so TypeScript syntax in them is reported rather
   than quietly accepted; everything else is parsed as TypeScript. Pass an
   explicit `dialect` in `parserOptions` to override that.
+- **Declaration files come from the file name too.** `.d.ts`, `.d.mts`, and
+  `.d.cts` are treated as ambient, so a `const` in one needs no initializer.
+  Pass an explicit `declaration` in `parserOptions` to override that.
 - **JSX comes from the file name too.** `.jsx` and `.tsx` files accept JSX and
   every other extension reports it, so neither needs configuring. Pass an
   explicit `ecmaFeatures.jsx` in `parserOptions` to override that — the same

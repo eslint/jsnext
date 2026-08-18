@@ -26,6 +26,7 @@ import {
 	NF_ASYNC,
 	NF_COMPUTED,
 	NF_DECLARE,
+	NF_DEFINITE,
 	NF_GENERATOR,
 	NF_IDENTIFIER_NAME,
 	NF_METHOD,
@@ -133,6 +134,13 @@ const BINDING_TYPE = 4;
 const BINDING_SIGNATURE = 5;
 const BINDING_CATCH = 6;
 
+/**
+ * An ambient class, which is a lexical binding that a signature may merge
+ * with. `declare function f(): void; declare class f {}` declares one thing
+ * twice over; drop either `declare` and TypeScript reports the pair.
+ */
+const BINDING_AMBIENT_CLASS = 7;
+
 /** The character that hides a letter, as in `yield`. */
 const CH_BACKSLASH = 0x5c;
 
@@ -216,8 +224,16 @@ export function validateAst(
 	sourceType: "script" | "module" | "commonjs",
 	dialect: "js" | "ts",
 	jsx: boolean,
+	declaration: boolean,
 ): ValidationProblem[] {
-	const validator = new Validator(reader, tokens, sourceType, dialect, jsx);
+	const validator = new Validator(
+		reader,
+		tokens,
+		sourceType,
+		dialect,
+		jsx,
+		declaration,
+	);
 
 	validator.run();
 
@@ -359,15 +375,17 @@ class Validator {
 	private inParameters = false;
 
 	/**
-	 * Whether the declaration being visited declares nothing at run time.
+	 * Whether what is being visited declares nothing at run time.
 	 *
-	 * A TypeScript overload signature, an ambient declaration, and a method
-	 * signature all describe something that exists elsewhere rather than
-	 * introducing it, so the rules about what a binding may be named do not
-	 * reach them: `declare function eval(x: string): any` is TypeScript's own
-	 * declaration of `eval`, in `lib.es5.d.ts`.
+	 * A TypeScript overload signature, anything under a `declare`, and every
+	 * line of a `.d.ts` describe something that exists elsewhere rather than
+	 * bringing it into being. Two rules read this. A binding that names
+	 * nothing is not held to what a name may be — `declare function
+	 * eval(x: string): any` is TypeScript's own declaration of `eval`, in
+	 * `lib.es5.d.ts` — and a `const` that initializes nothing needs no
+	 * initializer.
 	 */
-	private ambient = false;
+	private ambient: boolean;
 
 	/**
 	 * Whether the source could hold an `arguments` at all.
@@ -394,6 +412,7 @@ class Validator {
 	 * @param sourceType How the program should be interpreted.
 	 * @param dialect Whether TypeScript syntax is allowed.
 	 * @param jsx Whether JSX syntax is allowed.
+	 * @param declaration Whether the whole file is ambient.
 	 */
 	constructor(
 		reader: AstReader,
@@ -401,12 +420,14 @@ class Validator {
 		sourceType: "script" | "module" | "commonjs",
 		dialect: "js" | "ts",
 		jsx: boolean,
+		declaration: boolean,
 	) {
 		this.reader = reader;
 		this.tokens = tokens;
 		this.sourceType = sourceType;
 		this.dialect = dialect;
 		this.jsx = jsx;
+		this.ambient = declaration;
 		this.strict = sourceType === "module";
 		this.mentionsArguments =
 			reader.source.includes("arguments") ||
@@ -535,6 +556,25 @@ class Validator {
 				this.visitChildren(node, kind);
 				this.exitScope();
 				return;
+
+			/*
+			 * `declare namespace N { ... }` makes everything inside it
+			 * ambient, and so does `declare module "m" { ... }`. A namespace
+			 * written without the keyword does not — TypeScript rejects a
+			 * `const` with no initializer in one exactly as it does at the
+			 * top level of an ordinary file — which is why this is inherited
+			 * rather than assumed of every namespace.
+			 */
+			case N_TSModuleDeclaration: {
+				const previousAmbient = this.ambient;
+
+				this.ambient =
+					previousAmbient ||
+					(reader.flags(node) & NF_DECLARE) !== 0;
+				this.visitChildren(node, kind);
+				this.ambient = previousAmbient;
+				return;
+			}
 
 			/*
 			 * A `var` cannot escape a static block or a namespace body, so
@@ -1175,7 +1215,10 @@ class Validator {
 				case N_ClassDeclaration:
 					this.declare(
 						reader.field(statement, NODE_A),
-						BINDING_LEXICAL,
+						this.ambient ||
+							(reader.flags(statement) & NF_DECLARE) !== 0
+							? BINDING_AMBIENT_CLASS
+							: BINDING_LEXICAL,
 					);
 					break;
 
@@ -1219,12 +1262,17 @@ class Validator {
 
 			this.declarePattern(reader.field(declarator, NODE_A), binding);
 
+			/*
+			 * An ambient `const` names something declared elsewhere, so it
+			 * has nothing to initialize, and a definite assignment assertion
+			 * promises an initializer that TypeScript cannot see.
+			 */
 			if (
 				checkInitializer &&
 				declarationKind === DECL_CONST &&
 				reader.field(declarator, NODE_B) === 0 &&
-				(reader.flags(declarator) & (1 << 15)) === 0 &&
-				(reader.flags(node) & (1 << 11)) === 0
+				(reader.flags(declarator) & NF_DEFINITE) === 0 &&
+				!this.ambient
 			) {
 				this.report(
 					"Missing initializer in const declaration.",
@@ -1454,7 +1502,11 @@ class Validator {
 	 * @returns `true` when the two may coexist.
 	 */
 	private tolerantOfVar(binding: number): boolean {
-		return binding !== BINDING_LEXICAL && binding !== BINDING_FUNCTION;
+		return (
+			binding !== BINDING_LEXICAL &&
+			binding !== BINDING_AMBIENT_CLASS &&
+			binding !== BINDING_FUNCTION
+		);
 	}
 
 	/**
@@ -1480,6 +1532,21 @@ class Validator {
 		 * declaration binds lexically, since two of them in a function scope
 		 * are as legal as two `var`s.
 		 */
+		/*
+		 * An ambient class is what a signature describes when the thing
+		 * described is a class, so the two are one declaration. Two ambient
+		 * classes are still two, and a `let` beside either is still a
+		 * collision, so this is the one pairing that merges.
+		 */
+		if (
+			(existing === BINDING_SIGNATURE &&
+				incoming === BINDING_AMBIENT_CLASS) ||
+			(existing === BINDING_AMBIENT_CLASS &&
+				incoming === BINDING_SIGNATURE)
+		) {
+			return false;
+		}
+
 		if (
 			(existing === BINDING_FUNCTION || existing === BINDING_SIGNATURE) &&
 			(incoming === BINDING_FUNCTION || incoming === BINDING_SIGNATURE)

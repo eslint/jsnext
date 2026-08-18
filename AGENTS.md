@@ -140,10 +140,11 @@ answer depends on context the text alone does not supply**.
   syntax under `dialect: "js"`, JSX without `jsx: true`, a mismatched JSX
   closing tag.
 
-So `dialect` and `jsx` are options of phase 2, never phase 1. When adding a new
-diagnostic, decide which side of that line it falls on first. A check that needs
-to know the dialect, or whether JSX is enabled, belongs in `validate.ts`, even
-if a reference parser throws for it.
+So `dialect`, `jsx`, and `declaration` are options of phase 2, never phase 1.
+When adding a new diagnostic, decide which side of that line it falls on first.
+A check that needs to know the dialect, whether JSX is enabled, or whether the
+file is a `.d.ts`, belongs in `validate.ts`, even if a reference parser throws
+for it.
 
 **`sourceType` is the exception, and it is the only one.** It is an option of
 *both* phases, because it is the only thing that makes two readings of the same
@@ -155,11 +156,17 @@ text both valid and different:
 | `a <!--b` | `a`, then a comment | `a < !(--b)` |
 
 No single tree stands for both, so phase 1 has to choose, and it cannot choose
-without being told. `dialect` and `jsx` never pose that question — TypeScript
-syntax and JSX either parse or do not, and where they parse, both settings
-agree on the tree. That is the test for whether something belongs in
-`ParseOptions`: **not** "does it need outside context" — everything here does —
-but "would two answers both be valid?"
+without being told. `dialect`, `jsx`, and `declaration` never pose that
+question — TypeScript syntax, JSX, and `export const x: number;` either parse
+or do not, and where they parse, every setting agrees on the tree. That is the
+test for whether something belongs in `ParseOptions`: **not** "does it need
+outside context" — everything here does — but "would two answers both be
+valid?"
+
+`declaration` is the newest of the three and the clearest case of context the
+text cannot supply: a declaration file is one by its *name*, which is why
+TypeScript decides it that way too, and why the ESLint parser object reads it
+off the path along with `dialect` and `jsx`.
 
 `parse()` records the source type in the buffer, so `validate()` and `toAST()`
 read it back rather than being told again. Naming the opposite side of the

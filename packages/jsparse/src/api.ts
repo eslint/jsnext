@@ -69,6 +69,18 @@ export interface ValidateOptions {
 	 * expression position means something else in a file that is not JSX.
 	 */
 	jsx?: boolean;
+
+	/**
+	 * Whether the whole file is a TypeScript declaration file — a `.d.ts`.
+	 *
+	 * Everything in one is ambient: it describes what exists elsewhere rather
+	 * than bringing anything into being, so `export const x: number;` is a
+	 * complete declaration there and the missing initializer that would be an
+	 * error in a `.ts` is the point. Nothing in the text says which kind of
+	 * file it is — TypeScript goes by the name — so it has to be told, the
+	 * same way `dialect` and `jsx` are.
+	 */
+	declaration?: boolean;
 }
 
 /**
@@ -253,6 +265,7 @@ export function validate(
 		resolveSourceType(result, options.sourceType),
 		options.dialect ?? "ts",
 		options.jsx ?? false,
+		options.declaration ?? false,
 	);
 
 	return locateProblems(problems, new LineIndex(readLineStarts(result)));
@@ -314,6 +327,7 @@ export function buildAst(
 		sourceType,
 		dialect,
 		options.jsx ?? false,
+		options.declaration ?? false,
 	);
 	const decoder = new AstDecoder(reader, dialect === "ts", lines);
 	const program = decoder.node(reader.root)!;

@@ -164,6 +164,39 @@ describe("eslintParser.parse()", () => {
 		).toThrow(/JSX syntax is not allowed/u);
 	});
 
+	it("takes ambience from the file name", () => {
+		expect(() =>
+			eslintParser.parse("export const a: number;", {
+				filePath: "a.d.ts",
+			}),
+		).not.toThrow();
+		expect(() =>
+			eslintParser.parse("export const a: number;", {
+				filePath: "a.d.mts",
+			}),
+		).not.toThrow();
+		expect(() =>
+			eslintParser.parse("export const a: number;", {
+				filePath: "a.ts",
+			}),
+		).toThrow(/Missing initializer/u);
+	});
+
+	it("lets an explicit declaration option win over the file name", () => {
+		expect(() =>
+			eslintParser.parse("export const a: number;", {
+				filePath: "a.ts",
+				declaration: true,
+			}),
+		).not.toThrow();
+		expect(() =>
+			eslintParser.parse("export const a: number;", {
+				filePath: "a.d.ts",
+				declaration: false,
+			}),
+		).toThrow(/Missing initializer/u);
+	});
+
 	it("lets an explicit dialect win over the file name", () => {
 		expect(() =>
 			eslintParser.parse("let a: number;", {

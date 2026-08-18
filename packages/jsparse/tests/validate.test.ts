@@ -458,6 +458,105 @@ describe("eval and arguments", () => {
 	});
 });
 
+describe("ambient declarations", () => {
+	/*
+	 * Nothing under a `declare`, and nothing at all in a `.d.ts`, brings
+	 * anything into being — each describes something that exists elsewhere.
+	 * A `const` there has nothing to initialize, which is why TypeScript
+	 * accepts the missing initializer that is an error anywhere else.
+	 */
+	it("reports a const with no initializer", () => {
+		expect(messages("const a: number;")).toEqual([
+			expect.stringMatching(/Missing initializer/u),
+		]);
+	});
+
+	it("allows an ambient const", () => {
+		expect(messages("declare const a: number;")).toEqual([]);
+	});
+
+	it("allows a const inside an ambient module", () => {
+		expect(messages("declare module 'm' { const a: number; }")).toEqual(
+			[],
+		);
+	});
+
+	it("allows a const inside an ambient namespace", () => {
+		expect(messages("declare namespace N { const a: number; }")).toEqual(
+			[],
+		);
+	});
+
+	it("carries ambience into a nested namespace", () => {
+		expect(
+			messages("declare namespace N { namespace M { const a: number; } }"),
+		).toEqual([]);
+	});
+
+	/*
+	 * A namespace written without the keyword is ordinary code, and
+	 * TypeScript reports the same missing initializer in one that it reports
+	 * at the top level of a file.
+	 */
+	it("still reports a const inside a plain namespace", () => {
+		expect(messages("namespace N { const a: number; }")).toHaveLength(1);
+	});
+
+	it("allows every const in a declaration file", () => {
+		expect(
+			messages("export const a: number;", { declaration: true }),
+		).toEqual([]);
+	});
+
+	it("reports the same file when it is not a declaration file", () => {
+		expect(messages("export const a: number;")).toHaveLength(1);
+	});
+
+	/*
+	 * An ambient function signature and an ambient class of the same name are
+	 * one declaration described twice. Drop either `declare` and TypeScript
+	 * reports the pair, so both halves have to be ambient for this to hold.
+	 */
+	it("allows an ambient signature to merge with an ambient class", () => {
+		expect(
+			messages("declare function f(): void;\ndeclare class f {}"),
+		).toEqual([]);
+	});
+
+	it("allows the merge written the other way round", () => {
+		expect(
+			messages("declare class f {}\ndeclare function f(): void;"),
+		).toEqual([]);
+	});
+
+	it("allows the merge a declaration file writes without the keyword", () => {
+		expect(
+			messages(
+				"export default function f(): undefined;\nexport default class f {}",
+				{ declaration: true },
+			),
+		).toEqual([]);
+	});
+
+	it("still reports two ambient classes", () => {
+		expect(
+			messages("declare class f {}\ndeclare class f {}"),
+		).toHaveLength(1);
+	});
+
+	it("still reports a signature beside a class that is not ambient", () => {
+		expect(messages("declare function f(): void;\nclass f {}")).toHaveLength(
+			1,
+		);
+	});
+
+	it("still reports an ambient const beside an ambient class", () => {
+		expect(
+			messages("declare const f: number;\ndeclare class f {}"),
+		).toHaveLength(1);
+	});
+});
+
 describe("overload signatures", () => {
 	it("allows signatures followed by an implementation", () => {
 		expect(

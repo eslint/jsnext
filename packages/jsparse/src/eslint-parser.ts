@@ -14,6 +14,9 @@ const JAVASCRIPT_FILE = /\.[cm]?jsx?$/iu;
 /** File extensions that carry JSX. */
 const JSX_FILE = /\.[jt]sx$/iu;
 
+/** File extensions that make a whole file ambient. */
+const DECLARATION_FILE = /\.d\.[cm]?ts$/iu;
+
 /**
  * The options ESLint passes to a parser.
  *
@@ -45,6 +48,12 @@ export interface EslintParserOptions {
 		jsx?: boolean;
 	};
 
+	/**
+	 * Whether the whole file is ambient. When omitted it is taken from the
+	 * file's extension, so a `.d.ts` lints without any configuration.
+	 */
+	declaration?: boolean;
+
 	/** The path of the file being linted. */
 	filePath?: string;
 }
@@ -62,6 +71,25 @@ function dialectFor(options: EslintParserOptions): "js" | "ts" {
 	return options.filePath && JAVASCRIPT_FILE.test(options.filePath)
 		? "js"
 		: "ts";
+}
+
+/**
+ * Decides whether a file ESLint asked to parse declares anything at run time.
+ *
+ * A `.d.ts` describes what exists elsewhere, so a `const` in one needs no
+ * initializer. TypeScript goes by the file's name for this and so does this.
+ * @param options The options ESLint passed to the parser.
+ * @returns `true` when the file is a declaration file.
+ */
+function declarationFor(options: EslintParserOptions): boolean {
+	if (options.declaration !== undefined) {
+		return options.declaration;
+	}
+
+	return (
+		options.filePath !== undefined &&
+		DECLARATION_FILE.test(options.filePath)
+	);
 }
 
 /**
@@ -114,6 +142,7 @@ export const eslintParser = {
 				sourceType,
 				dialect: dialectFor(options),
 				jsx: jsxFor(options),
+				declaration: declarationFor(options),
 			},
 			lines,
 		);
