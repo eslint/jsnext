@@ -544,6 +544,14 @@ const valid: [string, "script" | "module"][] = [
 	['"\\8";', "script"],
 	['"\\0";', "script"],
 	['"use strict"; "\\0";', "script"],
+
+	// A separator may sit anywhere but against a leading zero.
+	["1_0;", "script"],
+	["0x1_0;", "script"],
+	["0b1_0;", "script"],
+	["0o1_0;", "script"],
+	["0.1_1;", "script"],
+	["1_0e1_0;", "script"],
 ];
 
 describe("test262 positive tests", () => {

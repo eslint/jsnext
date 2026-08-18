@@ -350,6 +350,35 @@ describe("syntax errors", () => {
 		}
 	});
 
+	/*
+	 * `DecimalIntegerLiteral` admits a separator only after a `NonZeroDigit`,
+	 * so a lone `0` ends the integer part. The other bases are unaffected:
+	 * `0x1_0` separates hex digits rather than the leading zero.
+	 */
+	it("throws for a numeric separator against a leading zero", () => {
+		for (const code of ["0_0;", "0_9;", "0_1n;", "0_;"]) {
+			expect(() => parse(code, { sourceType: "script" })).toThrow(
+				/Numeric separator is not allowed after a leading 0/u,
+			);
+		}
+	});
+
+	it("accepts a separator everywhere one may go", () => {
+		for (const code of [
+			"1_0;",
+			"1_000;",
+			"0x1_0;",
+			"0b1_0;",
+			"0o1_0;",
+			"0.1_1;",
+			"1_0e1_0;",
+			"0;",
+			"0n;",
+		]) {
+			expect(() => parse(code, { sourceType: "script" })).not.toThrow();
+		}
+	});
+
 	it("accepts an identifier escape that names one it may", () => {
 		for (const code of [
 			"var \\u0061;",

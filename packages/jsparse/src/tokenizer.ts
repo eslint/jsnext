@@ -1031,6 +1031,20 @@ export class Tokenizer {
 			}
 
 			/*
+			 * `DecimalIntegerLiteral` admits a separator only after a
+			 * `NonZeroDigit`, so a lone `0` ends the integer part and nothing
+			 * may join it to what follows. The other bases are unaffected —
+			 * `0x1_0` separates hex digits, not the leading zero — and so is
+			 * `0.1_1`, where the separator is inside the fraction.
+			 */
+			if (next === CH_UNDERSCORE) {
+				throw this.error(
+					"Numeric separator is not allowed after a leading 0",
+					this.pos + 1,
+				);
+			}
+
+			/*
 			 * A leading zero followed by more digits is either a legacy octal
 			 * literal or a decimal with a useless leading zero. Both are only
 			 * errors in strict mode, so the fact is recorded and left to the

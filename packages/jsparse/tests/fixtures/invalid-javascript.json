@@ -566,5 +566,10 @@
 	{ "code": "(function () { \"a: \\052\"; \"use strict\"; });", "sourceType": "script" },
 	{ "code": "class C { m() { return \"\\1\"; } }", "sourceType": "script" },
 	{ "code": "\"use strict\"; \"\\8\";", "sourceType": "script" },
-	{ "code": "\"use strict\"; \"\\9\";", "sourceType": "script" }
+	{ "code": "\"use strict\"; \"\\9\";", "sourceType": "script" },
+
+	{ "code": "0_0;", "sourceType": "script" },
+	{ "code": "0_9;", "sourceType": "script" },
+	{ "code": "0_0123456789;", "sourceType": "script" },
+	{ "code": "0_1n;", "sourceType": "script" }
 ]
