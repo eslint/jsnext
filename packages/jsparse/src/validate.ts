@@ -31,6 +31,7 @@ import {
 	NF_METHOD,
 	NF_SHORTHAND,
 	NF_STATIC,
+	NF_TYPE_ONLY,
 	TS_FIRST,
 	N_AccessorProperty,
 	N_ArrayPattern,
@@ -1068,6 +1069,26 @@ class Validator {
 	//-------------------------------------------------------------------------
 
 	/**
+	 * The name an identifier spells, with any escape in it decoded.
+	 *
+	 * An `Identifier` runs to the end of whatever TypeScript hung off it — an
+	 * `x!` or an `x: number` — so slot A carries where the name itself stops
+	 * when that is not the end of the node.
+	 * @param node The `Identifier` node index.
+	 * @returns The name.
+	 */
+	private identifierName(node: number): string {
+		const reader = this.reader;
+		const nameEnd = reader.field(node, NODE_A);
+		const raw = reader.source.slice(
+			reader.start(node),
+			nameEnd === 0 ? reader.end(node) : nameEnd,
+		);
+
+		return raw.indexOf("\\") === -1 ? raw : decodeEscapes(raw, false);
+	}
+
+	/**
 	 * Pushes a new scope.
 	 * @param isFunctionScope Whether `var` declarations stop here.
 	 * @returns Nothing.
@@ -1225,6 +1246,18 @@ class Validator {
 		const specifiers = reader.field(node, NODE_A);
 		const size = reader.listSize(specifiers);
 
+		/*
+		 * `import type { A } from "m"` brings in a name that exists only in
+		 * type space, so a value of the same name may sit beside it. Whether
+		 * it really may depends on what the other module exports — TypeScript
+		 * allows the pair above and rejects it when `A` is imported by
+		 * default, because a default export is a value — and that is a
+		 * question about the module graph, which nothing here can see. Binding
+		 * it as a type is the reading that errs toward accepting: it can miss
+		 * a collision, where the other reading reports working code.
+		 */
+		const typeOnly = (reader.flags(node) & NF_TYPE_ONLY) !== 0;
+
 		for (let i = 0; i < size; i++) {
 			const specifier = reader.listItem(specifiers, i);
 
@@ -1241,7 +1274,13 @@ class Validator {
 			);
 
 			this.checkRestrictedName(local, "bound");
-			this.declare(local, BINDING_LEXICAL);
+			this.declare(
+				local,
+				typeOnly ||
+					(reader.flags(specifier) & NF_TYPE_ONLY) !== 0
+					? BINDING_TYPE
+					: BINDING_LEXICAL,
+			);
 		}
 	}
 
@@ -1324,7 +1363,15 @@ class Validator {
 			return;
 		}
 
-		const name = reader.text(identifier);
+		/*
+		 * Two bindings collide when their `StringValue`s match, which is what
+		 * the escapes in them mean rather than how they are spelled, and
+		 * which stops at the name — an `Identifier` node runs on through
+		 * whatever TypeScript hung off it. Reading the node's text instead
+		 * would let `let x: number` and `let x: string` pass for different
+		 * names, and `\u0061` for something other than `a`.
+		 */
+		const name = this.identifierName(identifier);
 		const start = reader.start(identifier);
 
 		/*
@@ -1652,26 +1699,6 @@ class Validator {
 	 * there would name that hidden function's argument list rather than the
 	 * enclosing method's, which is never what anyone meant.
 	 */
-
-	/**
-	 * The name an identifier spells, with any escape in it decoded.
-	 *
-	 * An `Identifier` runs to the end of whatever TypeScript hung off it — an
-	 * `x!` or an `x: number` — so slot A carries where the name itself stops
-	 * when that is not the end of the node.
-	 * @param node The `Identifier` node index.
-	 * @returns The name.
-	 */
-	private identifierName(node: number): string {
-		const reader = this.reader;
-		const nameEnd = reader.field(node, NODE_A);
-		const raw = reader.source.slice(
-			reader.start(node),
-			nameEnd === 0 ? reader.end(node) : nameEnd,
-		);
-
-		return raw.indexOf("\\") === -1 ? raw : decodeEscapes(raw, false);
-	}
 
 	/**
 	 * Reports `eval` or `arguments` where strict mode will not have it.

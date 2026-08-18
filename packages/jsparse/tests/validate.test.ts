@@ -199,6 +199,56 @@ describe("declarations", () => {
 		expect(messages("interface A {} const A = 1;")).toEqual([]);
 	});
 
+	/*
+	 * Two bindings collide when their `StringValue`s match. That is the name
+	 * alone — an `Identifier` node runs on through whatever TypeScript hung
+	 * off it — and it is what the escapes in the name mean rather than how
+	 * they are spelled.
+	 */
+	it("reports a repeated declaration whose bindings are annotated", () => {
+		expect(messages("let a: number; let a: string;")).toEqual([
+			expect.stringMatching(/already been declared/u),
+		]);
+	});
+
+	it("reports a repeated declarator in one annotated statement", () => {
+		expect(
+			messages("const a: string = '', a: number = 1;"),
+		).toHaveLength(1);
+	});
+
+	it("reports a repeated annotated parameter", () => {
+		expect(messages("function f(a: number, a: string) {}")).toHaveLength(1);
+	});
+
+	it("sees past a definite assignment assertion", () => {
+		expect(messages("let a!: number; let a = 1;")).toHaveLength(1);
+	});
+
+	it("reports a repeated declaration written with an escape", () => {
+		expect(messages("let \u0061; let a;")).toHaveLength(1);
+	});
+
+	/*
+	 * A type-only import names something that exists in type space alone, so
+	 * a value may take the same name. Whether it really may depends on what
+	 * the other module exports, which is a question about the module graph
+	 * rather than about this file, so the reading that accepts wins.
+	 */
+	it("allows a value to take the name of a type-only import", () => {
+		expect(
+			messages("import type { A } from 'm'; let A: number;"),
+		).toEqual([]);
+	});
+
+	it("allows a value to take the name of an inline type import", () => {
+		expect(messages("import { type A } from 'm'; let A = 1;")).toEqual([]);
+	});
+
+	it("still reports a value that takes the name of a value import", () => {
+		expect(messages("import { A } from 'm'; let A = 1;")).toHaveLength(1);
+	});
+
 	it("reports a const with no initializer", () => {
 		expect(messages("const a;")).toEqual([
 			expect.stringMatching(/Missing initializer/u),

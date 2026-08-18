@@ -311,5 +311,14 @@
 	{ "code": "class C { x = class { [arguments]() {} }; }", "sourceType": "script" },
 	{ "code": "class C { x = argument\\u0073; }", "sourceType": "script" },
 	{ "code": "class C { static { (class { [argument\\u0073]() {} }); } }", "sourceType": "script" },
-	{ "code": "class C { static { () => arguments; } }", "sourceType": "script" }
+	{ "code": "class C { static { () => arguments; } }", "sourceType": "script" },
+
+	{ "code": "var \\u0061; let a;", "sourceType": "script" },
+	{ "code": "let \\u0061; let a;", "sourceType": "script" },
+	{ "code": "let a; const \\u0061 = 1;", "sourceType": "script" },
+	{ "code": "let \\u{61}; var a;", "sourceType": "script" },
+	{ "code": "class C { m(a, \\u0061) {} }", "sourceType": "script" },
+	{ "code": "function f(a, \\u0061) { 'use strict'; }", "sourceType": "script" },
+	{ "code": "import { a } from \"m\"; let \\u0061;", "sourceType": "module" },
+	{ "code": "try {} catch (\\u0061) { let a; }", "sourceType": "script" }
 ]
