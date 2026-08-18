@@ -458,6 +458,55 @@ describe("eval and arguments", () => {
 	});
 });
 
+describe("let as a bound name", () => {
+	it("reports a lexical declaration that binds let", () => {
+		expect(messages("let let = 1;", { sourceType: "script" })).toEqual([
+			"'let' may not be the name a lexical declaration binds.",
+		]);
+	});
+
+	it("reaches it through a pattern", () => {
+		expect(
+			messages("let {a: let} = x;", { sourceType: "script" }),
+		).toHaveLength(1);
+	});
+
+	it("reads it through an escape", () => {
+		expect(
+			messages("let l\\u0065t = 1;", { sourceType: "script" }),
+		).toHaveLength(1);
+	});
+
+	/*
+	 * A `var` never had the ambiguity the lookahead restriction on `let` was
+	 * written for, and a catch parameter binds without declaring.
+	 */
+	it("allows var to bind it", () => {
+		expect(messages("var let = 1;", { sourceType: "script" })).toEqual([]);
+	});
+
+	it("allows a simple catch parameter to bind it", () => {
+		expect(
+			messages("try {} catch (let) {}", { sourceType: "script" }),
+		).toEqual([]);
+	});
+
+	it("reports it inside a catch pattern, which declares", () => {
+		expect(
+			messages("try {} catch ([let]) {}", { sourceType: "script" }),
+		).toHaveLength(1);
+	});
+
+	it("allows it as a function name or a parameter", () => {
+		expect(messages("function let() {}", { sourceType: "script" })).toEqual(
+			[],
+		);
+		expect(messages("function f(let) {}", { sourceType: "script" })).toEqual(
+			[],
+		);
+	});
+});
+
 describe("for statement heads", () => {
 	/*
 	 * A `for-in` or `for-of` takes its value from something else, so a

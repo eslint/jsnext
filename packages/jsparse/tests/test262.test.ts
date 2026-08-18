@@ -448,6 +448,15 @@ const valid: [string, "script" | "module"][] = [
 	["async function f() { for await (async of [7]); }", "script"],
 	["for (var a = 0, b = 1; ;);", "script"],
 	["for (let x = 1, y = 2; ;);", "script"],
+
+	// `let` is only banned as the name a *lexical* declaration binds.
+	["var let = 1;", "script"],
+	["for (var let in {});", "script"],
+	["function let() {}", "script"],
+	["function f(let) {}", "script"],
+	["try {} catch (let) {}", "script"],
+	["label: let;", "script"],
+	["let = 1;", "script"],
 ];
 
 describe("test262 positive tests", () => {

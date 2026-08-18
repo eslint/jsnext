@@ -453,5 +453,20 @@
 	{ "code": "for (var x, y in {});", "sourceType": "script" },
 	{ "code": "for (let x, y of []);", "sourceType": "script" },
 	{ "code": "for (const x, y in {});", "sourceType": "script" },
-	{ "code": "for (async of [1]);", "sourceType": "script" }
+	{ "code": "for (async of [1]);", "sourceType": "script" },
+
+	{ "code": "let let = 1;", "sourceType": "script" },
+	{ "code": "const let = 1;", "sourceType": "script" },
+	{ "code": "let [let] = x;", "sourceType": "script" },
+	{ "code": "let {let} = x;", "sourceType": "script" },
+	{ "code": "let {a: let} = x;", "sourceType": "script" },
+	{ "code": "const [let] = x;", "sourceType": "script" },
+	{ "code": "let a, let;", "sourceType": "script" },
+	{ "code": "let l\\u0065t = 1;", "sourceType": "script" },
+	{ "code": "for (let let in {});", "sourceType": "script" },
+	{ "code": "for (const let of []);", "sourceType": "script" },
+	{ "code": "for (let [let] of []);", "sourceType": "script" },
+	{ "code": "try {} catch ([let]) {}", "sourceType": "script" },
+	{ "code": "using let = x;", "sourceType": "script" },
+	{ "code": "let\nlet;", "sourceType": "script" }
 ]

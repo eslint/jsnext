@@ -1458,6 +1458,25 @@ class Validator {
 		switch (kind) {
 			case N_Identifier:
 				this.checkRestrictedName(node, "bound");
+
+				/*
+				 * `let let` is banned outright, sloppy code included, because
+				 * a lexical declaration reading its own keyword back as the
+				 * name it binds is exactly the ambiguity `let` was given a
+				 * lookahead restriction to avoid. `var let` stays legal — a
+				 * `var` never had the problem — and so does `catch (let)`,
+				 * which binds without declaring.
+				 */
+				if (
+					binding === BINDING_LEXICAL &&
+					this.identifierName(node) === "let"
+				) {
+					this.report(
+						"'let' may not be the name a lexical declaration binds.",
+						reader.start(node),
+					);
+				}
+
 				this.declare(node, binding);
 				return;
 
