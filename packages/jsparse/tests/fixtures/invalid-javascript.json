@@ -468,5 +468,21 @@
 	{ "code": "for (let [let] of []);", "sourceType": "script" },
 	{ "code": "try {} catch ([let]) {}", "sourceType": "script" },
 	{ "code": "using let = x;", "sourceType": "script" },
-	{ "code": "let\nlet;", "sourceType": "script" }
+	{ "code": "let\nlet;", "sourceType": "script" },
+
+	{ "code": "break;", "sourceType": "script" },
+	{ "code": "continue;", "sourceType": "script" },
+	{ "code": "{ break; }", "sourceType": "script" },
+	{ "code": "L: x = 1; break L;", "sourceType": "script" },
+	{ "code": "switch (0) { case 1: continue; }", "sourceType": "script" },
+	{ "code": "L: { continue L; }", "sourceType": "script" },
+	{ "code": "L: x = 1; continue L;", "sourceType": "script" },
+	{ "code": "do { test262: { continue test262; } } while (0)", "sourceType": "script" },
+	{ "code": "L: while (0) { (function () { break L; })(); }", "sourceType": "script" },
+	{ "code": "L: while (0) { (function () { continue L; })(); }", "sourceType": "script" },
+	{ "code": "while (0) { function f() { break; } }", "sourceType": "script" },
+	{ "code": "try {} catch (e) { break L2; L2: do {} while (0); }", "sourceType": "script" },
+	{ "code": "label: while (false) { class C { static { break; } } }", "sourceType": "script" },
+	{ "code": "a: a: while (0);", "sourceType": "script" },
+	{ "code": "L: switch (0) { default: continue L; }", "sourceType": "script" }
 ]

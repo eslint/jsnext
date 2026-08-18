@@ -457,6 +457,23 @@ const valid: [string, "script" | "module"][] = [
 	["try {} catch (let) {}", "script"],
 	["label: let;", "script"],
 	["let = 1;", "script"],
+
+	/*
+	 * A `break` needs a loop or a `switch`, a `continue` needs a loop, and a
+	 * label chain is all on whatever the chain ends at.
+	 */
+	["while (0) break;", "script"],
+	["while (0) continue;", "script"],
+	["switch (0) { case 1: break; }", "script"],
+	["L: while (0) break L;", "script"],
+	["L: while (0) continue L;", "script"],
+	["L: { break L; }", "script"],
+	["a: b: while (0) continue a;", "script"],
+	["a: while(0); a: while(0);", "script"],
+	["L: while (0) { M: while (0) { continue L; break M; } }", "script"],
+	["L: switch (0) { default: break L; }", "script"],
+	["for (;;) { switch (0) { default: continue; } }", "script"],
+	["class C { static { L: while (0) break L; } }", "script"],
 ];
 
 describe("test262 positive tests", () => {

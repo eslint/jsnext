@@ -458,6 +458,87 @@ describe("eval and arguments", () => {
 	});
 });
 
+describe("break and continue", () => {
+	it("reports a bare break with nothing to leave", () => {
+		expect(messages("break;", { sourceType: "script" })).toEqual([
+			"'break' must be inside a loop or a switch.",
+		]);
+	});
+
+	it("reports a bare continue in a switch, which only break may leave", () => {
+		expect(
+			messages("switch (0) { case 1: continue; }", {
+				sourceType: "script",
+			}),
+		).toEqual(["'continue' must be inside a loop."]);
+	});
+
+	it("reports a label that encloses nothing", () => {
+		expect(
+			messages("L: x = 1; break L;", { sourceType: "script" }),
+		).toEqual(["Label 'L' is not enclosing this 'break'."]);
+	});
+
+	it("reports a continue naming a label that is not on a loop", () => {
+		expect(messages("L: { continue L; }", { sourceType: "script" })).toEqual(
+			["Label 'L' is not on a loop, so 'continue' cannot name it."],
+		);
+	});
+
+	it("follows a chain of labels to what it ends at", () => {
+		expect(
+			messages("a: b: while (0) continue a;", { sourceType: "script" }),
+		).toEqual([]);
+	});
+
+	it("reports a duplicate label", () => {
+		expect(messages("a: a: while (0);", { sourceType: "script" })).toEqual([
+			"Label 'a' has already been declared.",
+		]);
+	});
+
+	it("reports one nested inside the label of the same name", () => {
+		expect(
+			messages("a: while(0) { a: while(0); }", { sourceType: "script" }),
+		).toHaveLength(1);
+	});
+
+	it("allows the same label again once the first has closed", () => {
+		expect(
+			messages("a: while(0); a: while(0);", { sourceType: "script" }),
+		).toEqual([]);
+	});
+
+	/*
+	 * A label names a statement, and a nested function is inside that
+	 * statement rather than part of it — as is a class static block, which
+	 * runs where the class is defined.
+	 */
+	it("does not let a nested function leave an outer loop", () => {
+		expect(
+			messages("L: while (0) { (function () { break L; })(); }", {
+				sourceType: "script",
+			}),
+		).toHaveLength(1);
+	});
+
+	it("does not let a static block leave an enclosing loop", () => {
+		expect(
+			messages("label: while (false) { class C { static { break; } } }", {
+				sourceType: "script",
+			}),
+		).toHaveLength(1);
+	});
+
+	it("still lets a static block have loops of its own", () => {
+		expect(
+			messages("class C { static { L: while (0) break L; } }", {
+				sourceType: "script",
+			}),
+		).toEqual([]);
+	});
+});
+
 describe("let as a bound name", () => {
 	it("reports a lexical declaration that binds let", () => {
 		expect(messages("let let = 1;", { sourceType: "script" })).toEqual([

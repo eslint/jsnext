@@ -64,7 +64,7 @@ export const KNOWN_OVERZEALOUS = 0;
  * — where no tree should have been built at all, and those are the parser's.
  *
  * The run reports which phase catches what it does catch, so the balance is
- * visible: today it is 1,225 from `parse()` against 2,909 from `validate()`.
+ * visible: today it is 1,225 from `parse()` against 2,944 from `validate()`.
  *
  * Counts are approximate: a test usually violates one rule but the families
  * overlap at the edges, and the authority on the totals is
@@ -82,8 +82,6 @@ export const KNOWN_OVERZEALOUS = 0;
  * - **Class element grammar** (~40, mixed). A private name whose `#` is written
  *   as an escape, a private field read out of an object destructuring pattern,
  *   a zero-width joiner inside a field name.
- * - **Statement placement** (~35, mostly `validate()`). `break` and `continue` with no enclosing
- *   iteration or label, a duplicate label, `return` in module code.
  * - **Expression-level grammar** (~20, `parse()`). `a ?? b || c` without parentheses,
  *   `-a ** b`, `this++`, `delete x` in strict mode, `#x in obj` outside a
  *   class body, an update expression on an optional chain.

@@ -46,11 +46,13 @@ import {
 	N_AssignmentPattern,
 	N_BinaryExpression,
 	N_BlockStatement,
+	N_BreakStatement,
 	N_CallExpression,
 	N_ChainExpression,
 	N_CatchClause,
 	N_ClassDeclaration,
 	N_ClassExpression,
+	N_ContinueStatement,
 	N_DoWhileStatement,
 	N_ExportAllDeclaration,
 	N_ExportDefaultDeclaration,
@@ -172,6 +174,25 @@ const CH_e = 0x65;
  * escape. Indexed by character code; anything outside ASCII cannot begin one.
  */
 const RESERVED_INITIALS = /* @__PURE__ */ buildReservedInitials();
+
+/**
+ * Determines whether a node kind is an iteration statement.
+ *
+ * These are the four `for` forms plus `while` and `do-while` — the statements
+ * a bare `continue` can be inside of, and the ones a label has to be on for
+ * `continue` to name it.
+ * @param kind The node kind.
+ * @returns `true` when the kind loops.
+ */
+function isIteration(kind: number): boolean {
+	return (
+		kind === N_ForStatement ||
+		kind === N_ForInStatement ||
+		kind === N_ForOfStatement ||
+		kind === N_WhileStatement ||
+		kind === N_DoWhileStatement
+	);
+}
 
 /**
  * Builds the table of characters a reserved word can start with.
@@ -382,6 +403,21 @@ class Validator {
 	 * fine — the suspension belongs to the arrow, not to `f`.
 	 */
 	private inParameters = false;
+
+	/**
+	 * The labels a `break` may name, outermost first.
+	 *
+	 * Emptied at every function boundary and at a class static block, because
+	 * a label names a statement rather than a place, and the statement it
+	 * names is not one the code inside a nested function can leave.
+	 */
+	private readonly labels: { name: string; iteration: boolean }[] = [];
+
+	/** How many iteration statements enclose the walk. */
+	private iterationDepth = 0;
+
+	/** How many `switch` statements enclose it, which only `break` may leave. */
+	private switchDepth = 0;
 
 	/**
 	 * Whether the class body being walked has declared its constructor.
@@ -595,12 +631,46 @@ class Validator {
 			 * `l: m: function f() {}` is as legal as `l: function f() {}`
 			 * and as illegal as it wherever that one is.
 			 */
-			case N_LabeledStatement:
+			case N_LabeledStatement: {
+				const body = reader.field(node, NODE_B);
+				const name = this.identifierName(reader.field(node, NODE_A));
+
+				for (const entry of this.labels) {
+					if (entry.name === name) {
+						this.report(
+							`Label '${name}' has already been declared.`,
+							reader.start(node),
+						);
+
+						break;
+					}
+				}
+
+				/*
+				 * `continue` may only name a label that is on a loop, and a
+				 * chain of labels is all on whatever the chain ends at — so
+				 * `a: b: while (0) continue a;` works.
+				 */
+				let target = body;
+
+				while (
+					target !== 0 &&
+					reader.kind(target) === N_LabeledStatement
+				) {
+					target = reader.field(target, NODE_B);
+				}
+
+				this.labels.push({
+					name,
+					iteration: target !== 0 && isIteration(reader.kind(target)),
+				});
 				this.visit(reader.field(node, NODE_A));
 				this.inStatementList = wasInStatementList;
-				this.visit(reader.field(node, NODE_B));
+				this.visit(body);
 				this.inStatementList = false;
+				this.labels.pop();
 				return;
+			}
 
 			case N_FunctionDeclaration:
 			case N_FunctionExpression:
@@ -655,9 +725,25 @@ class Validator {
 				const wasSuperProperty = this.superPropertyAllowed;
 				const wasSuperCall = this.superCallAllowed;
 
+				const outerLabels =
+					kind === N_StaticBlock
+						? this.labels.splice(0, this.labels.length)
+						: null;
+				const previousIterationDepth = this.iterationDepth;
+				const previousSwitchDepth = this.switchDepth;
+
 				if (kind === N_StaticBlock) {
 					this.awaitReserved = true;
 					this.inGenerator = false;
+
+					/*
+					 * A static block is a boundary for `break` and `continue`
+					 * as much as a function is: it runs when the class is
+					 * defined, not where the class is written, so a loop
+					 * around the class is nothing it can leave.
+					 */
+					this.iterationDepth = 0;
+					this.switchDepth = 0;
 
 					// A static block has a home object but no constructor.
 					this.superPropertyAllowed = true;
@@ -685,6 +771,13 @@ class Validator {
 				}
 
 				this.exitScope();
+
+				if (outerLabels !== null) {
+					this.labels.push(...outerLabels);
+					this.iterationDepth = previousIterationDepth;
+					this.switchDepth = previousSwitchDepth;
+				}
+
 				this.awaitReserved = wasAwait;
 				this.inGenerator = wasGenerator;
 				this.superPropertyAllowed = wasSuperProperty;
@@ -707,7 +800,9 @@ class Validator {
 					this.hoist(reader.field(reader.listItem(cases, i), NODE_B));
 				}
 
+				this.switchDepth++;
 				this.visitChildren(node, kind);
+				this.switchDepth--;
 				this.exitScope();
 				return;
 			}
@@ -732,10 +827,19 @@ class Validator {
 					);
 				}
 
+				this.iterationDepth++;
 				this.visitChildren(node, kind);
+				this.iterationDepth--;
 				this.exitScope();
 				return;
 			}
+
+			case N_WhileStatement:
+			case N_DoWhileStatement:
+				this.iterationDepth++;
+				this.visitChildren(node, kind);
+				this.iterationDepth--;
+				return;
 
 			/*
 			 * The clause and its block share one scope, because a lexical
@@ -1001,6 +1105,18 @@ class Validator {
 		this.functionDepth++;
 		this.enterScope(true);
 
+		/*
+		 * A label names a statement, and nothing inside a nested function can
+		 * leave a statement outside it, so the whole set is put aside for the
+		 * duration along with the loops and switches it sits in.
+		 */
+		const outerLabels = this.labels.splice(0, this.labels.length);
+		const previousIterationDepth = this.iterationDepth;
+		const previousSwitchDepth = this.switchDepth;
+
+		this.iterationDepth = 0;
+		this.switchDepth = 0;
+
 		const directive =
 			body !== 0 &&
 			reader.kind(body) === N_BlockStatement &&
@@ -1128,6 +1244,9 @@ class Validator {
 		this.inAsync = previousAsync;
 		this.awaitReserved = previousAwait;
 		this.inParameters = previousParameters;
+		this.labels.push(...outerLabels);
+		this.iterationDepth = previousIterationDepth;
+		this.switchDepth = previousSwitchDepth;
 		this.ambient = previousAmbient;
 		this.superPropertyAllowed = previousSuperProperty;
 		this.superCallAllowed = previousSuperCall;
@@ -2548,6 +2667,70 @@ class Validator {
 	}
 
 	//-------------------------------------------------------------------------
+	// `break` and `continue`
+	//-------------------------------------------------------------------------
+
+	/**
+	 * Reports a `break` or `continue` with nothing to act on.
+	 *
+	 * Without a label, `break` needs a loop or a `switch` around it and
+	 * `continue` needs a loop; with one, both need a labelled statement of
+	 * that name, and `continue` needs that statement to be a loop. Either way
+	 * the target has to be in the same function: a label is a name for a
+	 * statement, and a nested function cannot leave a statement it is inside
+	 * of rather than part of.
+	 * @param node The `BreakStatement` or `ContinueStatement` node index.
+	 * @param isContinue Whether it is a `continue`, which a `switch` and a
+	 *      label on anything but a loop do not answer.
+	 * @returns Nothing.
+	 */
+	private checkBreakOrContinue(node: number, isContinue: boolean): void {
+		const reader = this.reader;
+		const label = reader.field(node, NODE_A);
+		const word = isContinue ? "continue" : "break";
+
+		if (label === 0) {
+			if (
+				this.iterationDepth === 0 &&
+				(isContinue || this.switchDepth === 0)
+			) {
+				this.report(
+					isContinue
+						? "'continue' must be inside a loop."
+						: "'break' must be inside a loop or a switch.",
+					reader.start(node),
+				);
+			}
+
+			return;
+		}
+
+		const name = this.identifierName(label);
+
+		for (const entry of this.labels) {
+			if (entry.name !== name) {
+				continue;
+			}
+
+			if (!isContinue || entry.iteration) {
+				return;
+			}
+
+			this.report(
+				`Label '${name}' is not on a loop, so 'continue' cannot name it.`,
+				reader.start(node),
+			);
+
+			return;
+		}
+
+		this.report(
+			`Label '${name}' is not enclosing this '${word}'.`,
+			reader.start(node),
+		);
+	}
+
+	//-------------------------------------------------------------------------
 	// `for` Statement Heads
 	//-------------------------------------------------------------------------
 
@@ -2887,6 +3070,11 @@ class Validator {
 					);
 				}
 
+				return;
+
+			case N_BreakStatement:
+			case N_ContinueStatement:
+				this.checkBreakOrContinue(node, kind === N_ContinueStatement);
 				return;
 
 			case N_WithStatement:
