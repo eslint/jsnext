@@ -18,6 +18,7 @@ import {
 	NODE_A,
 	NODE_B,
 	NODE_C,
+	MKIND_CONSTRUCTOR,
 	MKIND_GET,
 	MKIND_MASK,
 	MKIND_SET,
@@ -30,6 +31,7 @@ import {
 	NF_SHORTHAND,
 	NF_STATIC,
 	TS_FIRST,
+	N_AccessorProperty,
 	N_ArrayPattern,
 	N_AssignmentExpression,
 	N_AwaitExpression,
@@ -61,10 +63,13 @@ import {
 	N_ObjectPattern,
 	N_Program,
 	N_Property,
+	N_PropertyDefinition,
 	N_RestElement,
 	N_ReturnStatement,
 	N_StaticBlock,
+	N_Super,
 	N_SwitchStatement,
+	N_TSAbstractPropertyDefinition,
 	N_TSDeclareFunction,
 	N_TSEmptyBodyFunctionExpression,
 	N_TSEnumDeclaration,
@@ -294,6 +299,44 @@ class Validator {
 	private awaitReserved = false;
 
 	/**
+	 * Whether `super.x` may be written here.
+	 *
+	 * True inside any method — an accessor, a generator, and an async method
+	 * included — and inside a class field initializer or a static block,
+	 * because all of those have a home object to look the property up on. An
+	 * ordinary function has none, so it turns this off however it is nested.
+	 */
+	private superPropertyAllowed = false;
+
+	/**
+	 * Whether `super()` may be written here.
+	 *
+	 * Only the constructor of a class that extends something may call it, so
+	 * this is far narrower than `superPropertyAllowed`: a method of a derived
+	 * class may read `super.x` and may not call `super()`.
+	 */
+	private superCallAllowed = false;
+
+	/** Whether the class being visited has a heritage clause. */
+	private inDerivedClass = false;
+
+	/**
+	 * Whether the method being visited is the constructor of a derived class,
+	 * which the function node records no more than it records method-ness.
+	 */
+	private inDerivedConstructor = false;
+
+	/**
+	 * The one `Super` node that is allowed to be where it is.
+	 *
+	 * `super` is never an expression by itself: it has to be the callee of a
+	 * call or the object of a member access, and only the parent knows which
+	 * it is. Each parent sanctions its own `Super` before the walk descends
+	 * into it, so any other one is a bare `super` and an error.
+	 */
+	private sanctionedSuper = 0;
+
+	/**
 	 * Whether a parameter list is being visited.
 	 *
 	 * A default value runs before the function's own body exists, so it may
@@ -473,9 +516,16 @@ class Validator {
 				 * not a generator either, and `yield` inside one is reserved
 				 * only because a class body is strict.
 				 */
+				const wasSuperProperty = this.superPropertyAllowed;
+				const wasSuperCall = this.superCallAllowed;
+
 				if (kind === N_StaticBlock) {
 					this.awaitReserved = true;
 					this.inGenerator = false;
+
+					// A static block has a home object but no constructor.
+					this.superPropertyAllowed = true;
+					this.superCallAllowed = false;
 				}
 
 				this.enterScope(true);
@@ -484,6 +534,8 @@ class Validator {
 				this.exitScope();
 				this.awaitReserved = wasAwait;
 				this.inGenerator = wasGenerator;
+				this.superPropertyAllowed = wasSuperProperty;
+				this.superCallAllowed = wasSuperCall;
 				return;
 			}
 
@@ -592,8 +644,42 @@ class Validator {
 					(flags & NF_METHOD) !== 0 ||
 					accessor === MKIND_GET ||
 					accessor === MKIND_SET;
+
+				/*
+				 * The key is visited above, outside all of this, because a
+				 * computed key is evaluated where the class is written rather
+				 * than inside it: `class C { [super.x]() {} }` has no home
+				 * object to read from.
+				 */
+				this.inDerivedConstructor =
+					kind === N_MethodDefinition &&
+					accessor === MKIND_CONSTRUCTOR &&
+					this.inDerivedClass;
 				this.visit(value);
+				this.inDerivedConstructor = false;
 				this.inMethod = wasMethod;
+				this.visitList(reader.field(node, NODE_C));
+				return;
+			}
+
+			/*
+			 * A field initializer runs with the instance as its home object,
+			 * so it may read `super.x` — but it is not the constructor, so it
+			 * may not call `super()`. Its key is visited first and separately,
+			 * a computed one being evaluated outside the class body.
+			 */
+			case N_PropertyDefinition:
+			case N_AccessorProperty:
+			case N_TSAbstractPropertyDefinition: {
+				const wasSuperProperty = this.superPropertyAllowed;
+				const wasSuperCall = this.superCallAllowed;
+
+				this.visit(reader.field(node, NODE_A));
+				this.superPropertyAllowed = true;
+				this.superCallAllowed = false;
+				this.visit(reader.field(node, NODE_B));
+				this.superPropertyAllowed = wasSuperProperty;
+				this.superCallAllowed = wasSuperCall;
 				this.visitList(reader.field(node, NODE_C));
 				return;
 			}
@@ -620,12 +706,22 @@ class Validator {
 				this.visit(reader.field(node, NODE_A));
 				this.visit(reader.field(node, NODE_B));
 
+				const wasDerived = this.inDerivedClass;
+
+				/*
+				 * Only a class that extends something has a `super()` to call,
+				 * and the heritage clause above is deliberately visited before
+				 * this is set — it is evaluated outside the class body.
+				 */
+				this.inDerivedClass = reader.field(node, NODE_B) !== 0;
+
 				if (body !== 0) {
 					this.privateNames.push(this.collectPrivateNames(body));
 					this.visitChildren(body, reader.kind(body));
 					this.privateNames.pop();
 				}
 
+				this.inDerivedClass = wasDerived;
 				this.strict = wasStrict;
 				return;
 			}
@@ -697,6 +793,9 @@ class Validator {
 		const previousAwait = this.awaitReserved;
 		const previousParameters = this.inParameters;
 		const isMethod = this.inMethod;
+		const isDerivedConstructor = this.inDerivedConstructor;
+		const previousSuperProperty = this.superPropertyAllowed;
+		const previousSuperCall = this.superCallAllowed;
 		const body = reader.field(node, NODE_C);
 		const kind = reader.kind(node);
 		const flags = reader.flags(node);
@@ -709,6 +808,7 @@ class Validator {
 		 * A function nested inside a method is an ordinary function again.
 		 */
 		this.inMethod = false;
+		this.inDerivedConstructor = false;
 		this.functionDepth++;
 		this.enterScope(true);
 
@@ -768,6 +868,17 @@ class Validator {
 			(isArrow && previousAwait) ||
 			this.sourceType === "module";
 
+		/*
+		 * An arrow has no home object of its own and so borrows the enclosing
+		 * one, which is what lets `constructor() { () => super(); }` work.
+		 * Every other function brings its own, or brings none: only a method
+		 * may read `super.x`, and only a derived constructor may call it.
+		 */
+		if (!isArrow) {
+			this.superPropertyAllowed = isMethod;
+			this.superCallAllowed = isDerivedConstructor;
+		}
+
 		for (let i = 0; i < size; i++) {
 			const param = reader.listItem(params, i);
 
@@ -817,6 +928,8 @@ class Validator {
 		this.inAsync = previousAsync;
 		this.awaitReserved = previousAwait;
 		this.inParameters = previousParameters;
+		this.superPropertyAllowed = previousSuperProperty;
+		this.superCallAllowed = previousSuperCall;
 	}
 
 	/**
@@ -1358,6 +1471,33 @@ class Validator {
 		}
 
 		this.checkWordAt(node);
+	}
+
+	/**
+	 * Checks a `super` used as the operand of a call or a member access.
+	 *
+	 * Sanctioning the node is what keeps the bare-`super` rule from firing on
+	 * the legal ones: `check()` runs on a parent before the walk descends into
+	 * it, so the operand is marked by the time it is reached.
+	 * @param operand The callee or object node index, which may be anything.
+	 * @param allowed Whether `super` is allowed to be used this way here.
+	 * @param message What to report when it is not.
+	 * @returns Nothing.
+	 */
+	private checkSuperOperand(
+		operand: number,
+		allowed: boolean,
+		message: string,
+	): void {
+		if (operand === 0 || this.reader.kind(operand) !== N_Super) {
+			return;
+		}
+
+		this.sanctionedSuper = operand;
+
+		if (!allowed) {
+			this.report(message, this.reader.start(operand));
+		}
 	}
 
 	/**
@@ -1918,10 +2058,58 @@ class Validator {
 					this.reader.kind(property) === N_PrivateIdentifier
 				) {
 					this.checkPrivateReference(property);
+
+					/*
+					 * A private name is looked up on the object itself, and
+					 * `super` names the prototype rather than an object, so
+					 * there is nothing for `super.#x` to read.
+					 */
+					if (
+						this.reader.kind(this.reader.field(node, NODE_A)) ===
+						N_Super
+					) {
+						this.report(
+							"A private name may not be read on 'super'.",
+							this.reader.start(node),
+						);
+					}
+				}
+
+				this.checkSuperOperand(
+					this.reader.field(node, NODE_A),
+					this.superPropertyAllowed,
+					"'super' may only be read inside a method, a field initializer, or a static block.",
+				);
+				return;
+			}
+
+			/*
+			 * The other half of `super`. A call is far more restricted than a
+			 * property access: every method of a derived class may read
+			 * `super.x`, and only its constructor may call `super()`.
+			 */
+			case N_CallExpression:
+				this.checkSuperOperand(
+					this.reader.field(node, NODE_A),
+					this.superCallAllowed,
+					"'super' may only be called inside the constructor of a derived class.",
+				);
+				return;
+
+			/*
+			 * Anything that reaches here is a `super` the walk arrived at
+			 * without passing through a call or a member access above it, and
+			 * `super` is not an expression on its own.
+			 */
+			case N_Super:
+				if (node !== this.sanctionedSuper) {
+					this.report(
+						"'super' must be followed by an argument list or a property access.",
+						this.reader.start(node),
+					);
 				}
 
 				return;
-			}
 
 			case N_BinaryExpression: {
 				const left = this.reader.field(node, NODE_A);

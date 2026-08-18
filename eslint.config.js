@@ -4,7 +4,12 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import { eslintParser } from "./packages/jsparse/dist/jsparse.js";
 
 export default defineConfig([
-	globalIgnores(["**/dist/"]),
+	/*
+	 * `test262` is where AGENTS.md says to clone the suite, and it is 52,000
+	 * files of deliberately invalid JavaScript. Linting it is neither wanted nor
+	 * survivable.
+	 */
+	globalIgnores(["**/dist/", "test262/**"]),
 	{
 		files: ["**/*.js", "**/*.mjs", "**/*.ts"],
 		plugins: { js },

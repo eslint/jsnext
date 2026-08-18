@@ -202,6 +202,35 @@ const valid: [string, "script" | "module"][] = [
 	["1_0 + 0x1_2 + 0b1_1 + 0o1_7 + 1_0.2_5e1_0 + 1_0n;", "script"],
 
 	/*
+	 * `super.x` needs a home object, which every method has — an accessor, a
+	 * generator, an async method, an object literal method — and so does a
+	 * field initializer and a static block. `super()` needs a constructor to
+	 * be in, and a heritage clause to call.
+	 */
+	["class C extends D { constructor() { super(); } }", "script"],
+	["class C extends D { constructor() { { super(); } } }", "script"],
+	["class C extends D { m() { super.x; } }", "script"],
+	["class C { m() { super.x; } }", "script"],
+	["class C { m() { super[x]; } }", "script"],
+	["class C { m(a = super.x) {} }", "script"],
+	["class C { x = super.y; }", "script"],
+	["class C { static x = super.y; }", "script"],
+	["class C { static { super.x; } }", "script"],
+	["({ m() { super.x; } });", "script"],
+	["({ get x() { super.y; } });", "script"],
+
+	/*
+	 * An arrow has no home object of its own, so it borrows the one around it
+	 * — which is the whole reason `() => super()` works in a constructor.
+	 */
+	["class C extends D { constructor() { () => super(); } }", "script"],
+	["class C { m() { () => super.x; } }", "script"],
+
+	// A method nested inside a method brings its own, in either direction.
+	["({ m() { class D { n() { super.x; } } } });", "script"],
+	["class C { m() { ({ n() { super.x; } }); } }", "script"],
+
+	/*
 	 * `yield` and `await` are reserved by *position*, so sloppy code outside a
 	 * generator or an async function may still use either as a name. Each of
 	 * these is one word away from an error in the fixture file.
