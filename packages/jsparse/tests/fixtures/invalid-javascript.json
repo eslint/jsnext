@@ -551,5 +551,14 @@
 	{ "code": "({default}) => {};", "sourceType": "script" },
 	{ "code": "({extends}) => {};", "sourceType": "script" },
 	{ "code": "({a = 1});", "sourceType": "script" },
-	{ "code": "({__proto__: 1, '__proto__': 2});", "sourceType": "script" }
+	{ "code": "({__proto__: 1, '__proto__': 2});", "sourceType": "script" },
+
+	{ "code": "var x; export { x }; export { x };", "sourceType": "module" },
+	{ "code": "var x, y; export { x as z }; export { y as z };", "sourceType": "module" },
+	{ "code": "var x, y; export default x; export { y as default };", "sourceType": "module" },
+	{ "code": "export { unresolvable };", "sourceType": "module" },
+	{ "code": "export { 'foo' as 'bar' }; function foo() {}", "sourceType": "module" },
+	{ "code": "export { '\ud83d' } from 'm';", "sourceType": "module" },
+	{ "code": "import { '\ud83d' as foo } from 'm';", "sourceType": "module" },
+	{ "code": "import x from 'm' with { type: 'json', type: '' };", "sourceType": "module" }
 ]

@@ -1044,6 +1044,112 @@ describe("rest elements", () => {
 	});
 });
 
+describe("module exports", () => {
+	it("reports a name exported twice", () => {
+		expect(messages("var x; export { x }; export { x };")).toEqual([
+			"Duplicate export of 'x'.",
+		]);
+		expect(
+			messages("var x, y; export { x as z }; export { y as z };"),
+		).toHaveLength(1);
+		expect(
+			messages("var x, y; export default x; export { y as default };"),
+		).toHaveLength(1);
+		expect(
+			messages("var x; export { x as z }; export * as z from 'm';"),
+		).toHaveLength(1);
+		expect(
+			messages("export function f() {} export { f };"),
+		).toHaveLength(1);
+		expect(
+			messages("export const { a, b } = q; export { a };"),
+		).toHaveLength(1);
+	});
+
+	it("allows each name once", () => {
+		expect(
+			messages("var x; export { x }; export default 1;"),
+		).toEqual([]);
+		expect(messages("export * from 'm'; export * from 'n';")).toEqual([]);
+		expect(messages("export const q = 1; export { q as w };")).toEqual([]);
+	});
+
+	/*
+	 * An export written without a `from` clause names something the module
+	 * itself declares, so a name nothing declares is an error rather than a
+	 * re-export.
+	 */
+	it("reports an export that names nothing the module declares", () => {
+		expect(messages("export { unresolvable };")).toEqual([
+			"Export 'unresolvable' is not defined in the module.",
+		]);
+		expect(messages("export { Number };")).toHaveLength(1);
+	});
+
+	it("resolves against the whole module scope", () => {
+		expect(messages("{ var v; } export { v };")).toEqual([]);
+		expect(messages("import a from 'm'; export { a };")).toEqual([]);
+		expect(messages("interface I {} export { I };")).toEqual([]);
+		expect(
+			messages("import p = require('m'); export { p };"),
+		).toEqual([]);
+	});
+
+	/*
+	 * A local binding's name is an identifier, so a string on that side never
+	 * resolves however the module spells it.
+	 */
+	it("refuses a string as the local half of an export", () => {
+		expect(
+			messages("export { 'foo' as 'bar' }; function foo() {}"),
+		).toEqual([
+			expect.stringMatching(/may only name an export of another/u),
+		]);
+		expect(messages("export { 'a' as b } from 'm';")).toEqual([]);
+	});
+
+	it("requires a string module export name to be well-formed", () => {
+		for (const code of [
+			"export { '\ud83d' } from 'm';",
+			"import { '\ud83d' as foo } from 'm';",
+			"export { '\u263f' as '\ud83d' } from 'm';",
+			"var Foo; export { Foo as '\ud83d' };",
+		]) {
+			expect(messages(code)).toEqual([
+				expect.stringMatching(/must be well-formed Unicode/u),
+			]);
+		}
+	});
+
+	it("takes a paired surrogate", () => {
+		expect(
+			messages("export { '\ud83c\udf19' } from 'm';"),
+		).toEqual([]);
+	});
+
+	/*
+	 * A `with` clause is a set of keys, and a key may be written as an
+	 * identifier or as a string, so what the two spell is what decides.
+	 */
+	it("reports a repeated import attribute", () => {
+		expect(
+			messages("import x from 'm' with { type: 'json', 'typ\u0065': '' };"),
+		).toEqual(["Duplicate import attribute 'type'."]);
+		expect(
+			messages("import 'm' with { type: 'json', type: '' };"),
+		).toHaveLength(1);
+		expect(
+			messages("export * from 'm' with { type: 'json', type: '' };"),
+		).toHaveLength(1);
+	});
+
+	it("allows distinct attributes", () => {
+		expect(
+			messages("import x from 'm' with { a: '1', b: '2' };"),
+		).toEqual([]);
+	});
+});
+
 describe("object literals", () => {
 	/*
 	 * `{ a }` means `{ a: a }`, so the one word is a name and a reference at

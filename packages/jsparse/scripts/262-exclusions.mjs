@@ -64,7 +64,7 @@ export const KNOWN_OVERZEALOUS = 0;
  * — where no tree should have been built at all, and those are the parser's.
  *
  * The run reports which phase catches what it does catch, so the balance is
- * visible: today it is 1,285 from `parse()` against 3,048 from `validate()`.
+ * visible: today it is 1,285 from `parse()` against 3,064 from `validate()`.
  *
  * Counts are approximate: a test usually violates one rule but the families
  * overlap at the edges, and the authority on the totals is
@@ -74,9 +74,6 @@ export const KNOWN_OVERZEALOUS = 0;
  * - **Expression-level grammar** (~21, `parse()`). `a ?? b || c` without
  *   parentheses, `-a ** b`, `delete x` in strict mode, and a template literal
  *   in the tail position of an optional chain.
- * - **Module code** (~17, `validate()`). A name exported twice over, an export
- *   that names nothing the module declares, and a module specifier holding an
- *   unpaired surrogate.
  * - **Numeric separators** (~12, `parse()`). An `_` in a position that does not
  *   admit one: doubled, trailing, or against the `0` of a legacy octal.
  * - **Legacy octal escapes** (~12, `validate()`). `"\1"` and `"\8"` in code

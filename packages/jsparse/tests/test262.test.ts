@@ -529,6 +529,14 @@ const valid: [string, "script" | "module"][] = [
 	["({__proto__() {}, __proto__: 1});", "script"],
 	["({__proto__, __proto__: 1});", "script"],
 	["({a = 1} = x);", "script"],
+
+	// Every name a module exports, exported once.
+	["var x; export { x }; export default 1;", "module"],
+	["export * from 'm'; export * from 'n';", "module"],
+	["export const q = 1; export { q as w };", "module"],
+	["{ var v; } export { v };", "module"],
+	["export { '\ud83c\udf19' } from 'm';", "module"],
+	["import x from 'm' with { a: '1', b: '2' };", "module"],
 ];
 
 describe("test262 positive tests", () => {

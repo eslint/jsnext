@@ -93,6 +93,7 @@ import {
 	N_TSDeclareFunction,
 	N_TSEmptyBodyFunctionExpression,
 	N_TSEnumDeclaration,
+	N_TSImportEqualsDeclaration,
 	N_TSInterfaceDeclaration,
 	N_TSModuleBlock,
 	N_TSModuleDeclaration,
@@ -225,6 +226,40 @@ function isFunctionBinding(binding: number): boolean {
 		binding === BINDING_FUNCTION ||
 		binding === BINDING_ASYNC_OR_GENERATOR
 	);
+}
+
+/**
+ * Determines whether a string holds only paired surrogates.
+ *
+ * A module export name written as a string names something in another
+ * module's namespace object, and a name that cannot be spelled in UTF-8 could
+ * not be carried across a module boundary, so the grammar refuses one.
+ * @param value The decoded string.
+ * @returns `true` when every surrogate in it is half of a pair.
+ */
+function isWellFormedUnicode(value: string): boolean {
+	for (let i = 0; i < value.length; i++) {
+		const code = value.charCodeAt(i);
+
+		if (code < 0xd800 || code > 0xdfff) {
+			continue;
+		}
+
+		// A low surrogate here is one no high surrogate claimed.
+		if (code > 0xdbff || i + 1 === value.length) {
+			return false;
+		}
+
+		const next = value.charCodeAt(i + 1);
+
+		if (next < 0xdc00 || next > 0xdfff) {
+			return false;
+		}
+
+		i++;
+	}
+
+	return true;
 }
 
 /**
@@ -588,6 +623,10 @@ class Validator {
 		this.checkTokens();
 		this.hoist(this.reader.field(root, NODE_A), this.sourceType === "module");
 		this.visitModuleItems(this.reader.field(root, NODE_A));
+
+		if (this.sourceType === "module") {
+			this.checkModuleExports(this.reader.field(root, NODE_A));
+		}
 	}
 
 	/**
@@ -1523,10 +1562,19 @@ class Validator {
 					);
 					break;
 
+				/*
+				 * `import a = require("m")` is here for the same reason the
+				 * type declarations are: it binds a name that may stand for a
+				 * value, a type, or a namespace, and which of the three it is
+				 * is a question about the other module. A type binding is the
+				 * reading that merges with anything, which is the one to take
+				 * when the answer is not here to be had.
+				 */
 				case N_TSInterfaceDeclaration:
 				case N_TSTypeAliasDeclaration:
 				case N_TSEnumDeclaration:
 				case N_TSModuleDeclaration:
+				case N_TSImportEqualsDeclaration:
 					this.declare(reader.field(statement, NODE_A), BINDING_TYPE);
 					break;
 
@@ -1633,6 +1681,372 @@ class Validator {
 		}
 
 		this.ambient = previousAmbient;
+	}
+
+	/**
+	 * Reports an import attribute key written twice.
+	 *
+	 * A `with` clause is a set of keys, and the key may be written as an
+	 * identifier or as a string, so `{ type: "json", "typ\\u0065": "" }` is one
+	 * key twice over. Comparing what the two spell rather than how they are
+	 * spelled is the whole of it.
+	 * @param handle The list handle of the attributes.
+	 * @returns Nothing.
+	 */
+	private checkImportAttributes(handle: number): void {
+		const reader = this.reader;
+		const size = reader.listSize(handle);
+
+		if (size < 2) {
+			return;
+		}
+
+		const seen = new Set<string>();
+
+		for (let i = 0; i < size; i++) {
+			const attribute = reader.listItem(handle, i);
+			const key = reader.field(attribute, NODE_A);
+
+			if (key === 0) {
+				continue;
+			}
+
+			const name =
+				reader.kind(key) === N_Literal
+					? decodeEscapes(reader.text(key).slice(1, -1), false)
+					: this.identifierName(key);
+
+			if (seen.has(name)) {
+				this.report(
+					`Duplicate import attribute '${name}'.`,
+					reader.start(key),
+				);
+
+				continue;
+			}
+
+			seen.add(name);
+		}
+	}
+
+	/**
+	 * Checks the names a module exports.
+	 *
+	 * Three rules meet at the top level of a module and nowhere else, which
+	 * is why this is a pass of its own rather than a case in the walk. Two
+	 * exports may not name the same thing, since an importer asking for the
+	 * name would have no way to say which it meant. An export written
+	 * without a `from` clause names something the module itself declares, so
+	 * a name nothing declares is an error rather than a re-export — and a
+	 * string can never be the name of a local binding. And a module export
+	 * name written as a string has to be well-formed Unicode.
+	 *
+	 * It runs after the walk because the second rule needs the whole module
+	 * scope: a `var` inside a block at the top level binds here too, and
+	 * hoisting alone does not see it.
+	 * @param handle The list handle of the module's items.
+	 * @returns Nothing.
+	 */
+	private checkModuleExports(handle: number): void {
+		const reader = this.reader;
+		const size = reader.listSize(handle);
+		const exported = new Set<string>();
+		const scope = this.scope;
+
+		for (let i = 0; i < size; i++) {
+			const item = reader.listItem(handle, i);
+
+			switch (reader.kind(item)) {
+				case N_ImportDeclaration: {
+					const specifiers = reader.field(item, NODE_A);
+					const count = reader.listSize(specifiers);
+
+					for (let j = 0; j < count; j++) {
+						const specifier = reader.listItem(specifiers, j);
+
+						if (reader.kind(specifier) === N_ImportSpecifier) {
+							this.moduleExportName(
+								reader.field(specifier, NODE_A),
+							);
+						}
+					}
+
+					break;
+				}
+
+				/*
+				 * A body-less function is a TypeScript overload signature,
+				 * which describes the export rather than being it —
+				 * `export default function f(): T;` may be written as many
+				 * times as there are overloads.
+				 */
+				case N_ExportDefaultDeclaration:
+					if (
+						reader.kind(reader.field(item, NODE_A)) !==
+						N_TSDeclareFunction
+					) {
+						this.addExportedName(
+							exported,
+							"default",
+							reader.start(item),
+						);
+					}
+
+					break;
+
+				case N_ExportAllDeclaration: {
+					const alias = reader.field(item, NODE_A);
+
+					if (alias !== 0) {
+						this.addExportedName(
+							exported,
+							this.moduleExportName(alias),
+							reader.start(alias),
+						);
+					}
+
+					break;
+				}
+
+				case N_ExportNamedDeclaration: {
+					const declaration = reader.field(item, NODE_A);
+
+					if (declaration !== 0) {
+						this.addDeclaredExports(exported, declaration);
+						break;
+					}
+
+					const specifiers = reader.field(item, NODE_B);
+					const count = reader.listSize(specifiers);
+					const reexport = reader.field(item, NODE_C) !== 0;
+
+					for (let j = 0; j < count; j++) {
+						const specifier = reader.listItem(specifiers, j);
+						const local = reader.field(specifier, NODE_A);
+						const alias = reader.field(specifier, NODE_B);
+						const name = this.moduleExportName(local);
+
+						this.addExportedName(
+							exported,
+							alias === local
+								? name
+								: this.moduleExportName(alias),
+							reader.start(alias === 0 ? local : alias),
+						);
+
+						/*
+						 * A re-export names something in the other module, so
+						 * only a bare `export { x }` has to resolve here.
+						 */
+						if (reexport || name === null) {
+							continue;
+						}
+
+						/*
+						 * A local binding's name is an identifier, so a string
+						 * on this side never resolves however it is spelled —
+						 * `export { "foo" }` is an error even in a module that
+						 * declares `foo`.
+						 */
+						if (reader.kind(local) === N_Literal) {
+							this.report(
+								"A module export name written as a string may only name an export of another module.",
+								reader.start(local),
+							);
+
+							continue;
+						}
+
+						if (
+							scope.names.has(name) ||
+							scope.varNames.has(name)
+						) {
+							continue;
+						}
+
+						this.report(
+							`Export '${name}' is not defined in the module.`,
+							reader.start(local),
+						);
+					}
+
+					break;
+				}
+
+				default:
+					break;
+			}
+		}
+	}
+
+	/**
+	 * Records the names an exported declaration binds.
+	 *
+	 * The TypeScript declaration kinds are deliberately absent. Two of them
+	 * with one name are a merge rather than a redeclaration — an `interface`
+	 * beside a `const`, an `enum` beside a `namespace` — so counting their
+	 * names as exports would report code TypeScript accepts.
+	 * @param exported The names exported so far.
+	 * @param declaration The declaration the `export` wraps.
+	 * @returns Nothing.
+	 */
+	private addDeclaredExports(
+		exported: Set<string>,
+		declaration: number,
+	): void {
+		const reader = this.reader;
+		const kind = reader.kind(declaration);
+
+		if (kind === N_VariableDeclaration) {
+			const declarations = reader.field(declaration, NODE_A);
+			const size = reader.listSize(declarations);
+
+			for (let i = 0; i < size; i++) {
+				this.addPatternExports(
+					exported,
+					reader.field(reader.listItem(declarations, i), NODE_A),
+				);
+			}
+
+			return;
+		}
+
+		if (
+			kind !== N_FunctionDeclaration &&
+			kind !== N_ClassDeclaration
+		) {
+			return;
+		}
+
+		const id = reader.field(declaration, NODE_A);
+
+		if (id !== 0) {
+			this.addExportedName(
+				exported,
+				this.identifierName(id),
+				reader.start(id),
+			);
+		}
+	}
+
+	/**
+	 * Records every name a binding pattern binds.
+	 * @param exported The names exported so far.
+	 * @param node The pattern node index, or `0`.
+	 * @returns Nothing.
+	 */
+	private addPatternExports(exported: Set<string>, node: number): void {
+		if (node === 0) {
+			return;
+		}
+
+		const reader = this.reader;
+
+		switch (reader.kind(node)) {
+			case N_Identifier:
+				this.addExportedName(
+					exported,
+					this.identifierName(node),
+					reader.start(node),
+				);
+				return;
+
+			case N_ArrayPattern: {
+				const elements = reader.field(node, NODE_A);
+				const size = reader.listSize(elements);
+
+				for (let i = 0; i < size; i++) {
+					this.addPatternExports(
+						exported,
+						reader.listItem(elements, i),
+					);
+				}
+
+				return;
+			}
+
+			case N_ObjectPattern: {
+				const properties = reader.field(node, NODE_A);
+				const size = reader.listSize(properties);
+
+				for (let i = 0; i < size; i++) {
+					const property = reader.listItem(properties, i);
+
+					this.addPatternExports(
+						exported,
+						reader.field(
+							property,
+							reader.kind(property) === N_Property
+								? NODE_B
+								: NODE_A,
+						),
+					);
+				}
+
+				return;
+			}
+
+			case N_AssignmentPattern:
+			case N_RestElement:
+				this.addPatternExports(exported, reader.field(node, NODE_A));
+				return;
+
+			default:
+				return;
+		}
+	}
+
+	/**
+	 * Records one exported name, reporting a second export of it.
+	 * @param exported The names exported so far.
+	 * @param name The name, or `null` when there is none to record.
+	 * @param start The offset to report a duplicate at.
+	 * @returns Nothing.
+	 */
+	private addExportedName(
+		exported: Set<string>,
+		name: string | null,
+		start: number,
+	): void {
+		if (name === null) {
+			return;
+		}
+
+		if (exported.has(name)) {
+			this.report(`Duplicate export of '${name}'.`, start);
+			return;
+		}
+
+		exported.add(name);
+	}
+
+	/**
+	 * Reads a `ModuleExportName`, which is an identifier or a string literal.
+	 * @param node The name node index, or `0`.
+	 * @returns The name it spells, or `null` when there is no node.
+	 */
+	private moduleExportName(node: number): string | null {
+		if (node === 0) {
+			return null;
+		}
+
+		const reader = this.reader;
+
+		if (reader.kind(node) !== N_Literal) {
+			return this.identifierName(node);
+		}
+
+		const raw = reader.text(node);
+		const value = decodeEscapes(raw.slice(1, -1), false);
+
+		if (!isWellFormedUnicode(value)) {
+			this.report(
+				"A module export name written as a string must be well-formed Unicode.",
+				reader.start(node),
+			);
+		}
+
+		return value;
 	}
 
 	/**
@@ -3362,6 +3776,17 @@ class Validator {
 			case N_ExportNamedDeclaration:
 			case N_ExportDefaultDeclaration:
 			case N_ExportAllDeclaration:
+				if (kind !== N_ExportDefaultDeclaration) {
+					this.checkImportAttributes(
+						this.reader.field(
+							node,
+							kind === N_ExportNamedDeclaration
+								? NODE_D
+								: NODE_C,
+						),
+					);
+				}
+
 				if (this.sourceType !== "module") {
 					this.report(
 						"'import' and 'export' may only appear when sourceType is \"module\".",
