@@ -1044,6 +1044,54 @@ describe("rest elements", () => {
 	});
 });
 
+describe("assignment targets", () => {
+	const script = { sourceType: "script" } as const;
+
+	/*
+	 * Parentheses are what tell a pattern from a literal. `{a} = b` reparses
+	 * the cover grammar as a pattern; `({a}) = b` cannot, because what is
+	 * parenthesized is an object literal, whose `AssignmentTargetType` is
+	 * invalid.
+	 */
+	it("refuses a parenthesized destructuring target", () => {
+		expect(messages("({}) = 1;")).toEqual(["Invalid assignment target."]);
+		expect(messages("([]) = 1;")).toHaveLength(1);
+		expect(messages("({a}) = 1;")).toHaveLength(1);
+		expect(messages("() => ({}) = 1;")).toHaveLength(1);
+		expect(messages("for (({a}) of []) ;")).toHaveLength(1);
+		expect(messages("[({a})] = x;")).toHaveLength(1);
+	});
+
+	it("still takes the unparenthesized one", () => {
+		expect(messages("({} = 1);")).toEqual([]);
+		expect(messages("[] = 1;")).toEqual([]);
+		expect(messages("({a: {b}} = x);")).toEqual([]);
+		expect(messages("(a) = 1;")).toEqual([]);
+	});
+
+	/*
+	 * A call is assignable in sloppy code by the `~web-compat~` carve-out
+	 * (see docs/deviations.md), and that carve-out reaches only as far as it
+	 * is written: `&&=`, `||=`, and `??=` each ask for `simple`, which
+	 * `~web-compat~` is not.
+	 */
+	it("refuses a call on the left of a logical assignment", () => {
+		expect(messages("f() &&= 1;", script)).toEqual([
+			"Invalid assignment target.",
+		]);
+		expect(messages("f() ||= 1;", script)).toHaveLength(1);
+		expect(messages("f() ??= 1;", script)).toHaveLength(1);
+		expect(messages("(f()) &&= 1;", script)).toHaveLength(1);
+	});
+
+	it("keeps the carve-out for the other operators", () => {
+		expect(messages("f() = 1;", script)).toEqual([]);
+		expect(messages("f() += 1;", script)).toEqual([]);
+		expect(messages("f() &&= 1;")).toHaveLength(1);
+		expect(messages("a.b &&= 1;", script)).toEqual([]);
+	});
+});
+
 describe("private names", () => {
 	/*
 	 * A private name is not an expression. The parser accepts one wherever an

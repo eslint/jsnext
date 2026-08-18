@@ -531,5 +531,14 @@
 	{ "code": "class C { #x; m() { const { #x: y } = this; } }", "sourceType": "script" },
 	{ "code": "class C { #f; m() { #f in #f in this; } }", "sourceType": "script" },
 	{ "code": "(#x);", "sourceType": "script" },
-	{ "code": "class C { [#x]() {} }", "sourceType": "script" }
+	{ "code": "class C { [#x]() {} }", "sourceType": "script" },
+
+	{ "code": "({}) = 1;", "sourceType": "script" },
+	{ "code": "([]) = 1;", "sourceType": "script" },
+	{ "code": "({a}) = 1;", "sourceType": "script" },
+	{ "code": "() => ({}) = 1;", "sourceType": "script" },
+	{ "code": "f() &&= 1;", "sourceType": "script" },
+	{ "code": "f() ||= 1;", "sourceType": "script" },
+	{ "code": "f() ??= 1;", "sourceType": "script" },
+	{ "code": "(f()) &&= 1;", "sourceType": "script" }
 ]

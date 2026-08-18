@@ -64,18 +64,17 @@ export const KNOWN_OVERZEALOUS = 0;
  * — where no tree should have been built at all, and those are the parser's.
  *
  * The run reports which phase catches what it does catch, so the balance is
- * visible: today it is 1,285 from `parse()` against 3,025 from `validate()`.
+ * visible: today it is 1,285 from `parse()` against 3,033 from `validate()`.
  *
  * Counts are approximate: a test usually violates one rule but the families
  * overlap at the edges, and the authority on the totals is
  * `262-baseline.json`. They are here to say what implementing one would be
  * worth, not to be summed.
  *
- * - **Expression-level grammar** (~37, mixed). `a ?? b || c` without
+ * - **Expression-level grammar** (~29, mixed). `a ?? b || c` without
  *   parentheses, `-a ** b`, `delete x` in strict mode, an update expression
- *   on an optional chain, and assignment to something that cannot be
- *   assigned to — `this`, `true`, an arrow function, a parenthesized object
- *   literal.
+ *   on an optional chain, and an object literal's shorthand naming something
+ *   that is not an `IdentifierReference` — `({0})`, `({this})`, `({a = 1})`.
  * - **Module code** (~17, `validate()`). A name exported twice over, an export
  *   that names nothing the module declares, and a module specifier holding an
  *   unpaired surrogate.

@@ -1,7 +1,6 @@
 {
 	"test/language/expressions/arrow-function": 3,
 	"test/language/expressions/assignment": 2,
-	"test/language/expressions/assignmenttargettype": 5,
 	"test/language/expressions/async-generator": 1,
 	"test/language/expressions/class": 1,
 	"test/language/expressions/coalesce": 4,
@@ -9,7 +8,6 @@
 	"test/language/expressions/exponentiation": 7,
 	"test/language/expressions/generators": 1,
 	"test/language/expressions/import.meta": 2,
-	"test/language/expressions/logical-assignment": 3,
 	"test/language/expressions/new.target": 1,
 	"test/language/expressions/object": 6,
 	"test/language/expressions/optional-chaining": 4,

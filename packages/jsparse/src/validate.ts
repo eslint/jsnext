@@ -122,6 +122,7 @@ import {
 	KIND_KEYWORD_FLAGS,
 	KW_STRICT_RESERVED,
 	T_ASSIGN,
+	T_ASSIGN_AMPAMP,
 	T_await,
 	T_delete,
 	T_in,
@@ -2623,9 +2624,15 @@ class Validator {
 	 * @param node The target node index, or `0`.
 	 * @param pattern Whether a destructuring pattern is allowed here, which it
 	 *      is for `=` and a `for-of` head but not for `+=` or `++`.
+	 * @param webCompat Whether a call may be assigned to in sloppy code, which
+	 *      it may everywhere but in `&&=`, `||=`, and `??=`.
 	 * @returns Nothing.
 	 */
-	private checkAssignmentTarget(node: number, pattern: boolean): void {
+	private checkAssignmentTarget(
+		node: number,
+		pattern: boolean,
+		webCompat = true,
+	): void {
 		if (node === 0) {
 			return;
 		}
@@ -2650,11 +2657,23 @@ class Validator {
 			case N_TSAsExpression:
 			case N_TSSatisfiesExpression:
 			case N_TSTypeAssertion:
-				this.checkAssignmentTarget(reader.field(node, NODE_A), pattern);
+				this.checkAssignmentTarget(
+					reader.field(node, NODE_A),
+					pattern,
+					webCompat,
+				);
 				return;
 
+			/*
+			 * Parentheses are what tell a pattern from a literal. `{a} = b`
+			 * assigns through a pattern because the cover grammar is reparsed
+			 * as one; `({a}) = b` cannot be, since what is parenthesized is
+			 * an `ObjectLiteral` and its `AssignmentTargetType` is invalid.
+			 * The parser rewrites both into a pattern, so the parenthesis is
+			 * the only thing left that says which was written.
+			 */
 			case N_ArrayPattern:
-				if (pattern) {
+				if (pattern && (reader.flags(node) & NF_PARENTHESIZED) === 0) {
 					this.checkArrayPattern(node);
 					return;
 				}
@@ -2662,7 +2681,7 @@ class Validator {
 				break;
 
 			case N_ObjectPattern:
-				if (pattern) {
+				if (pattern && (reader.flags(node) & NF_PARENTHESIZED) === 0) {
 					this.checkObjectPattern(node);
 					return;
 				}
@@ -2675,9 +2694,14 @@ class Validator {
 			 * the spec spells the sloppy answer `~web-compat~` rather than
 			 * `~invalid~`. `espree` reports it either way, which is the one
 			 * deviation this check carries; see `docs/deviations.md`.
+			 *
+			 * The carve-out reaches only as far as it is written. `&&=`,
+			 * `||=`, and `??=` each ask for an `AssignmentTargetType` of
+			 * `simple`, and `~web-compat~` is not that, so `f() &&= 1` is an
+			 * early error in sloppy code as well.
 			 */
 			case N_CallExpression:
-				if (!this.strict) {
+				if (!this.strict && webCompat) {
 					return;
 				}
 
@@ -3441,12 +3465,16 @@ class Validator {
 				return;
 			}
 
-			case N_AssignmentExpression:
+			case N_AssignmentExpression: {
+				const operator = this.reader.field(node, NODE_C);
+
 				this.checkAssignmentTarget(
 					this.reader.field(node, NODE_A),
-					this.reader.field(node, NODE_C) === T_ASSIGN,
+					operator === T_ASSIGN,
+					operator < T_ASSIGN_AMPAMP,
 				);
 				return;
+			}
 
 			case N_UpdateExpression:
 				this.checkAssignmentTarget(

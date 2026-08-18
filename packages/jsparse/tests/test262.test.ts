@@ -515,6 +515,13 @@ const valid: [string, "script" | "module"][] = [
 	["class C { #x; m() { return this.#x; } }", "script"],
 	["class C { #x; m() { return #x in this; } }", "script"],
 	["class C { #x; m() { return this?.#x; } }", "script"],
+
+	// The parenthesis is the whole of the difference.
+	["({} = 1);", "script"],
+	["[] = 1;", "script"],
+	["({a: {b}} = x);", "script"],
+	["(a) = 1;", "script"],
+	["a.b &&= 1;", "script"],
 ];
 
 describe("test262 positive tests", () => {
