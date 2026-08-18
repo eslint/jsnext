@@ -354,6 +354,58 @@ const valid: [string, "script" | "module"][] = [
 	["class C { x = o.arguments; }", "script"],
 	["class C { x = () => { function g() { return arguments; } }; }", "script"],
 	["class C { static { function f() { return arguments; } } }", "script"],
+
+	/*
+	 * A rest element must be last, and the shapes one character away from
+	 * that are all ordinary. A trailing comma is fine after anything else,
+	 * an elision may come *before* a rest, and an array literal keeps taking
+	 * both — `[...a,]` is only a mistake once it is read as a pattern.
+	 */
+	["var [...a] = x;", "script"],
+	["var [a, ...b] = x;", "script"],
+	["var [, ...a] = x;", "script"],
+	["var [...[a]] = x;", "script"],
+	["var [...{a}] = x;", "script"],
+	["var {...a} = x;", "script"],
+	["var {a, ...b} = x;", "script"],
+	["var [a,] = x;", "script"],
+	["var {a,} = x;", "script"],
+	["function f([a, ...b]) {}", "script"],
+	["function f([...a] = []) {}", "script"],
+	["var x = [...a,];", "script"],
+	["var y = {...a,};", "script"],
+	["f(...a,);", "script"],
+
+	// An assignment pattern's rest may target a member access; a binding's may not.
+	["({...a.b} = x);", "script"],
+	["[...a.b] = x;", "script"],
+
+	/*
+	 * Annex B lets a plain function declaration be the body of an `if` or of
+	 * a label in sloppy code, and `var` is the one declaration that is also a
+	 * statement anywhere.
+	 */
+	["if (0) function f() {}", "script"],
+	["if (0) {} else function f() {}", "script"],
+	["if (0) function f() {} else function g() {}", "script"],
+	["l: function f() {}", "script"],
+	["l: m: function f() {}", "script"],
+	["switch (0) { case 1: function f() {} }", "script"],
+	["switch (0) { case 1: let x = 1; }", "script"],
+	["if (0) var x = 1;", "script"],
+	["l: var x = 1;", "script"],
+
+	/*
+	 * A single-statement position takes no declaration, so `let` written
+	 * there is an ordinary identifier and a newline after it ends the
+	 * statement. `let [` is the exception, being the one spelling an
+	 * expression statement may not begin with.
+	 */
+	["if (false) let // ASI\n{}", "script"],
+	["if (0) let\nx = 1;", "script"],
+	["L: let\nx = 1;", "script"],
+	["for (;;) let\nx = 1;", "script"],
+	["while (0) let\nx = 1;", "script"],
 ];
 
 describe("test262 positive tests", () => {

@@ -458,6 +458,255 @@ describe("eval and arguments", () => {
 	});
 });
 
+describe("single-statement contexts", () => {
+	/*
+	 * The body of an `if`, a loop, a `with`, or a label is a `Statement`, and
+	 * a `Declaration` is not one. Annex B carves out a plain function
+	 * declaration under an `if` or a label in sloppy code, and nothing else.
+	 */
+	it("reports a lexical declaration as an if body", () => {
+		expect(
+			messages("if (0) const x = 1;", { sourceType: "script" }),
+		).toEqual([
+			"A declaration may not appear in a single-statement context.",
+		]);
+	});
+
+	it("reports a class declaration as a loop body", () => {
+		expect(
+			messages("while (0) class C {}", { sourceType: "script" }),
+		).toHaveLength(1);
+	});
+
+	it("allows var, which is a statement as well as a declaration", () => {
+		expect(messages("if (0) var x = 1;", { sourceType: "script" })).toEqual(
+			[],
+		);
+	});
+
+	it("allows Annex B's function under an if in sloppy code", () => {
+		expect(
+			messages("if (0) function f() {}", { sourceType: "script" }),
+		).toEqual([]);
+	});
+
+	it("reports the same function in strict code", () => {
+		expect(
+			messages("'use strict'; if (0) function f() {}", {
+				sourceType: "script",
+			}),
+		).toHaveLength(1);
+	});
+
+	it("does not stretch the carve-out to a generator", () => {
+		expect(
+			messages("if (0) function* g() {}", { sourceType: "script" }),
+		).toHaveLength(1);
+	});
+
+	it("does not stretch it to a loop body", () => {
+		expect(
+			messages("while (0) function f() {}", { sourceType: "script" }),
+		).toHaveLength(1);
+	});
+
+	it("allows a labelled function in sloppy code", () => {
+		expect(messages("l: function f() {}", { sourceType: "script" })).toEqual(
+			[],
+		);
+	});
+
+	it("treats a chain of labels as one position", () => {
+		expect(
+			messages("l: m: function f() {}", { sourceType: "script" }),
+		).toEqual([]);
+	});
+
+	it("reports a labelled function that is itself a loop body", () => {
+		expect(
+			messages("while (0) l: function f() {}", { sourceType: "script" }),
+		).toHaveLength(1);
+	});
+
+	it("allows a declaration in a switch case, which is a statement list", () => {
+		expect(
+			messages("switch (0) { case 1: let x = 1; }", {
+				sourceType: "script",
+			}),
+		).toEqual([]);
+	});
+
+	/*
+	 * With no declaration possible, `let` in one of these positions is an
+	 * ordinary identifier, and a newline after it ends the statement.
+	 */
+	/*
+	 * `let` is the one that splits across both phases. Read as a name, it
+	 * leaves `if (0) let x = 1;` with two expressions on one line, which
+	 * `parse()` cannot shape into a tree at all — while `const` in the same
+	 * place parses cleanly and is reported here.
+	 */
+	it("lets parse() refuse the let form that cannot be a statement", () => {
+		expect(() =>
+			parse("if (0) let x = 1;", { sourceType: "script" }),
+		).toThrow(/Unexpected token/u);
+	});
+
+	it("reads let as a name where no declaration may go", () => {
+		expect(
+			messages("if (0) let\nx = 1;", { sourceType: "script" }),
+		).toEqual([]);
+	});
+
+	it("still reports let [ , which no expression may begin with", () => {
+		expect(
+			messages("if (0) let\n[a] = 0;", { sourceType: "script" }),
+		).toHaveLength(1);
+	});
+});
+
+describe("module item placement", () => {
+	/*
+	 * A `ModuleItem` is not a `Statement`, so no production puts one inside a
+	 * block, a function, or the body of an `if`. TypeScript adds exactly one
+	 * place — the body of a namespace or an ambient module — which is why the
+	 * rule lives here rather than in the parser.
+	 */
+	it("allows an import at the top level of a module", () => {
+		expect(messages("import v from 'm';")).toEqual([]);
+	});
+
+	it("reports an import inside a block", () => {
+		expect(messages("{ import v from 'm'; }")).toEqual([
+			"'import' and 'export' may only appear at the top level of a module or a namespace.",
+		]);
+	});
+
+	it("reports an export inside a function", () => {
+		expect(messages("function f() { export default null; }")).toHaveLength(
+			1,
+		);
+	});
+
+	it("reports one as the body of an if", () => {
+		expect(messages("if (0) import v from 'm';")).toHaveLength(1);
+	});
+
+	it("reports one inside a class static block", () => {
+		expect(
+			messages("class C { static { import v from 'm'; } }"),
+		).toHaveLength(1);
+	});
+
+	it("keeps the neighbours of a nested one clean", () => {
+		expect(messages("import a from 'm';\n{ import b from 'm'; }\nexport {};")).toHaveLength(1);
+	});
+
+	it("allows an import in an ambient module body", () => {
+		expect(
+			messages("declare module 'm' { import { A } from 'other'; }"),
+		).toEqual([]);
+	});
+
+	it("allows an export in a namespace body", () => {
+		expect(messages("namespace N { export const x = 1; }")).toEqual([]);
+	});
+
+	it("allows one in a namespace nested in a namespace", () => {
+		expect(
+			messages("namespace N { namespace M { export const x = 1; } }"),
+		).toEqual([]);
+	});
+});
+
+describe("rest elements", () => {
+	/*
+	 * A rest element collects everything that is left, so nothing can follow
+	 * it. The rule is the same on both sides of an `=`, and the two sides
+	 * reach it down different paths — `checkArrayPattern()` for a target,
+	 * `declarePattern()` for a binding.
+	 */
+	it("reports one that is not last in an array binding", () => {
+		expect(messages("var [...a, b] = x;", { sourceType: "script" })).toEqual([
+			"A rest element must be the last element.",
+		]);
+	});
+
+	it("reports one that is not last in an array target", () => {
+		expect(messages("[...a, b] = x;", { sourceType: "script" })).toEqual([
+			"A rest element must be the last element.",
+		]);
+	});
+
+	it("reports one that is not last in an object binding", () => {
+		expect(messages("var {...a, b} = x;", { sourceType: "script" })).toEqual(
+			["A rest element must be the last element."],
+		);
+	});
+
+	it("reaches a pattern nested inside another", () => {
+		expect(
+			messages("var {a: [...b, c]} = x;", { sourceType: "script" }),
+		).toHaveLength(1);
+	});
+
+	it("reaches a parameter's pattern", () => {
+		expect(
+			messages("function f([...a, b]) {}", { sourceType: "script" }),
+		).toHaveLength(1);
+	});
+
+	it("counts a hole after the rest as something following it", () => {
+		expect(
+			messages("var [...a, ,] = x;", { sourceType: "script" }),
+		).toHaveLength(1);
+	});
+
+	/*
+	 * `[...a,]` and `[...a]` are the same tree, and as array literals both
+	 * are legal, so the comma reaches here as a flag the parser set rather
+	 * than as anything the tree records.
+	 */
+	it("reports a comma after the last rest element", () => {
+		expect(messages("var [...a,] = x;", { sourceType: "script" })).toEqual([
+			"A comma is not allowed after a rest element.",
+		]);
+	});
+
+	it("reports one after an object pattern's rest", () => {
+		expect(messages("({...a,} = x);", { sourceType: "script" })).toEqual([
+			"A comma is not allowed after a rest element.",
+		]);
+	});
+
+	it("allows the same comma in an array literal", () => {
+		expect(messages("var x = [...a,];", { sourceType: "script" })).toEqual(
+			[],
+		);
+	});
+
+	it("allows a trailing comma after anything else", () => {
+		expect(messages("var [a,] = x;", { sourceType: "script" })).toEqual([]);
+	});
+
+	/*
+	 * An object pattern's rest collects the leftover properties into one
+	 * object, so it binds a plain name. The assignment form stores instead of
+	 * binding, and so takes any target.
+	 */
+	it("reports a pattern as an object binding's rest", () => {
+		expect(messages("var {...{a}} = x;", { sourceType: "script" })).toEqual([
+			"A rest element in an object pattern must be an identifier.",
+		]);
+	});
+
+	it("allows a member access as an object target's rest", () => {
+		expect(messages("({...a.b} = x);", { sourceType: "script" })).toEqual(
+			[],
+		);
+	});
+});
+
 describe("ambient declarations", () => {
 	/*
 	 * Nothing under a `declare`, and nothing at all in a `.d.ts`, brings

@@ -88,6 +88,17 @@ export const NF_IN = 1 << 22;
 export const NF_SELF_CLOSING = NF_ASYNC;
 
 /**
+ * An array or object whose rest element is followed by a comma.
+ *
+ * `[...a,]` and `[...a]` are the same tree, and as array *literals* both are
+ * legal, so the comma is nothing the parser can refuse on sight. Read as
+ * patterns they differ: a rest element collects everything left, and a comma
+ * after it offers a place for something that cannot be there. Only the parser
+ * sees the comma, so it records it and `validate()` decides.
+ */
+export const NF_COMMA_AFTER_REST = NF_ASYNC;
+
+/**
  * An `Identifier` that stands for an `IdentifierName` rather than for a
  * binding or a reference: the `x` in `o.x`, `{ x: 1 }`, `class C { x() {} }`,
  * and `import { x as y }`.

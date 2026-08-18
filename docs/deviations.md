@@ -289,10 +289,9 @@ The last one comes from test262, which is the only corpus that tests what the
 parser *rejects*. No valid program is rejected — that count is zero and has to
 stay there — so what is left is invalid programs accepted in silence.
 
-- **Most of ECMAScript's early errors.** Around 926 test262 files are invalid
-  programs that both phases accept: a rest element that is not the last one in
-  a binding pattern, `break` with nothing to break out of, a lexical
-  declaration as the body of an `if`.
+- **Most of ECMAScript's early errors.** Around 397 test262 files are invalid
+  programs that both phases accept: `break` with nothing to break out of, a
+  `for-in` head carrying an initializer, a static method named `prototype`.
   The families are enumerated with rough counts in
   [`packages/jsparse/scripts/262-exclusions.mjs`](../packages/jsparse/scripts/262-exclusions.mjs),
   and the per-directory counts are pinned in `262-baseline.json` so that the

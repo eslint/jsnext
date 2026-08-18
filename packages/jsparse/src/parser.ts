@@ -246,7 +246,7 @@ export class Parser extends JsxParser {
 	 * @returns The index of the statement node.
 	 * @throws {ParseError} When no statement can start here.
 	 */
-	parseStatement(): number {
+	parseStatement(single = false): number {
 		const start = this.start;
 
 		switch (this.kind) {
@@ -275,7 +275,22 @@ export class Parser extends JsxParser {
 				return this.parseVariableStatement(DECL_CONST);
 
 			case T_let:
-				if (this.nextStartsBinding()) {
+				/*
+				 * A single-statement position takes no declaration, so `let`
+				 * written there is an ordinary identifier and the rest of the
+				 * line is an expression: `if (x) let` followed by a newline
+				 * is `let;`, and automatic semicolon insertion carries the
+				 * next line away on its own.
+				 *
+				 * A `[` is the exception, because `ExpressionStatement` may
+				 * not begin with `let [` — with the expression reading ruled
+				 * out, the declaration is all that is left, and `validate()`
+				 * reports it as one.
+				 */
+				if (
+					this.nextStartsBinding() &&
+					(!single || this.nextIs(T_BRACKET_OPEN))
+				) {
 					return this.parseVariableStatement(DECL_LET);
 				}
 
@@ -491,7 +506,7 @@ export class Parser extends JsxParser {
 
 			this.next();
 			this.writer.set(node, NODE_A, expression);
-			this.writer.set(node, NODE_B, this.parseStatement());
+			this.writer.set(node, NODE_B, this.parseStatement(true));
 
 			return this.writer.finish(node, this.lastEnd);
 		}
@@ -644,10 +659,10 @@ export class Parser extends JsxParser {
 		this.enterStatementParen();
 		this.writer.set(node, NODE_A, this.parseExpression());
 		this.expect(T_PAREN_CLOSE);
-		this.writer.set(node, NODE_B, this.parseStatement());
+		this.writer.set(node, NODE_B, this.parseStatement(true));
 
 		if (this.eat(T_else)) {
-			this.writer.set(node, NODE_C, this.parseStatement());
+			this.writer.set(node, NODE_C, this.parseStatement(true));
 		}
 
 		return this.writer.finish(node, this.lastEnd);
@@ -664,7 +679,7 @@ export class Parser extends JsxParser {
 		this.enterStatementParen();
 		this.writer.set(node, NODE_A, this.parseExpression());
 		this.expect(T_PAREN_CLOSE);
-		this.writer.set(node, NODE_B, this.parseStatement());
+		this.writer.set(node, NODE_B, this.parseStatement(true));
 
 		return this.writer.finish(node, this.lastEnd);
 	}
@@ -677,7 +692,7 @@ export class Parser extends JsxParser {
 		const node = this.writer.alloc(N_DoWhileStatement, this.start);
 
 		this.next();
-		this.writer.set(node, NODE_A, this.parseStatement());
+		this.writer.set(node, NODE_A, this.parseStatement(true));
 		this.expect(T_while);
 		this.enterStatementParen();
 		this.writer.set(node, NODE_B, this.parseExpression());
@@ -752,7 +767,7 @@ export class Parser extends JsxParser {
 				isOf ? this.parseAssignmentExpression() : this.parseExpression(),
 			);
 			this.expect(T_PAREN_CLOSE);
-			this.writer.set(node, NODE_C, this.parseStatement());
+			this.writer.set(node, NODE_C, this.parseStatement(true));
 
 			if (isAwait) {
 				this.writer.addFlags(node, NF_ASYNC);
@@ -787,7 +802,7 @@ export class Parser extends JsxParser {
 		}
 
 		this.expect(T_PAREN_CLOSE);
-		this.writer.set(node, NODE_D, this.parseStatement());
+		this.writer.set(node, NODE_D, this.parseStatement(true));
 
 		return this.writer.finish(node, this.lastEnd);
 	}
@@ -987,7 +1002,7 @@ export class Parser extends JsxParser {
 		this.enterStatementParen();
 		this.writer.set(node, NODE_A, this.parseExpression());
 		this.expect(T_PAREN_CLOSE);
-		this.writer.set(node, NODE_B, this.parseStatement());
+		this.writer.set(node, NODE_B, this.parseStatement(true));
 
 		return this.writer.finish(node, this.lastEnd);
 	}

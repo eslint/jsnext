@@ -64,30 +64,21 @@ export const KNOWN_OVERZEALOUS = 0;
  * — where no tree should have been built at all, and those are the parser's.
  *
  * The run reports which phase catches what it does catch, so the balance is
- * visible: today it is 1,160 from `parse()` against 2,324 from `validate()`.
+ * visible: today it is 1,183 from `parse()` against 2,830 from `validate()`.
  *
  * Counts are approximate: a test usually violates one rule but the families
  * overlap at the edges, and the authority on the totals is
  * `262-baseline.json`. They are here to say what implementing one would be
  * worth, not to be summed.
  *
- * - **Binding pattern shape** (~250, `validate()`). A rest element that is not the
- *   last one, a rest element with a default, an elision after one. The same
- *   rules are already enforced on the left of an assignment; what is missing
- *   is the *binding* half — a parameter list, a `var` declaration, a `for-of`
- *   head — which reaches them through a different path.
  * - **Lexical grammar** (~140, `parse()`). A numeric separator in a position that
  *   does not admit one, a legacy octal escape in a string or a template, an
  *   escape standing in for the `#` of a private name or the `!` of a hashbang,
  *   a line terminator where automatic semicolon insertion does not reach. What
  *   these have in common is that the escape is asked to stand for punctuation
  *   rather than for a letter, which it never may.
- * - **Declaration and redeclaration** (~110, `validate()`). `let let`, a lexical
- *   declaration as the body of an `if`, a function declaration where only a
- *   statement is allowed, `const` without an initializer in a `for-in` head.
- * - **`import` and `export` placement** (~105, `validate()`). Neither may be written
- *   anywhere but at the top level of a module, and `parse()` reads both
- *   wherever a statement may go.
+ * - **Declaration and redeclaration** (~70, `validate()`). `let let`, a redeclaration
+ *   across a `switch` case, `const` without an initializer in a `for-in` head.
  * - **`for` statement heads** (~100, mostly `validate()`). `for (let x = 1 of y)`, an initializer on
  *   a `for-in` head outside sloppy Annex B, `let` as the target of a `for-of`,
  *   `for await` outside an async function.

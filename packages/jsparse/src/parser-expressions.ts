@@ -20,6 +20,7 @@ import {
 	MKIND_SHIFT,
 	NF_ASYNC,
 	NF_COMPUTED,
+	NF_COMMA_AFTER_REST,
 	NF_DECLARE,
 	NF_DEFINITE,
 	NF_DELEGATE,
@@ -1070,7 +1071,9 @@ export abstract class ExpressionParser extends TypeParser {
 				continue;
 			}
 
-			if (this.at(T_ELLIPSIS)) {
+			const isRest = this.at(T_ELLIPSIS);
+
+			if (isRest) {
 				const spread = this.writer.alloc(N_SpreadElement, this.start);
 
 				this.next();
@@ -1086,6 +1089,10 @@ export abstract class ExpressionParser extends TypeParser {
 
 			if (!this.eat(T_COMMA)) {
 				break;
+			}
+
+			if (isRest) {
+				this.writer.addFlags(node, NF_COMMA_AFTER_REST);
 			}
 		}
 
@@ -1109,10 +1116,16 @@ export abstract class ExpressionParser extends TypeParser {
 		this.enterBrace(false);
 
 		while (!this.at(T_BRACE_CLOSE) && !this.at(T_EOF)) {
+			const isRest = this.at(T_ELLIPSIS);
+
 			this.writer.pushList(this.parseObjectMember());
 
 			if (!this.eat(T_COMMA)) {
 				break;
+			}
+
+			if (isRest) {
+				this.writer.addFlags(node, NF_COMMA_AFTER_REST);
 			}
 		}
 
@@ -2014,10 +2027,16 @@ export abstract class ExpressionParser extends TypeParser {
 				continue;
 			}
 
+			const isRest = this.at(T_ELLIPSIS);
+
 			this.writer.pushList(this.parseBindingElement());
 
 			if (!this.eat(T_COMMA)) {
 				break;
+			}
+
+			if (isRest) {
+				this.writer.addFlags(node, NF_COMMA_AFTER_REST);
 			}
 		}
 
@@ -2052,6 +2071,7 @@ export abstract class ExpressionParser extends TypeParser {
 					break;
 				}
 
+				this.writer.addFlags(node, NF_COMMA_AFTER_REST);
 				continue;
 			}
 

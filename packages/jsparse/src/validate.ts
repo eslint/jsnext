@@ -18,12 +18,14 @@ import {
 	NODE_A,
 	NODE_B,
 	NODE_C,
+	NODE_D,
 	MKIND_CONSTRUCTOR,
 	MKIND_GET,
 	MKIND_MASK,
 	MKIND_SET,
 	MKIND_SHIFT,
 	NF_ASYNC,
+	NF_COMMA_AFTER_REST,
 	NF_COMPUTED,
 	NF_DECLARE,
 	NF_DEFINITE,
@@ -47,6 +49,7 @@ import {
 	N_CatchClause,
 	N_ClassDeclaration,
 	N_ClassExpression,
+	N_DoWhileStatement,
 	N_ExportAllDeclaration,
 	N_ExportDefaultDeclaration,
 	N_ExportNamedDeclaration,
@@ -58,10 +61,12 @@ import {
 	N_FunctionExpression,
 	N_ArrowFunctionExpression,
 	N_Identifier,
+	N_IfStatement,
 	N_ImportDeclaration,
 	N_ImportSpecifier,
 	N_JSXElement,
 	N_JSXFragment,
+	N_LabeledStatement,
 	N_Literal,
 	N_ObjectPattern,
 	N_Program,
@@ -82,6 +87,7 @@ import {
 	N_TSTypeAliasDeclaration,
 	N_VariableDeclaration,
 	N_VariableDeclarator,
+	N_WhileStatement,
 	N_MemberExpression,
 	N_MethodDefinition,
 	N_PrivateIdentifier,
@@ -375,6 +381,26 @@ class Validator {
 	private inParameters = false;
 
 	/**
+	 * Whether the node being checked sits directly in a statement list.
+	 *
+	 * Only the labelled-function rule reads it, and a `LabeledStatement` can
+	 * only ever be a statement — so every list `visitList()` walks that could
+	 * hold one is a statement list, and marking them all is exact.
+	 */
+	private inStatementList = false;
+
+	/**
+	 * Whether an `import` or `export` declaration may stand where the walk is.
+	 *
+	 * Only two lists take one: the top level of a module, and the body of a
+	 * namespace or an ambient module. `visit()` clears this the moment it
+	 * descends past a statement, and `visitModuleItems()` sets it again for
+	 * each item of a list that does take them, so a declaration nested inside
+	 * one of those statements is reported while its siblings are not.
+	 */
+	private moduleItemsAllowed = false;
+
+	/**
 	 * Whether what is being visited declares nothing at run time.
 	 *
 	 * A TypeScript overload signature, anything under a `declare`, and every
@@ -457,7 +483,7 @@ class Validator {
 
 		this.checkTokens();
 		this.hoist(this.reader.field(root, NODE_A));
-		this.visitList(this.reader.field(root, NODE_A));
+		this.visitModuleItems(this.reader.field(root, NODE_A));
 	}
 
 	/**
@@ -541,7 +567,30 @@ class Validator {
 
 		this.check(node, kind);
 
+		/*
+		 * `check()` has had its look at this node, so anything below it is
+		 * nested: it takes no module item, and it is not a statement list.
+		 * A sibling gets both answers back from the list walk, which sets
+		 * them again for each item.
+		 */
+		const wasInStatementList = this.inStatementList;
+
+		this.moduleItemsAllowed = false;
+		this.inStatementList = false;
+
 		switch (kind) {
+			/*
+			 * A chain of labels is one position rather than several, so
+			 * `l: m: function f() {}` is as legal as `l: function f() {}`
+			 * and as illegal as it wherever that one is.
+			 */
+			case N_LabeledStatement:
+				this.visit(reader.field(node, NODE_A));
+				this.inStatementList = wasInStatementList;
+				this.visit(reader.field(node, NODE_B));
+				this.inStatementList = false;
+				return;
+
 			case N_FunctionDeclaration:
 			case N_FunctionExpression:
 			case N_ArrowFunctionExpression:
@@ -612,7 +661,18 @@ class Validator {
 
 				this.enterScope(true);
 				this.hoist(reader.field(node, NODE_A));
-				this.visitChildren(node, kind);
+
+				/*
+				 * A namespace body is the one place other than the top level
+				 * of a module where an `import` or `export` may be written.
+				 * A static block is not.
+				 */
+				if (kind === N_TSModuleBlock) {
+					this.visitModuleItems(reader.field(node, NODE_A));
+				} else {
+					this.visitChildren(node, kind);
+				}
+
 				this.exitScope();
 				this.awaitReserved = wasAwait;
 				this.inGenerator = wasGenerator;
@@ -858,12 +918,38 @@ class Validator {
 	 * @param handle The list handle.
 	 * @returns Nothing.
 	 */
+	/**
+	 * Visits a list whose items may be `import` and `export` declarations.
+	 *
+	 * The permission is granted one item at a time rather than for the list,
+	 * because `visit()` takes it away as soon as it descends: `import x from
+	 * "m";` at the top level is a module item, and the same line inside the
+	 * block on the next line is not.
+	 * @param handle The list handle.
+	 * @returns Nothing.
+	 */
+	private visitModuleItems(handle: number): void {
+		const size = this.reader.listSize(handle);
+
+		for (let i = 0; i < size; i++) {
+			this.moduleItemsAllowed = true;
+			this.inStatementList = true;
+			this.visit(this.reader.listItem(handle, i));
+		}
+
+		this.moduleItemsAllowed = false;
+		this.inStatementList = false;
+	}
+
 	private visitList(handle: number): void {
 		const size = this.reader.listSize(handle);
 
 		for (let i = 0; i < size; i++) {
+			this.inStatementList = true;
 			this.visit(this.reader.listItem(handle, i));
 		}
+
+		this.inStatementList = false;
 	}
 
 	/**
@@ -1333,7 +1419,15 @@ class Validator {
 	}
 
 	/**
-	 * Declares every identifier inside a binding pattern.
+	 * Declares every identifier inside a binding pattern, and reports a
+	 * pattern that is not a shape a pattern may take.
+	 *
+	 * The shape rules are the same ones `checkArrayPattern()` and
+	 * `checkObjectPattern()` apply on the left of an assignment, because a
+	 * rest element collects what is left over either way and there is nothing
+	 * left over after it. They are checked here rather than there because
+	 * this is the walk that reaches a binding: `[...a, b] = c` and
+	 * `var [...a, b] = c` are the same mistake arrived at down two paths.
 	 * @param node The pattern node index.
 	 * @param binding How the names are being introduced.
 	 * @returns Nothing.
@@ -1357,10 +1451,28 @@ class Validator {
 				const size = reader.listSize(elements);
 
 				for (let i = 0; i < size; i++) {
-					this.declarePattern(
-						reader.listItem(elements, i),
-						binding,
-					);
+					const element = reader.listItem(elements, i);
+
+					/*
+					 * A hole is written as a missing element, so a `null`
+					 * after the rest is `[...a, ,]` — an element, and one the
+					 * rest has already swallowed.
+					 */
+					if (
+						element !== 0 &&
+						reader.kind(element) === N_RestElement
+					) {
+						if (i === size - 1) {
+							this.checkCommaAfterRest(node, element);
+						} else {
+							this.report(
+								"A rest element must be the last element.",
+								reader.start(element),
+							);
+						}
+					}
+
+					this.declarePattern(element, binding);
 				}
 
 				return;
@@ -1372,13 +1484,42 @@ class Validator {
 
 				for (let i = 0; i < size; i++) {
 					const property = reader.listItem(properties, i);
-
-					this.declarePattern(
-						reader.kind(property) === N_Property
-							? reader.field(property, NODE_B)
-							: reader.field(property, NODE_A),
-						binding,
+					const isProperty = reader.kind(property) === N_Property;
+					const target = reader.field(
+						property,
+						isProperty ? NODE_B : NODE_A,
 					);
+
+					if (!isProperty) {
+						if (i === size - 1) {
+							this.checkCommaAfterRest(node, property);
+						} else {
+							this.report(
+								"A rest element must be the last element.",
+								reader.start(property),
+							);
+						}
+
+						/*
+						 * `{ ...rest }` binds one plain name: there is no
+						 * iterator to take apart here, only the properties
+						 * nothing else claimed, and they arrive as an object
+						 * that has to go somewhere whole. The assignment form
+						 * is wider — `({ ...a.b } = c)` is legal — because it
+						 * stores into a target rather than binding a name.
+						 */
+						if (
+							target !== 0 &&
+							reader.kind(target) !== N_Identifier
+						) {
+							this.report(
+								"A rest element in an object pattern must be an identifier.",
+								reader.start(target),
+							);
+						}
+					}
+
+					this.declarePattern(target, binding);
 				}
 
 				return;
@@ -2275,7 +2416,9 @@ class Validator {
 				continue;
 			}
 
-			if (i !== size - 1) {
+			if (i === size - 1) {
+				this.checkCommaAfterRest(node, element);
+			} else {
 				this.report(
 					"A rest element must be the last element.",
 					reader.start(element),
@@ -2300,7 +2443,9 @@ class Validator {
 			const property = reader.listItem(properties, i);
 
 			if (reader.kind(property) === N_RestElement) {
-				if (i !== size - 1) {
+				if (i === size - 1) {
+					this.checkCommaAfterRest(node, property);
+				} else {
 					this.report(
 						"A rest element must be the last element.",
 						reader.start(property),
@@ -2312,6 +2457,21 @@ class Validator {
 			}
 
 			this.checkPatternElement(reader.field(property, NODE_B));
+		}
+	}
+
+	/**
+	 * Reports a comma written after the rest element that ends a pattern.
+	 * @param pattern The `ArrayPattern` or `ObjectPattern` node index.
+	 * @param rest The `RestElement` that ends it.
+	 * @returns Nothing.
+	 */
+	private checkCommaAfterRest(pattern: number, rest: number): void {
+		if ((this.reader.flags(pattern) & NF_COMMA_AFTER_REST) !== 0) {
+			this.report(
+				"A comma is not allowed after a rest element.",
+				this.reader.start(rest),
+			);
 		}
 	}
 
@@ -2354,6 +2514,62 @@ class Validator {
 	}
 
 	//-------------------------------------------------------------------------
+	// Single-Statement Contexts
+	//-------------------------------------------------------------------------
+
+	/**
+	 * Reports a declaration written where only a statement may go.
+	 *
+	 * The body of an `if`, a loop, a `with`, or a label is a `Statement`, and
+	 * a `Declaration` is not one — there is nowhere for `let x = 1;` to bind
+	 * when the only thing that can reach it is a branch that may not be
+	 * taken. Annex B carves out the one case the web already depended on: a
+	 * plain function declaration as the body of an `if`, or under a label, in
+	 * sloppy code. Neither carve-out survives strict mode, and neither
+	 * stretches to a generator or an async function, both of which Annex B
+	 * predates.
+	 * @param body The body node index, or `0`.
+	 * @param allowFunction Whether Annex B's function carve-out reaches here.
+	 * @returns Nothing.
+	 */
+	private checkStatementBody(body: number, allowFunction: boolean): void {
+		if (body === 0) {
+			return;
+		}
+
+		const reader = this.reader;
+		const kind = reader.kind(body);
+
+		if (kind === N_VariableDeclaration) {
+			// `var` is the one declaration that is also a statement.
+			if (
+				((reader.flags(body) & DECL_MASK) >>> DECL_SHIFT) === DECL_VAR
+			) {
+				return;
+			}
+		} else if (
+			kind !== N_ClassDeclaration &&
+			kind !== N_FunctionDeclaration
+		) {
+			return;
+		}
+
+		if (
+			allowFunction &&
+			!this.strict &&
+			kind === N_FunctionDeclaration &&
+			(reader.flags(body) & (NF_GENERATOR | NF_ASYNC)) === 0
+		) {
+			return;
+		}
+
+		this.report(
+			"A declaration may not appear in a single-statement context.",
+			reader.start(body),
+		);
+	}
+
+	//-------------------------------------------------------------------------
 	// Node Checks
 	//-------------------------------------------------------------------------
 
@@ -2381,6 +2597,17 @@ class Validator {
 						"'import' and 'export' may only appear when sourceType is \"module\".",
 						this.reader.start(node),
 					);
+				} else if (!this.moduleItemsAllowed) {
+					/*
+					 * A `ModuleItem` is not a `Statement`, so there is no
+					 * production that puts one inside a block, a function, or
+					 * the body of an `if`. TypeScript adds exactly one place:
+					 * the body of a namespace or an ambient module.
+					 */
+					this.report(
+						"'import' and 'export' may only appear at the top level of a module or a namespace.",
+						this.reader.start(node),
+					);
 				}
 
 				return;
@@ -2393,6 +2620,36 @@ class Validator {
 					);
 				}
 
+				this.checkStatementBody(this.reader.field(node, NODE_B), false);
+				return;
+
+			/*
+			 * Annex B's carve-out reaches the two branches of an `if` and the
+			 * body of a label, and nothing else: an iteration statement would
+			 * declare the function afresh on every turn.
+			 */
+			case N_IfStatement:
+				this.checkStatementBody(this.reader.field(node, NODE_B), true);
+				this.checkStatementBody(this.reader.field(node, NODE_C), true);
+				return;
+
+			case N_LabeledStatement:
+				this.checkStatementBody(
+					this.reader.field(node, NODE_B),
+					this.inStatementList,
+				);
+				return;
+
+			case N_WhileStatement:
+				this.checkStatementBody(this.reader.field(node, NODE_B), false);
+				return;
+
+			case N_DoWhileStatement:
+				this.checkStatementBody(this.reader.field(node, NODE_A), false);
+				return;
+
+			case N_ForStatement:
+				this.checkStatementBody(this.reader.field(node, NODE_D), false);
 				return;
 
 			/*
@@ -2527,6 +2784,7 @@ class Validator {
 					this.checkAssignmentTarget(left, true);
 				}
 
+				this.checkStatementBody(this.reader.field(node, NODE_C), false);
 				return;
 			}
 
