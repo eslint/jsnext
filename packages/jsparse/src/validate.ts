@@ -11,6 +11,7 @@
 import { TF_LEGACY_OCTAL } from "./binary.js";
 import {
 	LIT_REGEXP,
+	LIT_STRING,
 	DECL_CONST,
 	DECL_MASK,
 	DECL_SHIFT,
@@ -78,6 +79,7 @@ import {
 	N_Super,
 	N_SwitchStatement,
 	N_TSAbstractPropertyDefinition,
+	N_TSAbstractAccessorProperty,
 	N_TSDeclareFunction,
 	N_TSEmptyBodyFunctionExpression,
 	N_TSEnumDeclaration,
@@ -379,6 +381,14 @@ class Validator {
 	 * fine — the suspension belongs to the arrow, not to `f`.
 	 */
 	private inParameters = false;
+
+	/**
+	 * Whether the class body being walked has declared its constructor.
+	 *
+	 * Saved and restored around each class, so a constructor in a nested one
+	 * does not count against the class outside it.
+	 */
+	private sawConstructor = false;
 
 	/**
 	 * Whether the node being checked sits directly in a statement list.
@@ -854,6 +864,9 @@ class Validator {
 				this.visit(reader.field(node, NODE_B));
 
 				const wasDerived = this.inDerivedClass;
+				const wasSawConstructor = this.sawConstructor;
+
+				this.sawConstructor = false;
 
 				/*
 				 * Only a class that extends something has a `super()` to call,
@@ -869,6 +882,7 @@ class Validator {
 				}
 
 				this.inDerivedClass = wasDerived;
+				this.sawConstructor = wasSawConstructor;
 				this.strict = wasStrict;
 				return;
 			}
@@ -2514,6 +2528,153 @@ class Validator {
 	}
 
 	//-------------------------------------------------------------------------
+	// Class Element Names
+	//-------------------------------------------------------------------------
+
+	/*
+	 * Three names are spoken for inside a class body. `constructor` names the
+	 * one method the `new` operator runs, so it may not also be a field, and
+	 * it may not be a method of a kind that could not be run that way — a
+	 * getter, a setter, a generator, or an async function. `prototype` is
+	 * already a property of the constructor function itself, so no static
+	 * element may take it. And a class has one constructor.
+	 *
+	 * All three are rules about the *name*, which a computed key does not
+	 * have: `class C { static ["prototype"]() {} }` is legal, because nothing
+	 * can know what the brackets will produce until the class is evaluated.
+	 */
+
+	/**
+	 * The name a class element is written with.
+	 * @param node The element node index.
+	 * @returns The name, or `null` for a computed or private one.
+	 */
+	private propertyName(node: number): string | null {
+		const reader = this.reader;
+
+		if ((reader.flags(node) & NF_COMPUTED) !== 0) {
+			return null;
+		}
+
+		const key = reader.field(node, NODE_A);
+
+		if (key === 0) {
+			return null;
+		}
+
+		switch (reader.kind(key)) {
+			case N_Identifier:
+				return this.identifierName(key);
+
+			/*
+			 * A string key is the string it denotes, so
+			 * `class C { "constructor"; }` is the same mistake written
+			 * differently. A numeric one can never spell either name.
+			 */
+			case N_Literal:
+				return reader.field(key, NODE_A) === LIT_STRING
+					? decodeEscapes(reader.text(key).slice(1, -1), false)
+					: null;
+
+			default:
+				return null;
+		}
+	}
+
+	/**
+	 * Reports a class element whose name it may not have.
+	 * @param node The element node index.
+	 * @param kind The element's node kind.
+	 * @returns Nothing.
+	 */
+	private checkClassElementName(node: number, kind: number): void {
+		const reader = this.reader;
+		const flags = reader.flags(node);
+		const isStatic = (flags & NF_STATIC) !== 0;
+		const name = this.propertyName(node);
+
+		if (name === null) {
+			return;
+		}
+
+		if (isStatic && name === "prototype") {
+			this.report(
+				"A static class element may not be named 'prototype'.",
+				reader.start(node),
+			);
+
+			return;
+		}
+
+		if (name !== "constructor") {
+			return;
+		}
+
+		/*
+		 * A field takes the name nowhere: there is no `constructor` field to
+		 * be had, static or not, because the name belongs to the method that
+		 * `new` runs and to the property that points back at the class.
+		 */
+		if (
+			kind !== N_MethodDefinition &&
+			kind !== N_TSAbstractMethodDefinition
+		) {
+			this.report(
+				"A class field may not be named 'constructor'.",
+				reader.start(node),
+			);
+
+			return;
+		}
+
+		/*
+		 * A *static* method called `constructor` is an ordinary static member
+		 * and escapes the rest of this — the name is only spoken for on the
+		 * prototype side.
+		 */
+		if (isStatic) {
+			return;
+		}
+
+		const value = reader.field(node, NODE_B);
+		const accessor = (flags & MKIND_MASK) >>> MKIND_SHIFT;
+
+		if (
+			accessor !== MKIND_CONSTRUCTOR ||
+			(value !== 0 &&
+				(reader.flags(value) & (NF_GENERATOR | NF_ASYNC)) !== 0)
+		) {
+			this.report(
+				"A class constructor may not be a getter, a setter, a generator, or async.",
+				reader.start(node),
+			);
+
+			return;
+		}
+
+		/*
+		 * A body-less constructor is a TypeScript overload signature, and
+		 * signatures describe the one implementation rather than adding
+		 * another — so only an implementation is counted, and two of those
+		 * are what a class may not have.
+		 */
+		if (value === 0 || reader.kind(value) === N_TSEmptyBodyFunctionExpression) {
+			return;
+		}
+
+		if (this.sawConstructor) {
+			this.report(
+				"A class may not have more than one constructor.",
+				reader.start(node),
+			);
+
+			return;
+		}
+
+		this.sawConstructor = true;
+	}
+
+	//-------------------------------------------------------------------------
 	// Single-Statement Contexts
 	//-------------------------------------------------------------------------
 
@@ -2588,6 +2749,15 @@ class Validator {
 		}
 
 		switch (kind) {
+			case N_MethodDefinition:
+			case N_PropertyDefinition:
+			case N_AccessorProperty:
+			case N_TSAbstractMethodDefinition:
+			case N_TSAbstractPropertyDefinition:
+			case N_TSAbstractAccessorProperty:
+				this.checkClassElementName(node, kind);
+				return;
+
 			case N_ImportDeclaration:
 			case N_ExportNamedDeclaration:
 			case N_ExportDefaultDeclaration:

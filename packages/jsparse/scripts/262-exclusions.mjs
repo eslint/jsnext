@@ -64,7 +64,7 @@ export const KNOWN_OVERZEALOUS = 0;
  * — where no tree should have been built at all, and those are the parser's.
  *
  * The run reports which phase catches what it does catch, so the balance is
- * visible: today it is 1,183 from `parse()` against 2,830 from `validate()`.
+ * visible: today it is 1,183 from `parse()` against 2,866 from `validate()`.
  *
  * Counts are approximate: a test usually violates one rule but the families
  * overlap at the edges, and the authority on the totals is
@@ -85,9 +85,9 @@ export const KNOWN_OVERZEALOUS = 0;
  * - **`let` as a name** (~70, `validate()`). Reserved in strict code, and banned as
  *   the binding of a `let`, `const`, or `class` declaration even in sloppy
  *   code, where a plain `var let` is still fine.
- * - **Class element grammar** (~55, mixed). A static method named `prototype`, a
- *   private name whose `#` is written as an escape, a constructor that is also
- *   a generator or an accessor.
+ * - **Class element grammar** (~40, mixed). A private name whose `#` is written
+ *   as an escape, a private field read out of an object destructuring pattern,
+ *   a zero-width joiner inside a field name.
  * - **`import()` call shape** (~45, `parse()`). No argument, three arguments, a rest
  *   argument, `new import(x)`, an escape in the `import` keyword.
  * - **Statement placement** (~35, mostly `validate()`). `break` and `continue` with no enclosing

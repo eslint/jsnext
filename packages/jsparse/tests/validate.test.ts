@@ -458,6 +458,91 @@ describe("eval and arguments", () => {
 	});
 });
 
+describe("class element names", () => {
+	it("reports a static element named prototype", () => {
+		expect(messages("class C { static prototype() {} }")).toEqual([
+			"A static class element may not be named 'prototype'.",
+		]);
+	});
+
+	it("reports the same name written as a string", () => {
+		expect(messages("class C { static 'prototype'; }")).toHaveLength(1);
+	});
+
+	it("allows the name on the prototype side", () => {
+		expect(messages("class C { prototype() {} }")).toEqual([]);
+	});
+
+	/*
+	 * All of these are rules about the *name*, which a computed key does not
+	 * have until the class is evaluated.
+	 */
+	it("allows a computed key that spells it", () => {
+		expect(messages("class C { static ['prototype']() {} }")).toEqual([]);
+	});
+
+	it("reports a constructor that is a generator", () => {
+		expect(messages("class C { *constructor() {} }")).toEqual([
+			"A class constructor may not be a getter, a setter, a generator, or async.",
+		]);
+	});
+
+	it("reports a constructor that is a getter", () => {
+		expect(messages("class C { get constructor() {} }")).toHaveLength(1);
+	});
+
+	it("reports a field named constructor", () => {
+		expect(messages("class C { constructor; }")).toEqual([
+			"A class field may not be named 'constructor'.",
+		]);
+	});
+
+	it("reports a static field named constructor", () => {
+		expect(messages("class C { static constructor; }")).toHaveLength(1);
+	});
+
+	it("allows a static method named constructor", () => {
+		expect(messages("class C { static *constructor() {} }")).toEqual([]);
+	});
+
+	it("reports two constructors", () => {
+		expect(
+			messages("class C { constructor() {} constructor() {} }"),
+		).toEqual(["A class may not have more than one constructor."]);
+	});
+
+	it("counts each class separately", () => {
+		expect(
+			messages("class C { constructor() { class D { constructor() {} } } }"),
+		).toEqual([]);
+	});
+
+	/*
+	 * A body-less constructor is an overload signature. Signatures describe
+	 * the one implementation rather than adding another, so only two
+	 * implementations are a mistake.
+	 */
+	it("allows constructor overload signatures", () => {
+		expect(
+			messages(
+				"class C { constructor(a: string); constructor(a: number); constructor(a: any) {} }",
+			),
+		).toEqual([]);
+	});
+
+	it("allows an ambient class to declare only signatures", () => {
+		expect(
+			messages("declare class C { constructor(a: string); constructor(a: number); }"),
+		).toEqual([]);
+	});
+
+	it("still reports two implementations", () => {
+		expect(
+			messages("class C { constructor() {} constructor(a: any) {} }"),
+		).toHaveLength(1);
+	});
+});
+
 describe("single-statement contexts", () => {
 	/*
 	 * The body of an `if`, a loop, a `with`, or a label is a `Statement`, and

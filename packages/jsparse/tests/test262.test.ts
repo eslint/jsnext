@@ -406,6 +406,26 @@ const valid: [string, "script" | "module"][] = [
 	["L: let\nx = 1;", "script"],
 	["for (;;) let\nx = 1;", "script"],
 	["while (0) let\nx = 1;", "script"],
+
+	/*
+	 * `constructor` and `prototype` are spoken for only where the class can
+	 * see the name, so a computed key escapes both rules, a static method may
+	 * be called `constructor`, and a private `#prototype` is a different name
+	 * altogether.
+	 */
+	["class C { static ['prototype']() {} }", "script"],
+	["class C { prototype() {} }", "script"],
+	["class C { prototype; }", "script"],
+	["class C { static #prototype; }", "script"],
+	["class C { static constructor() {} }", "script"],
+	["class C { static *constructor() {} }", "script"],
+	["class C { static get constructor() {} }", "script"],
+	["class C { ['constructor']() {} }", "script"],
+	["class C { *['constructor']() {} }", "script"],
+	["class C { ['constructor'] = 1; }", "script"],
+	["class C { constructor() {} static constructor() {} }", "script"],
+	["class C { constructor() {} ['constructor']() {} }", "script"],
+	["class C { constructor() { class D { constructor() {} } } }", "script"],
 ];
 
 describe("test262 positive tests", () => {
