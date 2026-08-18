@@ -8,7 +8,6 @@
  * are already bound in the surrounding scope.
  */
 
-import { TF_LEGACY_OCTAL } from "./binary.js";
 import {
 	LIT_REGEXP,
 	LIT_STRING,
@@ -36,6 +35,7 @@ import {
 	NF_GENERATOR,
 	NF_IDENTIFIER_NAME,
 	NF_INVALID_ESCAPE,
+	NF_LEGACY_OCTAL,
 	NF_METHOD,
 	NF_PARENTHESIZED,
 	NF_SHORTHAND,
@@ -113,7 +113,7 @@ import {
 	N_UpdateExpression,
 	N_WithStatement,
 } from "./node-kinds.js";
-import { AstReader, TokenReader } from "./reader.js";
+import { AstReader } from "./reader.js";
 import { RegExpValidator } from "./regexp.js";
 import { decodeEscapes } from "./values.js";
 import { SLOT_COUNT, SLOT_LIST, SLOT_NODE, SLOT_TABLE } from "./slots.js";
@@ -310,7 +310,6 @@ interface Scope {
 /**
  * Walks a parsed program and reports context-dependent problems.
  * @param reader The reader over the AST buffer.
- * @param tokens The reader over the token buffer.
  * @param sourceType How the program should be interpreted.
  * @param dialect Whether TypeScript syntax is allowed.
  * @param jsx Whether JSX syntax is allowed.
@@ -318,7 +317,6 @@ interface Scope {
  */
 export function validateAst(
 	reader: AstReader,
-	tokens: TokenReader,
 	sourceType: "script" | "module" | "commonjs",
 	dialect: "js" | "ts",
 	jsx: boolean,
@@ -326,7 +324,6 @@ export function validateAst(
 ): ValidationProblem[] {
 	const validator = new Validator(
 		reader,
-		tokens,
 		sourceType,
 		dialect,
 		jsx,
@@ -347,9 +344,6 @@ class Validator {
 
 	/** The reader over the AST buffer. */
 	private readonly reader: AstReader;
-
-	/** The reader over the token buffer. */
-	private readonly tokens: TokenReader;
 
 	/** How the program should be interpreted. */
 	private readonly sourceType: "script" | "module" | "commonjs";
@@ -573,7 +567,6 @@ class Validator {
 	/**
 	 * Creates a validator.
 	 * @param reader The reader over the AST buffer.
-	 * @param tokens The reader over the token buffer.
 	 * @param sourceType How the program should be interpreted.
 	 * @param dialect Whether TypeScript syntax is allowed.
 	 * @param jsx Whether JSX syntax is allowed.
@@ -581,14 +574,12 @@ class Validator {
 	 */
 	constructor(
 		reader: AstReader,
-		tokens: TokenReader,
 		sourceType: "script" | "module" | "commonjs",
 		dialect: "js" | "ts",
 		jsx: boolean,
 		declaration: boolean,
 	) {
 		this.reader = reader;
-		this.tokens = tokens;
 		this.sourceType = sourceType;
 		this.dialect = dialect;
 		this.jsx = jsx;
@@ -620,7 +611,6 @@ class Validator {
 			this.strict = true;
 		}
 
-		this.checkTokens();
 		this.hoist(this.reader.field(root, NODE_A), this.sourceType === "module");
 		this.visitModuleItems(this.reader.field(root, NODE_A));
 
@@ -637,29 +627,6 @@ class Validator {
 	 */
 	private report(message: string, start: number): void {
 		this.problems.push({ message, start });
-	}
-
-	//-------------------------------------------------------------------------
-	// Token-Level Checks
-	//-------------------------------------------------------------------------
-
-	/**
-	 * Reports problems that can be seen from the token stream alone.
-	 * @returns Nothing.
-	 */
-	private checkTokens(): void {
-		if (!this.strict) {
-			return;
-		}
-
-		for (let i = 0; i < this.tokens.count; i++) {
-			if ((this.tokens.flags(i) & TF_LEGACY_OCTAL) !== 0) {
-				this.report(
-					"Octal literals are not allowed in strict mode.",
-					this.tokens.start(i),
-				);
-			}
-		}
 	}
 
 	/**
@@ -4043,12 +4010,30 @@ class Validator {
 			}
 
 			/*
-			 * The pattern between the slashes. `parse()` found where the
-			 * literal ends, which is all the lexical grammar covers; whether
-			 * the text in between is a pattern at all is an early error on the
-			 * literal, and so belongs here.
+			 * Two rules about a literal, and they cannot both be about the
+			 * same one. `01` and `"\1"` are Annex B's, legal in sloppy code
+			 * and not in strict, and the walk is what settles which this is —
+			 * a function's own `"use strict"` may come after the literal,
+			 * which is why the tokenizer only records what it saw.
+			 *
+			 * The other is the pattern between the slashes: `parse()` found
+			 * where the literal ends, which is all the lexical grammar
+			 * covers, and whether the text in between is a pattern at all is
+			 * an early error on the literal.
 			 */
 			case N_Literal: {
+				if (
+					this.strict &&
+					(this.reader.flags(node) & NF_LEGACY_OCTAL) !== 0
+				) {
+					this.report(
+						"Octal literals are not allowed in strict mode.",
+						this.reader.start(node),
+					);
+
+					return;
+				}
+
 				if (this.reader.field(node, NODE_A) !== LIT_REGEXP) {
 					return;
 				}

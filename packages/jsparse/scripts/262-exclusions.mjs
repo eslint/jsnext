@@ -64,7 +64,7 @@ export const KNOWN_OVERZEALOUS = 0;
  * — where no tree should have been built at all, and those are the parser's.
  *
  * The run reports which phase catches what it does catch, so the balance is
- * visible: today it is 1,285 from `parse()` against 3,064 from `validate()`.
+ * visible: today it is 1,285 from `parse()` against 3,076 from `validate()`.
  *
  * Counts are approximate: a test usually violates one rule but the families
  * overlap at the edges, and the authority on the totals is
@@ -76,9 +76,6 @@ export const KNOWN_OVERZEALOUS = 0;
  *   in the tail position of an optional chain.
  * - **Numeric separators** (~12, `parse()`). An `_` in a position that does not
  *   admit one: doubled, trailing, or against the `0` of a legacy octal.
- * - **Legacy octal escapes** (~12, `validate()`). `"\1"` and `"\8"` in code
- *   that is strict — including a directive prologue whose own `"use strict"`
- *   comes after them.
  * - **ASI restrictions** (~11, `parse()`). A line terminator where the grammar
  *   forbids one: between `yield` and its `*`, between `async` and the `(` of
  *   a method's parameters, before the `=>` of an arrow function.

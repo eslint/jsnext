@@ -105,6 +105,53 @@ describe("strict mode", () => {
 	it("allows octal literals in sloppy code", () => {
 		expect(messages("var a = 0755;", { sourceType: "script" })).toEqual([]);
 	});
+
+	it("rejects a legacy escape in a strict string", () => {
+		for (const code of ['"\\1";', '"\\052";', '"\\8";', '"\\9";']) {
+			expect(messages(code)).toEqual([
+				expect.stringMatching(/Octal/u),
+			]);
+			expect(messages(code, { sourceType: "script" })).toEqual([]);
+		}
+	});
+
+	/*
+	 * The tokenizer cannot answer this one, because a function's own
+	 * `"use strict"` may arrive after the literal it makes illegal — and it
+	 * does arrive after, since a string holding the escape is itself part of
+	 * the directive prologue.
+	 */
+	it("sees strictness a directive turns on later in the same prologue", () => {
+		const script = { sourceType: "script" } as const;
+
+		expect(
+			messages('function f() { "\\1"; "use strict"; }', script),
+		).toEqual([expect.stringMatching(/Octal/u)]);
+		expect(
+			messages('(function () { "a: \\052"; "use strict"; });', script),
+		).toHaveLength(1);
+		expect(messages('class C { m() { return "\\1"; } }', script)).toEqual([
+			expect.stringMatching(/Octal/u),
+		]);
+	});
+
+	/*
+	 * `01;` is not a directive, so the prologue ends there and the
+	 * `"use strict"` after it is an ordinary expression statement.
+	 */
+	it("does not read a directive past the end of the prologue", () => {
+		expect(
+			messages('function f() { 01; "use strict"; }', {
+				sourceType: "script",
+			}),
+		).toEqual([]);
+	});
+
+	it("still validates a regular expression literal", () => {
+		expect(messages("var a = /(?<x>a)(?<x>b)/;")).toEqual([
+			"Duplicate capture group name.",
+		]);
+	});
 });
 
 describe("dialect", () => {

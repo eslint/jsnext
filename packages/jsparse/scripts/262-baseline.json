@@ -14,7 +14,6 @@
 	"test/language/identifiers": 1,
 	"test/language/literals/bigint": 6,
 	"test/language/literals/numeric": 6,
-	"test/language/literals/string": 12,
 	"test/language/module-code": 1,
 	"test/language/statements/class": 5,
 	"test/language/statements/generators": 1,

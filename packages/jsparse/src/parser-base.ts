@@ -13,7 +13,11 @@
  * here, which lets the layers reference each other without circular imports.
  */
 
-import { TF_HAS_ESCAPE, TF_NEWLINE_BEFORE } from "./binary.js";
+import {
+	TF_HAS_ESCAPE,
+	TF_LEGACY_OCTAL,
+	TF_NEWLINE_BEFORE,
+} from "./binary.js";
 import { ParseError } from "./errors.js";
 import { NodeWriter } from "./node-writer.js";
 import {
@@ -24,6 +28,7 @@ import {
 	LIT_REGEXP,
 	LIT_STRING,
 	NF_IDENTIFIER_NAME,
+	NF_LEGACY_OCTAL,
 	NODE_A,
 	NODE_B,
 	N_Identifier,
@@ -518,6 +523,16 @@ export abstract class ParserBase {
 		const end = this.tokenizer.end;
 
 		this.writer.set(node, NODE_A, subtype);
+
+		/*
+		 * `01` and `"\1"` are legal in sloppy code and not in strict, and the
+		 * tokenizer cannot tell which this is — a function's own `"use
+		 * strict"` may still be ahead of it. So what it saw is carried across
+		 * for `validate()` to judge.
+		 */
+		if ((this.tokenizer.flags & TF_LEGACY_OCTAL) !== 0) {
+			this.writer.addFlags(node, NF_LEGACY_OCTAL);
+		}
 
 		// Regular expressions record where the pattern ends so that the
 		// pattern and flags can be split apart without rescanning.

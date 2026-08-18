@@ -99,6 +99,19 @@ export const NF_SELF_CLOSING = NF_ASYNC;
 export const NF_COMMA_AFTER_REST = NF_ASYNC;
 
 /**
+ * A `Literal` written with a legacy octal escape or a legacy octal number.
+ *
+ * `"\\1"`, `"\\8"`, and `01` are all legal in sloppy code and none of them is
+ * in strict code, and which one the text is in is not a question the
+ * tokenizer can answer — a function's own `"use strict"` can arrive after the
+ * literal. So the tokenizer records what it saw and `validate()` decides.
+ *
+ * `NF_TAIL` is a `TemplateElement`'s flag and a `Literal` never carries one,
+ * so the bit is free here.
+ */
+export const NF_LEGACY_OCTAL = NF_TAIL;
+
+/**
  * An `Identifier` that stands for an `IdentifierName` rather than for a
  * binding or a reference: the `x` in `o.x`, `{ x: 1 }`, `class C { x() {} }`,
  * and `import { x as y }`.

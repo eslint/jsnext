@@ -560,5 +560,11 @@
 	{ "code": "export { 'foo' as 'bar' }; function foo() {}", "sourceType": "module" },
 	{ "code": "export { '\ud83d' } from 'm';", "sourceType": "module" },
 	{ "code": "import { '\ud83d' as foo } from 'm';", "sourceType": "module" },
-	{ "code": "import x from 'm' with { type: 'json', type: '' };", "sourceType": "module" }
+	{ "code": "import x from 'm' with { type: 'json', type: '' };", "sourceType": "module" },
+
+	{ "code": "function f() { \"\\1\"; \"use strict\"; }", "sourceType": "script" },
+	{ "code": "(function () { \"a: \\052\"; \"use strict\"; });", "sourceType": "script" },
+	{ "code": "class C { m() { return \"\\1\"; } }", "sourceType": "script" },
+	{ "code": "\"use strict\"; \"\\8\";", "sourceType": "script" },
+	{ "code": "\"use strict\"; \"\\9\";", "sourceType": "script" }
 ]

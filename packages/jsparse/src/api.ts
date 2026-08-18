@@ -261,7 +261,6 @@ export function validate(
 ): ValidationError[] {
 	const problems = validateAst(
 		new AstReader(result),
-		new TokenReader(result),
 		resolveSourceType(result, options.sourceType),
 		options.dialect ?? "ts",
 		options.jsx ?? false,
@@ -323,7 +322,6 @@ export function buildAst(
 	const dialect = options.dialect ?? "ts";
 	const problems = validateAst(
 		reader,
-		tokenReader,
 		sourceType,
 		dialect,
 		options.jsx ?? false,

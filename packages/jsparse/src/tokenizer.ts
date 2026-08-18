@@ -15,7 +15,6 @@ import {
 	ASCII_LIMIT,
 	CHAR_FLAGS,
 	CH_0,
-	CH_7,
 	CH_9,
 	CH_AMP,
 	CH_AT,
@@ -1301,11 +1300,12 @@ export class Tokenizer {
 		}
 
 		/*
-		 * Legacy octal escapes such as `\1` are only errors in strict mode, so
+		 * Legacy octal escapes such as `\1`, and the two `\8` and `\9` that
+		 * the grammar keeps beside them, are only errors in strict mode, so
 		 * they are recorded rather than rejected here. `\0` not followed by a
 		 * digit is always allowed.
 		 */
-		if (code >= CH_0 && code <= CH_7) {
+		if (code >= CH_0 && code <= CH_9) {
 			const next = source.charCodeAt(this.pos + 1);
 
 			if (code !== CH_0 || (CHAR_FLAGS[next] & MASK_DIGIT) !== 0) {

@@ -537,6 +537,13 @@ const valid: [string, "script" | "module"][] = [
 	["{ var v; } export { v };", "module"],
 	["export { '\ud83c\udf19' } from 'm';", "module"],
 	["import x from 'm' with { a: '1', b: '2' };", "module"],
+
+	// A prologue ends at the first statement that is not a directive.
+	['function f() { 01; "use strict"; }', "script"],
+	['"\\1";', "script"],
+	['"\\8";', "script"],
+	['"\\0";', "script"],
+	['"use strict"; "\\0";', "script"],
 ];
 
 describe("test262 positive tests", () => {
