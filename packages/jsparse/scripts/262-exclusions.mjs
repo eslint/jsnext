@@ -64,23 +64,13 @@ export const KNOWN_OVERZEALOUS = 0;
  * — where no tree should have been built at all, and those are the parser's.
  *
  * The run reports which phase catches what it does catch, so the balance is
- * visible: today it is 1,236 from `parse()` against 2,990 from `validate()`.
+ * visible: today it is 1,285 from `parse()` against 2,988 from `validate()`.
  *
  * Counts are approximate: a test usually violates one rule but the families
  * overlap at the edges, and the authority on the totals is
  * `262-baseline.json`. They are here to say what implementing one would be
  * worth, not to be summed.
  *
- * - **Lexical grammar** (~36, `parse()`). A numeric separator in a position that
- *   does not admit one, an escape standing in for the `#` of a private name,
- *   the `!` of a hashbang, or the `.` of `new.target`, and a character the
- *   grammar does not treat as whitespace written where whitespace is needed.
- * - **Legacy octal escapes** (~12, `validate()`). `"\1"` and `"\8"` in code
- *   that is strict — including a directive prologue whose own `"use strict"`
- *   comes after them.
- * - **Private names outside a class** (~43, mixed). A `#x` read in an object
- *   literal's method, a private field read out of a destructuring pattern,
- *   `#x in obj` where no class body encloses it.
  * - **Expression-level grammar** (~37, mixed). `a ?? b || c` without
  *   parentheses, `-a ** b`, `delete x` in strict mode, an update expression
  *   on an optional chain, and assignment to something that cannot be
@@ -92,6 +82,14 @@ export const KNOWN_OVERZEALOUS = 0;
  * - **Module code** (~17, `validate()`). A name exported twice over, an export
  *   that names nothing the module declares, and a module specifier holding an
  *   unpaired surrogate.
+ * - **Private names outside a class** (~16, `validate()`). A `#x` written in an
+ *   object literal's method, a private field read out of a destructuring
+ *   pattern, `#x in obj` where no class body encloses it.
+ * - **Numeric separators** (~12, `parse()`). An `_` in a position that does not
+ *   admit one: doubled, trailing, or against the `0` of a legacy octal.
+ * - **Legacy octal escapes** (~12, `validate()`). `"\1"` and `"\8"` in code
+ *   that is strict — including a directive prologue whose own `"use strict"`
+ *   comes after them.
  * - **ASI restrictions** (~11, `parse()`). A line terminator where the grammar
  *   forbids one: between `yield` and its `*`, between `async` and the `(` of
  *   a method's parameters, before the `=>` of an arrow function.

@@ -505,5 +505,12 @@
 	{ "code": "`\\u{}`;", "sourceType": "script" },
 	{ "code": "`\\xZ`;", "sourceType": "script" },
 	{ "code": "`\\01`;", "sourceType": "script" },
-	{ "code": "`${x}\\u{}`;", "sourceType": "script" }
+	{ "code": "`${x}\\u{}`;", "sourceType": "script" },
+
+	{ "code": "var \\u0000;", "sourceType": "script" },
+	{ "code": "var \\u200D_x;", "sourceType": "script" },
+	{ "code": "var \\u{110000};", "sourceType": "script" },
+	{ "code": "class C { \\u0023f; }", "sourceType": "script" },
+	{ "code": "class C { #\\u0023x; }", "sourceType": "script" },
+	{ "code": "a.\\u0023b;", "sourceType": "script" }
 ]

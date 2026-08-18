@@ -329,6 +329,42 @@ describe("syntax errors", () => {
 	});
 
 	/*
+	 * An escape inside an identifier stands for a letter and only for a
+	 * letter, so it is held to the same tables the character would have been:
+	 * `IdentifierStart` where the word begins, `IdentifierPart` after that.
+	 * This is what stops `\\u0023x` from being another way to write `#x`.
+	 */
+	it("throws for an identifier escape that names a character it may not", () => {
+		for (const code of [
+			"var \\u0000;",
+			"var \\u200D_x;",
+			"var \\u{110000};",
+			"var \\u{7F};",
+			"class C { \\u0023f; }",
+			"class C { #\\u0023x; }",
+			"a.\\u0023b;",
+		]) {
+			expect(() => parse(code, { sourceType: "script" })).toThrow(
+				/Invalid escape sequence in identifier/u,
+			);
+		}
+	});
+
+	it("accepts an identifier escape that names one it may", () => {
+		for (const code of [
+			"var \\u0061;",
+			"var \\u{61};",
+			"var \\u{0000000061};",
+			"var \\u0041a;",
+			"var a\\u200D;",
+			"var a\\u200C;",
+			"class C { #\\u0061; }",
+		]) {
+			expect(() => parse(code, { sourceType: "script" })).not.toThrow();
+		}
+	});
+
+	/*
 	 * `new` takes a `MemberExpression` and `import(...)` is a call, so there
 	 * is no tree to build for the pair — which is what puts this in `parse()`
 	 * rather than beside the other rules about `import`.

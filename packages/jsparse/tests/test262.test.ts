@@ -494,6 +494,13 @@ const valid: [string, "script" | "module"][] = [
 	['tag`a`.b`\\u1`;', "script"],
 	['"\\u{0000000041}";', "script"],
 	['"\\u{10FFFF}";', "script"],
+
+	// An escape may still name any character the identifier could have held.
+	["var \\u0061;", "script"],
+	["var \\u{0000000061};", "script"],
+	["var a\\u200D;", "script"],
+	["var a\\u200C;", "script"],
+	["class C { #\\u0061; }", "script"],
 ];
 
 describe("test262 positive tests", () => {

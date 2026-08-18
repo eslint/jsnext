@@ -19,6 +19,7 @@ import {
 	CH_9,
 	CH_AMP,
 	CH_AT,
+	CH_A_LOWER,
 	CH_BACKSLASH,
 	CH_BACKTICK,
 	CH_BANG,
@@ -198,6 +199,19 @@ const TOKEN_WORDS = 4;
 
 /** The largest code point a `\u{...}` escape may name. */
 const MAX_CODE_POINT = 0x10ffff;
+
+/**
+ * Reads one hexadecimal digit, which the caller has already classified.
+ * @param code The character code of the digit.
+ * @returns The value it stands for.
+ */
+function hexValue(code: number): number {
+	/*
+	 * Setting bit five folds `A`-`F` onto `a`-`f`, and leaves `0`-`9` where
+	 * they are, so one comparison separates the letters from the digits.
+	 */
+	return code <= CH_9 ? code - CH_0 : (code | 0x20) - CH_A_LOWER + 10;
+}
 
 /**
  * A snapshot of tokenizer state, used to rewind after speculative scanning.
@@ -832,7 +846,7 @@ export class Tokenizer {
 
 				if (code === CH_BACKSLASH) {
 					hasEscape = true;
-					this.scanIdentifierEscape();
+					this.scanIdentifierEscape(this.pos === start);
 					continue;
 				}
 
@@ -864,10 +878,19 @@ export class Tokenizer {
 
 	/**
 	 * Consumes a `\uXXXX` or `\u{...}` escape inside an identifier.
+	 *
+	 * An escape here stands for a letter and only for a letter: what it names
+	 * has to be a character the identifier could have been written with
+	 * directly, so `\u0023field` is not a way to spell `#field` and
+	 * `\u200D_ZWJ` is not a way to open a name with a joiner. Which of the two
+	 * tables applies is the ordinary `IdentifierStart` / `IdentifierPart`
+	 * split, decided by where in the word the escape sits.
+	 * @param atStart Whether the escape opens the identifier.
 	 * @returns Nothing.
-	 * @throws {ParseError} When the escape is not a valid unicode escape.
+	 * @throws {ParseError} When the escape is malformed or names a character
+	 *      an identifier may not contain.
 	 */
-	private scanIdentifierEscape(): void {
+	private scanIdentifierEscape(atStart: boolean): void {
 		const source = this.source;
 		const escapeStart = this.pos;
 
@@ -877,33 +900,30 @@ export class Tokenizer {
 
 		this.pos += 2;
 
+		let point = 0;
+
 		if (source.charCodeAt(this.pos) === CH_BRACE_OPEN) {
 			this.pos++;
+
+			const digitsStart = this.pos;
 
 			while (
 				this.pos < this.length &&
 				(CHAR_FLAGS[source.charCodeAt(this.pos)] & MASK_HEX_DIGIT) !== 0
 			) {
+				point = point * 16 + hexValue(source.charCodeAt(this.pos));
+
+				// Held down so that a long run of digits cannot lose precision.
+				if (point > MAX_CODE_POINT) {
+					point = MAX_CODE_POINT + 1;
+				}
+
 				this.pos++;
 			}
 
-			if (source.charCodeAt(this.pos) !== CH_BRACE_CLOSE) {
-				throw this.error(
-					"Invalid escape sequence in identifier",
-					escapeStart,
-				);
-			}
-
-			this.pos++;
-			return;
-		}
-
-		for (let i = 0; i < 4; i++) {
-			const code = source.charCodeAt(this.pos);
-
 			if (
-				code >= ASCII_LIMIT ||
-				(CHAR_FLAGS[code] & MASK_HEX_DIGIT) === 0
+				this.pos === digitsStart ||
+				source.charCodeAt(this.pos) !== CH_BRACE_CLOSE
 			) {
 				throw this.error(
 					"Invalid escape sequence in identifier",
@@ -912,6 +932,40 @@ export class Tokenizer {
 			}
 
 			this.pos++;
+		} else {
+			for (let i = 0; i < 4; i++) {
+				const code = source.charCodeAt(this.pos);
+
+				if (
+					code >= ASCII_LIMIT ||
+					(CHAR_FLAGS[code] & MASK_HEX_DIGIT) === 0
+				) {
+					throw this.error(
+						"Invalid escape sequence in identifier",
+						escapeStart,
+					);
+				}
+
+				point = point * 16 + hexValue(code);
+				this.pos++;
+			}
+		}
+
+		const legal =
+			point < ASCII_LIMIT
+				? (CHAR_FLAGS[point] &
+						(atStart ? MASK_ID_START : MASK_ID_PART)) !==
+					0
+				: point <= MAX_CODE_POINT &&
+					(atStart
+						? isNonAsciiIdStart(point)
+						: isNonAsciiIdPart(point));
+
+		if (!legal) {
+			throw this.error(
+				"Invalid escape sequence in identifier",
+				escapeStart,
+			);
 		}
 	}
 
