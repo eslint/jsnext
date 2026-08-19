@@ -96,6 +96,7 @@ import {
 	N_TSEnumDeclaration,
 	N_TSImportEqualsDeclaration,
 	N_TSInterfaceDeclaration,
+	N_TSParameterProperty,
 	N_TSModuleBlock,
 	N_TSModuleDeclaration,
 	N_TSTypeAliasDeclaration,
@@ -1422,11 +1423,24 @@ class Validator {
 	 * @returns `true` when no parameter is a pattern, a default, or a rest.
 	 */
 	private hasSimpleParameters(params: number, size: number): boolean {
+		const reader = this.reader;
+
 		for (let i = 0; i < size; i++) {
-			if (
-				this.reader.kind(this.reader.listItem(params, i)) !==
-				N_Identifier
-			) {
+			let param = reader.listItem(params, i);
+
+			/*
+			 * A parameter property is an accessibility modifier written on an
+			 * ordinary parameter, and the modifier is what a class does with
+			 * the binding rather than part of the binding form. What the
+			 * function receives is still the parameter underneath, so
+			 * `constructor(public x) { "use strict"; }` is as simple a list
+			 * as `constructor(x)` is.
+			 */
+			if (reader.kind(param) === N_TSParameterProperty) {
+				param = reader.field(param, NODE_A);
+			}
+
+			if (reader.kind(param) !== N_Identifier) {
 				return false;
 			}
 		}
@@ -1822,15 +1836,23 @@ class Validator {
 				}
 
 				/*
-				 * A body-less function is a TypeScript overload signature,
-				 * which describes the export rather than being it —
+				 * Two kinds of default export do not occupy the slot. A
+				 * body-less function is a TypeScript overload signature,
+				 * which describes the export rather than being it, so
 				 * `export default function f(): T;` may be written as many
-				 * times as there are overloads.
+				 * times as there are overloads. An interface exports a type
+				 * and nothing else, so it merges with whatever exports the
+				 * value — the same reason `addDeclaredExports` leaves the
+				 * TypeScript declaration kinds alone.
 				 */
-				case N_ExportDefaultDeclaration:
+				case N_ExportDefaultDeclaration: {
+					const exportedKind = reader.kind(
+						reader.field(item, NODE_A),
+					);
+
 					if (
-						reader.kind(reader.field(item, NODE_A)) !==
-						N_TSDeclareFunction
+						exportedKind !== N_TSDeclareFunction &&
+						exportedKind !== N_TSInterfaceDeclaration
 					) {
 						this.addExportedName(
 							exported,
@@ -1840,6 +1862,7 @@ class Validator {
 					}
 
 					break;
+				}
 
 				case N_ExportAllDeclaration: {
 					const alias = reader.field(item, NODE_A);
@@ -2444,15 +2467,20 @@ class Validator {
 		 */
 		/*
 		 * An ambient class is what a signature describes when the thing
-		 * described is a class, so the two are one declaration. Two ambient
-		 * classes are still two, and a `let` beside either is still a
-		 * collision, so this is the one pairing that merges.
+		 * described is a class, so the two are one declaration. It merges
+		 * with a function implementation for the same reason, which
+		 * TypeScript states from the other side: "Function with bodies can
+		 * only merge with classes that are ambient." Drop the `declare` and
+		 * the pair is a redeclaration again, and a `var`, a `let`, or a
+		 * second class beside either is a collision however it is written.
 		 */
 		if (
-			(existing === BINDING_SIGNATURE &&
-				incoming === BINDING_AMBIENT_CLASS) ||
 			(existing === BINDING_AMBIENT_CLASS &&
-				incoming === BINDING_SIGNATURE)
+				(incoming === BINDING_SIGNATURE ||
+					isFunctionBinding(incoming))) ||
+			(incoming === BINDING_AMBIENT_CLASS &&
+				(existing === BINDING_SIGNATURE ||
+					isFunctionBinding(existing)))
 		) {
 			return false;
 		}

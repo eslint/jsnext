@@ -1827,3 +1827,121 @@ describe("overload signatures", () => {
 		]);
 	});
 });
+
+describe("the default export slot", () => {
+	/*
+	 * An interface exports a type and nothing else, so it merges with
+	 * whatever exports the value under the same name.
+	 */
+	it("allows an interface beside a default function", () => {
+		expect(
+			messages(
+				"export default function foo(): void {}\nexport default interface Foo {}",
+			),
+		).toEqual([]);
+	});
+
+	it("allows an interface beside a default class", () => {
+		expect(
+			messages(
+				"export default class Foo {}\nexport default interface Foo {}",
+			),
+		).toEqual([]);
+	});
+
+	it("allows an interface before a default function", () => {
+		expect(
+			messages(
+				"export default interface A { a: string }\nexport default function () { return 1; }",
+			),
+		).toEqual([]);
+	});
+
+	it("still reports two default values", () => {
+		expect(
+			messages("export default 0;\nexport default function () {}"),
+		).toEqual([expect.stringMatching(/Duplicate export of 'default'/u)]);
+	});
+
+	it("still reports two default classes", () => {
+		expect(
+			messages("export default class A {}\nexport default class B {}"),
+		).toEqual([expect.stringMatching(/Duplicate export of 'default'/u)]);
+	});
+});
+
+describe("ambient class merging", () => {
+	/*
+	 * TypeScript states this rule from the other side, in the error it
+	 * reports when the class is not ambient: "Function with bodies can only
+	 * merge with classes that are ambient."
+	 */
+	it("allows an ambient class before a function implementation", () => {
+		expect(messages("declare class f {}\nfunction f() {}")).toEqual([]);
+	});
+
+	it("allows an ambient class after a function implementation", () => {
+		expect(messages("function f() {}\ndeclare class f {}")).toEqual([]);
+	});
+
+	it("allows an ambient class beside an overload signature", () => {
+		expect(
+			messages("declare function f(): void;\ndeclare class f {}"),
+		).toEqual([]);
+	});
+
+	it("still reports a concrete class beside a function", () => {
+		expect(messages("class f {}\nfunction f() {}")).toEqual([
+			expect.stringMatching(/already been declared/u),
+		]);
+	});
+
+	it("still reports an ambient class beside a var", () => {
+		expect(messages("declare class f {}\nvar f: any;")).toEqual([
+			expect.stringMatching(/already been declared/u),
+		]);
+	});
+
+	it("still reports two ambient classes", () => {
+		expect(messages("declare class f {}\ndeclare class f {}")).toEqual([
+			expect.stringMatching(/already been declared/u),
+		]);
+	});
+});
+
+describe("parameter properties", () => {
+	/*
+	 * The accessibility modifier says what the class does with the binding,
+	 * not what form the binding takes, so the parameter underneath is still a
+	 * plain identifier and the list is still simple.
+	 */
+	it("allows a use strict directive after a parameter property", () => {
+		expect(
+			messages(
+				'class C { constructor(public x: number) { "use strict"; } }',
+			),
+		).toEqual([]);
+	});
+
+	it("allows a use strict directive after a readonly parameter property", () => {
+		expect(
+			messages(
+				'class C { constructor(readonly x: number) { "use strict"; } }',
+			),
+		).toEqual([]);
+	});
+
+	it("still reports one after a destructured parameter", () => {
+		expect(
+			messages('class C { constructor({ x }: any) { "use strict"; } }'),
+		).toEqual([expect.stringMatching(/non-simple parameter list/u)]);
+	});
+
+	it("still reports one after a defaulted parameter property", () => {
+		expect(
+			messages(
+				'class C { constructor(public x = 1) { "use strict"; } }',
+			),
+		).toEqual([expect.stringMatching(/non-simple parameter list/u)]);
+	});
+});
