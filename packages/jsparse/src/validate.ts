@@ -9,6 +9,8 @@
  */
 
 import {
+	LIT_BIGINT,
+	LIT_NUMBER,
 	LIT_REGEXP,
 	LIT_STRING,
 	DECL_AWAIT_USING,
@@ -23,11 +25,16 @@ import {
 	NODE_B,
 	NODE_C,
 	NODE_D,
+	NODE_E,
+	NODE_F,
 	MKIND_CONSTRUCTOR,
 	MKIND_GET,
 	MKIND_MASK,
 	MKIND_SET,
 	MKIND_SHIFT,
+	MODULE_KIND_MASK,
+	MODULE_KIND_SHIFT,
+	MODULE_MODULE,
 	NF_ASYNC,
 	NF_COMMA_AFTER_REST,
 	NF_COMPUTED,
@@ -75,6 +82,7 @@ import {
 	N_Identifier,
 	N_IfStatement,
 	N_ImportDeclaration,
+	N_ImportDefaultSpecifier,
 	N_ImportSpecifier,
 	N_JSXElement,
 	N_JSXFragment,
@@ -98,6 +106,7 @@ import {
 	N_TSEmptyBodyFunctionExpression,
 	N_TSEnumDeclaration,
 	N_TSImportEqualsDeclaration,
+	N_TSEnumMember,
 	N_TSInterfaceDeclaration,
 	N_TSIndexSignature,
 	N_TSParameterProperty,
@@ -105,6 +114,7 @@ import {
 	N_TSModuleDeclaration,
 	N_TSTypeAliasDeclaration,
 	N_TSTypeParameterDeclaration,
+	N_TSTypeParameterInstantiation,
 	N_VariableDeclaration,
 	N_VariableDeclarator,
 	N_WhileStatement,
@@ -380,6 +390,12 @@ class Validator {
 	 * having been registered is one written somewhere it may not be.
 	 */
 	private readonly permittedParameterProperties = new Set<number>();
+
+	/**
+	 * The one declaration that may be an unnamed class, registered by the
+	 * `export default` above it before the walk reaches the class.
+	 */
+	private anonymousClassAllowed = 0;
 
 	/** Whether JSX syntax is allowed. */
 	private readonly jsx: boolean;
@@ -1136,6 +1152,18 @@ class Validator {
 				this.visit(reader.field(node, NODE_A));
 				this.visit(reader.field(node, NODE_B));
 
+				/*
+				 * The type parameters, the type arguments on the heritage
+				 * clause, and the `implements` list, all of which sit outside
+				 * the body and so are missed by the walk below it. Without
+				 * these, `class C<T> {}` and `class C implements I {}` pass
+				 * unexamined -- including under `dialect: "js"`, where the
+				 * whole point is to refuse them.
+				 */
+				this.visit(reader.field(node, NODE_D));
+				this.visit(reader.field(node, NODE_E));
+				this.visitList(reader.field(node, NODE_F));
+
 				const wasDerived = this.inDerivedClass;
 				const wasSawConstructor = this.sawConstructor;
 
@@ -1844,6 +1872,177 @@ class Validator {
 			this.report(
 				"An index signature may not have an accessibility modifier.",
 				this.reader.start(node),
+			);
+		}
+	}
+
+	/**
+	 * Reports a type-only import that brings in a name two ways at once.
+	 *
+	 * `import type` imports types, and the form allows either a default or a
+	 * set of named bindings so that the one name it introduces is
+	 * unambiguous. Writing both would be two imports under one `type`.
+	 * @param node The import declaration node index.
+	 * @returns Nothing.
+	 */
+	private checkTypeOnlyImport(node: number): void {
+		const reader = this.reader;
+
+		if ((reader.flags(node) & NF_TYPE_ONLY) === 0) {
+			return;
+		}
+
+		const specifiers = reader.field(node, NODE_A);
+		const size = reader.listSize(specifiers);
+		let sawDefault = false;
+		let sawOther = false;
+
+		for (let i = 0; i < size; i++) {
+			if (
+				reader.kind(reader.listItem(specifiers, i)) ===
+				N_ImportDefaultSpecifier
+			) {
+				sawDefault = true;
+			} else {
+				sawOther = true;
+			}
+		}
+
+		if (sawDefault && sawOther) {
+			this.report(
+				"A type-only import may have a default import or named bindings, but not both.",
+				reader.start(node),
+			);
+		}
+	}
+
+	/**
+	 * Reports a decorator on an overload signature.
+	 *
+	 * A decorator wraps the function it is written on, and an overload
+	 * signature has no function to wrap — the implementation below it is
+	 * what runs, and that is where the decorator belongs.
+	 * @param node The method node index.
+	 * @returns Nothing.
+	 */
+	private checkDecoratedOverload(node: number): void {
+		const reader = this.reader;
+		const value = reader.field(node, NODE_B);
+
+		if (
+			reader.listSize(reader.field(node, NODE_C)) > 0 &&
+			(value === 0 || reader.field(value, NODE_C) === 0)
+		) {
+			this.report(
+				"A decorator may not appear on an overload signature.",
+				reader.start(node),
+			);
+		}
+	}
+
+	/**
+	 * Reports an object literal method written without a body.
+	 *
+	 * A body-less method is an overload signature, which describes something
+	 * declared elsewhere. An object literal declares its members as it goes,
+	 * so there is nothing for a signature in one to describe.
+	 * @param node The property node index.
+	 * @returns Nothing.
+	 */
+	private checkObjectMethodBody(node: number): void {
+		const reader = this.reader;
+		const value = reader.field(node, NODE_B);
+
+		if (
+			value !== 0 &&
+			reader.kind(value) === N_TSEmptyBodyFunctionExpression
+		) {
+			this.report(
+				"An object literal method must have a body.",
+				reader.start(node),
+			);
+		}
+	}
+
+	/**
+	 * Reports a `<>` written with nothing between the angle brackets.
+	 *
+	 * The brackets are the whole of what the list is, so an empty one says
+	 * nothing that leaving it out would not have said, and the grammar
+	 * requires at least one entry rather than allowing the shorter spelling
+	 * to mean something else.
+	 * @param node The type parameter or type argument list node index.
+	 * @param message What to report.
+	 * @returns Nothing.
+	 */
+	private checkEmptyTypeList(node: number, message: string): void {
+		const reader = this.reader;
+
+		if (reader.listSize(reader.field(node, NODE_A)) === 0) {
+			this.report(message, reader.start(node));
+		}
+	}
+
+	/**
+	 * Reports an enum member named in a way an enum member may not be.
+	 *
+	 * An enum maps names to values and its members are read back by name, so
+	 * the name has to be one the reader can write: a computed key is not
+	 * known until the program runs, and a numeric one would collide with the
+	 * reverse mapping an enum already keeps from value to name.
+	 * @param node The enum member node index.
+	 * @returns Nothing.
+	 */
+	private checkEnumMember(node: number): void {
+		const reader = this.reader;
+
+		if ((reader.flags(node) & NF_COMPUTED) !== 0) {
+			this.report(
+				"An enum member name may not be computed.",
+				reader.start(node),
+			);
+			return;
+		}
+
+		const name = reader.field(node, NODE_A);
+
+		if (
+			name !== 0 &&
+			reader.kind(name) === N_Literal &&
+			(reader.field(name, NODE_A) === LIT_NUMBER ||
+				reader.field(name, NODE_A) === LIT_BIGINT)
+		) {
+			this.report(
+				"An enum member may not have a numeric name.",
+				reader.start(name),
+			);
+		}
+	}
+
+	/**
+	 * Reports a namespace named by a string.
+	 *
+	 * `declare module "m"` names another file, which is why a string stands
+	 * there. A `namespace` names a binding in this one, and a string is not
+	 * a binding.
+	 * @param node The module declaration node index.
+	 * @returns Nothing.
+	 */
+	private checkModuleName(node: number): void {
+		const reader = this.reader;
+		const id = reader.field(node, NODE_A);
+
+		if (id === 0 || reader.kind(id) !== N_Literal) {
+			return;
+		}
+
+		const kind =
+			(reader.flags(node) & MODULE_KIND_MASK) >>> MODULE_KIND_SHIFT;
+
+		if (kind !== MODULE_MODULE) {
+			this.report(
+				"A namespace may not be named by a string.",
+				reader.start(id),
 			);
 		}
 	}
@@ -4228,6 +4427,7 @@ class Validator {
 
 			case N_MethodDefinition:
 				this.checkMethodModifiers(node);
+				this.checkDecoratedOverload(node);
 				this.permitParameterProperties(node);
 				this.checkClassElementName(node, kind);
 				return;
@@ -4241,12 +4441,43 @@ class Validator {
 				return;
 
 			case N_TSTypeParameterDeclaration:
+				this.checkEmptyTypeList(
+					node,
+					"A type parameter list may not be empty.",
+				);
 				this.checkTypeParameterVariance(node);
+				return;
+
+			case N_TSTypeParameterInstantiation:
+				this.checkEmptyTypeList(
+					node,
+					"A type argument list may not be empty.",
+				);
+				return;
+
+			case N_TSEnumMember:
+				this.checkEnumMember(node);
+				return;
+
+			case N_TSModuleDeclaration:
+				this.checkModuleName(node);
 				return;
 
 			case N_ClassDeclaration:
 			case N_ClassExpression:
 				this.permitVariance(this.reader.field(node, NODE_D));
+
+				if (
+					kind === N_ClassDeclaration &&
+					this.reader.field(node, NODE_A) === 0 &&
+					this.anonymousClassAllowed !== node
+				) {
+					this.report(
+						"A class declaration must have a name unless it is the default export.",
+						this.reader.start(node),
+					);
+				}
+
 				return;
 
 			case N_TSInterfaceDeclaration:
@@ -4277,6 +4508,21 @@ class Validator {
 			case N_ExportNamedDeclaration:
 			case N_ExportDefaultDeclaration:
 			case N_ExportAllDeclaration:
+				if (kind === N_ImportDeclaration) {
+					this.checkTypeOnlyImport(node);
+				}
+
+				/*
+				 * A class declaration needs a name to bind, except as the
+				 * default export, where the export itself is the binding.
+				 */
+				if (kind === N_ExportDefaultDeclaration) {
+					this.anonymousClassAllowed = this.reader.field(
+						node,
+						NODE_A,
+					);
+				}
+
 				if (kind !== N_ExportDefaultDeclaration) {
 					this.checkImportAttributes(
 						this.reader.field(
@@ -4647,6 +4893,8 @@ class Validator {
 					this.checkShorthandName(node);
 				}
 
+				this.checkObjectMethodBody(node);
+
 				return;
 
 			case N_ObjectExpression:
@@ -4738,6 +4986,20 @@ class Validator {
 				}
 
 				if (isImport) {
+					/*
+					 * `import` has exactly one meta-property. Anything else
+					 * after the dot is a property of a keyword that has
+					 * none, with nowhere to resolve.
+					 */
+					if (reader.text(property) !== "meta") {
+						this.report(
+							"'import' has no meta-property but 'import.meta'.",
+							reader.start(node),
+						);
+
+						return;
+					}
+
 					if (this.sourceType !== "module") {
 						this.report(
 							`'import.meta' may only appear when sourceType is "module".`,

@@ -2292,3 +2292,181 @@ describe("parameter properties", () => {
 		).toEqual([expect.stringMatching(/may not use a binding pattern/u)]);
 	});
 });
+
+describe("empty type lists", () => {
+	it("reports an empty type parameter list", () => {
+		expect(messages("function f<>() {}")).toEqual([
+			expect.stringMatching(/type parameter list may not be empty/u),
+		]);
+	});
+
+	it("reports an empty type argument list", () => {
+		expect(messages("const x = f<>();")).toEqual([
+			expect.stringMatching(/type argument list may not be empty/u),
+		]);
+	});
+
+	it("reports an empty type parameter list on a class", () => {
+		expect(messages("class C<> {}")).toEqual([
+			expect.stringMatching(/type parameter list may not be empty/u),
+		]);
+	});
+
+	it("still allows lists with entries", () => {
+		expect(messages("function f<T>() {}\nconst x = f<number>();")).toEqual(
+			[],
+		);
+	});
+});
+
+describe("a class outside its body", () => {
+	/*
+	 * The type parameters, the heritage clause's type arguments, and the
+	 * `implements` list all sit outside the class body, which the walk
+	 * descends into separately. Until they were visited too, none of them
+	 * was examined at all.
+	 */
+	it("rejects class type parameters under dialect js", () => {
+		expect(messages("class C<T> {}", { dialect: "js" })[0]).toMatch(
+			/not allowed when the dialect is "js"/u,
+		);
+	});
+
+	it("rejects an implements clause under dialect js", () => {
+		expect(
+			messages("class C implements I {}", { dialect: "js" })[0],
+		).toMatch(/not allowed when the dialect is "js"/u);
+	});
+
+	it("rejects heritage type arguments under dialect js", () => {
+		expect(
+			messages("class C extends B<T> {}", { dialect: "js" })[0],
+		).toMatch(/not allowed when the dialect is "js"/u);
+	});
+
+	it("still allows all three under dialect ts", () => {
+		expect(
+			messages("class C<T> extends B<T> implements I {}"),
+		).toEqual([]);
+	});
+});
+
+describe("enum member names", () => {
+	it("allows identifier and string names", () => {
+		expect(messages("enum E { A = 1, B, 'a b' = 2 }")).toEqual([]);
+	});
+
+	it("reports a computed name", () => {
+		expect(messages("enum E { [x] = 1 }")).toEqual([
+			expect.stringMatching(/may not be computed/u),
+		]);
+	});
+
+	/*
+	 * An enum keeps a reverse mapping from value to name, which a numeric
+	 * name would collide with.
+	 */
+	it("reports a numeric name", () => {
+		expect(messages("enum E { 1 = 2 }")).toEqual([
+			expect.stringMatching(/numeric name/u),
+		]);
+	});
+});
+
+describe("object literal methods", () => {
+	it("allows a method with a body", () => {
+		expect(messages("const o = { m() {} };")).toEqual([]);
+	});
+
+	it("reports a method without one", () => {
+		expect(messages("const o = { m() };")).toEqual([
+			expect.stringMatching(/must have a body/u),
+		]);
+	});
+});
+
+describe("class declaration names", () => {
+	it("allows a named class declaration", () => {
+		expect(messages("class C {}")).toEqual([]);
+	});
+
+	it("allows an unnamed default export", () => {
+		expect(messages("export default class {}")).toEqual([]);
+	});
+
+	it("reports an unnamed class declaration", () => {
+		expect(messages("class {}")).toEqual([
+			expect.stringMatching(/must have a name/u),
+		]);
+	});
+
+	it("still allows an unnamed class expression", () => {
+		expect(messages("const C = class {};")).toEqual([]);
+	});
+});
+
+describe("decorators on overloads", () => {
+	it("allows a decorator on an implementation", () => {
+		expect(messages("class C { @dec m() {} }")).toEqual([]);
+	});
+
+	it("reports one on an overload signature", () => {
+		expect(messages("class C { @dec m(); m() {} }")).toEqual([
+			expect.stringMatching(/overload signature/u),
+		]);
+	});
+
+	it("still allows an undecorated overload set", () => {
+		expect(messages("class C { m(): void; m() {} }")).toEqual([]);
+	});
+});
+
+describe("import meta-properties and type-only imports", () => {
+	it("allows import.meta", () => {
+		expect(messages("import.meta;")).toEqual([]);
+	});
+
+	it("reports any other import meta-property", () => {
+		expect(messages("import.foo;")).toEqual([
+			expect.stringMatching(/no meta-property but 'import.meta'/u),
+		]);
+	});
+
+	it("allows a type-only default or named import alone", () => {
+		expect(
+			messages(
+				"import type A from 'm';\nimport type { B } from 'n';",
+			),
+		).toEqual([]);
+	});
+
+	it("allows both on an ordinary import", () => {
+		expect(messages("import A, { B } from 'm';")).toEqual([]);
+	});
+
+	it("reports both on a type-only import", () => {
+		expect(messages("import type A, { B } from 'm';")).toEqual([
+			expect.stringMatching(/but not both/u),
+		]);
+	});
+});
+
+describe("namespace names", () => {
+	it("allows an identifier name", () => {
+		expect(messages("namespace N {}")).toEqual([]);
+	});
+
+	/*
+	 * `declare module "m"` names another file, which is why a string stands
+	 * there. A namespace names a binding in this one.
+	 */
+	it("allows a string name on a module declaration", () => {
+		expect(messages("declare module 'n' {}")).toEqual([]);
+	});
+
+	it("reports a string name on a namespace", () => {
+		expect(messages("namespace 'n' {}")).toEqual([
+			expect.stringMatching(/may not be named by a string/u),
+		]);
+	});
+});
