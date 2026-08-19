@@ -4150,7 +4150,28 @@ class Validator {
 
 		const declarator = size === 0 ? 0 : reader.listItem(declarations, 0);
 
-		if (declarator === 0 || reader.field(declarator, NODE_B) === 0) {
+		if (declarator === 0) {
+			return;
+		}
+
+		/*
+		 * The loop is what says what the binding holds — an element of the
+		 * iterable, or a key of the object — so writing a type for it is
+		 * describing something the head has already settled.
+		 */
+		const target = reader.field(declarator, NODE_A);
+
+		if (
+			reader.kind(target) === N_Identifier &&
+			reader.field(target, NODE_B) !== 0
+		) {
+			this.report(
+				"A for-in or for-of head may not annotate its binding.",
+				reader.start(reader.field(target, NODE_B)),
+			);
+		}
+
+		if (reader.field(declarator, NODE_B) === 0) {
 			return;
 		}
 
@@ -4821,12 +4842,20 @@ class Validator {
 			 * an early error on the literal.
 			 */
 			case N_Literal: {
+				/*
+				 * TypeScript has no sloppy code to carve out for, so it
+				 * refuses the legacy spelling wherever it appears. The
+				 * carve-out is JavaScript's alone and stays exactly as it
+				 * was under `dialect: "js"`, where test262 depends on it.
+				 */
 				if (
-					this.strict &&
+					(this.strict || this.dialect === "ts") &&
 					(this.reader.flags(node) & NF_LEGACY_OCTAL) !== 0
 				) {
 					this.report(
-						"Octal literals are not allowed in strict mode.",
+						this.strict
+							? "Octal literals are not allowed in strict mode."
+							: "Octal literals are not allowed in TypeScript.",
 						this.reader.start(node),
 					);
 

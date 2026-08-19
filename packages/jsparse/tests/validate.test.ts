@@ -102,8 +102,18 @@ describe("strict mode", () => {
 		]);
 	});
 
+	/*
+	 * The sloppy-code carve-out is JavaScript's alone, so these name the
+	 * dialect rather than taking the default. TypeScript refuses the legacy
+	 * spelling wherever it appears.
+	 */
 	it("allows octal literals in sloppy code", () => {
-		expect(messages("var a = 0755;", { sourceType: "script" })).toEqual([]);
+		expect(
+			messages("var a = 0755;", {
+				dialect: "js",
+				sourceType: "script",
+			}),
+		).toEqual([]);
 	});
 
 	it("rejects a legacy escape in a strict string", () => {
@@ -111,7 +121,9 @@ describe("strict mode", () => {
 			expect(messages(code)).toEqual([
 				expect.stringMatching(/Octal/u),
 			]);
-			expect(messages(code, { sourceType: "script" })).toEqual([]);
+			expect(
+				messages(code, { dialect: "js", sourceType: "script" }),
+			).toEqual([]);
 		}
 	});
 
@@ -142,6 +154,7 @@ describe("strict mode", () => {
 	it("does not read a directive past the end of the prologue", () => {
 		expect(
 			messages('function f() { 01; "use strict"; }', {
+				dialect: "js",
 				sourceType: "script",
 			}),
 		).toEqual([]);
@@ -2468,5 +2481,77 @@ describe("namespace names", () => {
 		expect(messages("namespace 'n' {}")).toEqual([
 			expect.stringMatching(/may not be named by a string/u),
 		]);
+	});
+});
+
+describe("legacy octals in TypeScript", () => {
+	/*
+	 * TypeScript has no sloppy code to carve out for, so it refuses the
+	 * legacy spelling wherever it appears. The carve-out is JavaScript's
+	 * alone, and `dialect: "js"` keeps it.
+	 */
+	it("reports an octal literal in a sloppy script", () => {
+		expect(messages("const a = 01;", { sourceType: "script" })).toEqual([
+			expect.stringMatching(/not allowed in TypeScript/u),
+		]);
+	});
+
+	it("reports an octal escape in a sloppy script", () => {
+		expect(
+			messages('var s = "\\1";', { sourceType: "script" }),
+		).toEqual([expect.stringMatching(/not allowed in TypeScript/u)]);
+	});
+
+	it("still allows both under dialect js in a sloppy script", () => {
+		expect(
+			messages('const a = 01;\nvar s = "\\1";', {
+				dialect: "js",
+				sourceType: "script",
+			}),
+		).toEqual([]);
+	});
+
+	it("still reports the strict mode rule under dialect js", () => {
+		expect(messages("const a = 01;", { dialect: "js" })).toEqual([
+			expect.stringMatching(/not allowed in strict mode/u),
+		]);
+	});
+
+	it("still allows the modern spelling", () => {
+		expect(messages("const a = 0o1;")).toEqual([]);
+	});
+});
+
+describe("for-in and for-of head annotations", () => {
+	it("allows an unannotated binding", () => {
+		expect(messages("for (const x of y) {}\nfor (const k in y) {}")).toEqual(
+			[],
+		);
+	});
+
+	/*
+	 * The loop is what says what the binding holds, so writing a type for it
+	 * describes something the head has already settled.
+	 */
+	it("reports an annotation in a for-of head", () => {
+		expect(messages("for (const x: number of y) {}")).toEqual([
+			expect.stringMatching(/may not annotate its binding/u),
+		]);
+	});
+
+	it("reports an annotation in a for-in head", () => {
+		expect(messages("for (const x: string in y) {}")).toEqual([
+			expect.stringMatching(/may not annotate its binding/u),
+		]);
+	});
+
+	it("reports an annotation on a var binding", () => {
+		expect(messages("for (var x: number of y) {}")).toEqual([
+			expect.stringMatching(/may not annotate its binding/u),
+		]);
+	});
+
+	it("still allows a destructuring head", () => {
+		expect(messages("for (const [a, b] of y) {}")).toEqual([]);
 	});
 });
