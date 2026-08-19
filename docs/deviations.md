@@ -1,7 +1,8 @@
 # Deviations
 
-`jsparse` reproduces `espree` for JavaScript and JSX, and
-`@typescript-eslint/parser` for TypeScript. `jsscope` reproduces `eslint-scope`
+The parser reproduces `espree` for JavaScript and JSX, and
+`@typescript-eslint/parser` for TypeScript. The scope analyzer reproduces
+`eslint-scope`
 and `@typescript-eslint/scope-manager`. "Reproduces" means byte-for-byte equal
 output on every file of the differential corpus, and that is enforced — see
 [Conformance is the real test suite](../AGENTS.md#conformance-is-the-real-test-suite).
@@ -19,7 +20,7 @@ also the place to look when a comparison mysteriously passes.
 Each entry says what the reference does, what this does, and why. Where the
 difference is invisible to the conformance run, the entry says how it is
 absorbed — usually by the shared `normalize()`/`stable()` helpers in
-`packages/jsparse/tests/helpers.ts` and `packages/jsparse/scripts/`.
+`packages/jskit/tests/parse/helpers.ts` and `packages/jskit/scripts/parse/`.
 
 ---
 
@@ -128,12 +129,14 @@ follow the same extent.
 **How conformance absorbs it:** the conversion between the two rules is exact
 in one direction, so rather than dropping the field the TypeScript comparisons
 derive the reference's answer from ours and then diff in full —
-`asReferenceProgramExtent()` in `packages/jsparse/tests/helpers.ts` and in
-`packages/jsparse/scripts/conformance-ts.mjs`. An extent that is wrong for any
-other reason still fails. `packages/jsparse/tests/parse.test.ts` pins the
+`asReferenceProgramExtent()` in `packages/jskit/tests/parse/helpers.ts` and in
+`packages/jskit/scripts/parse/conformance-ts.mjs`. An extent that is wrong for
+any other reason still fails. `packages/jskit/tests/parse/parse.test.ts` pins
+the
 behavior directly.
 
-**Unaffected:** `jsscope`. The binary parse buffer has always carried `espree`'s
+**Unaffected:** the scope analyzer. The binary parse buffer has always carried
+`espree`'s
 extent — the decoder was the only thing that adjusted it — so the scope graph
 never saw the other rule.
 
@@ -162,7 +165,7 @@ of the two failure modes, so the specification wins.
 
 **How conformance absorbs it:** it does not have to. This is a `validate()`
 diagnostic, and the differential corpus compares parser output, not
-diagnostics. `packages/jsparse/tests/validate.test.ts` pins the behavior.
+diagnostics. `packages/jskit/tests/parse/validate.test.ts` pins the behavior.
 
 ---
 
@@ -191,7 +194,7 @@ and rejecting working code is the worse of the two failure modes.
 
 **How conformance absorbs it:** it does not have to, for the same reason as
 above — this is a `validate()` diagnostic. The test262 run is what covers it,
-and `packages/jsparse/tests/test262.test.ts` pins both halves.
+and `packages/jskit/tests/parse/test262.test.ts` pins both halves.
 
 ---
 
@@ -278,7 +281,8 @@ still visible.
 
 ## Scope analysis
 
-`jsscope` reproduces two analyzers that disagree with each other in three
+The scope analyzer reproduces two analyzers that disagree with each other in
+three
 places. **Where they disagree, `eslint-scope` wins**, and each of the three is
 an option that defaults to the `eslint-scope` answer.
 

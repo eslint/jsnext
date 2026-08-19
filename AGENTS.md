@@ -1,4 +1,4 @@
-# jsparse
+# jskit
 
 An npm workspace holding a fast, ESLint-compatible toolchain for the latest
 JavaScript, TypeScript, and JSX syntax. TypeScript source, bundled with
@@ -6,37 +6,59 @@ JavaScript, TypeScript, and JSX syntax. TypeScript source, bundled with
 
 | Package | Name | What it does |
 | ------- | ---- | ------------ |
-| `packages/jsparse` | `@eslint/jsparse` | Parser. Source text in, one binary buffer of AST, tokens, and line offsets out, ESTree on request. |
-| `packages/jsscope` | `@eslint/jsscope` | Scope analyzer. Reproduces `eslint-scope` and `@typescript-eslint/scope-manager`. |
-| `packages/jsflow` | `@eslint/jsflow` | Control flow analyzer. Binary AST and scope buffers in, basic-block graph out. |
-| `packages/jsinspect` | `@eslint/jsinspect` | Web app (Astro + React) that runs the other three in the browser: code in a left-hand editor, AST/scope/flow trees in tabs on the right. Its `dev`/`build`/`typecheck` scripts build the upstream packages first. |
+| `packages/jskit` | `@eslint/jskit` | The toolkit: parser, scope analyzer, and control flow analyzer, in one package with one entry point. |
+| `packages/jsinspect` | `@eslint/jsinspect` | Web app (Astro + React) that runs all three in the browser: code in a left-hand editor, AST/scope/flow trees in tabs on the right. Its `dev`/`build`/`typecheck` scripts build `@eslint/jskit` first. |
 
-`jsscope` depends on `jsparse`, and `jsflow` depends on both, so **the
-upstream packages must be built before anything downstream runs**. Each
-package's own scripts take care of that; a bare `npx vitest` inside
-`packages/jsscope` or `packages/jsflow` will use a stale `dist/` or fail
-outright.
+**The three analyses are directories, not packages.** `parse`, `scope`, and
+`flow` split the source, the tests, the documentation, the scripts, and the
+benchmarks alike:
 
-`jsflow`'s `createGraph()` reads the two binary buffers directly and returns
+```
+packages/jskit/
+  src/index.ts        the public surface: export * from all three
+  src/parse/          tokenizer, parser, validator, ESTree decoder
+  src/scope/          the scope walk and the binary scope format
+  src/flow/           the control flow walk and the binary flow format
+  tests/{parse,scope,flow}/       integration tests, *.test.ts
+  docs/{parse,scope,flow}/        api.md, architecture.md, requirements.md
+  scripts/{parse,scope}/          the differential conformance runs
+  benchmarks/{parse,scope}/       the performance comparisons
+```
+
+Everything ships from `src/index.ts` as one bundle, `dist/jskit.js`. Within
+`src/`, `scope/` imports `../parse/index.js` and `flow/` imports both — always
+through the sub-index, never a module inside another directory. The package is
+`sideEffects: false`, so importing one analysis still leaves the others behind;
+`tests/scope/tree-shaking.test.ts` proves it against the built bundle.
+
+**The two buffer formats describe their headers with the same field names**, so
+the scope one is prefixed `SCOPE_H_*`/`SCOPE_HEADER_WORDS` and the flow one
+`FLOW_H_*`/`FLOW_HEADER_WORDS`. They are the only names the three surfaces
+would otherwise collide on, and `export *` would silently drop a collision
+rather than report it — so if you add a constant to one format, check the other
+two for the name first. `npm run typecheck` catches what slips through.
+
+`flow`'s `createGraph()` reads the two binary buffers directly and returns
 a binary control flow graph; `toGraphTree()` is its JSON debugging view and
 `FlowBufferReader` its point-query reader. It stores byte offsets into both
 input buffers, which is why it accepts scope buffers only from `analyze()`,
-never `analyzeTree()`, and why `@eslint/jsscope` exports its `scope-buffer.ts`
-layout constants. The format is specified in
-[`packages/jsflow/docs/architecture.md`](./packages/jsflow/docs/architecture.md),
+never `analyzeTree()`, and why `scope/scope-buffer.ts`'s layout constants are
+exported. The format is specified in
+[`packages/jskit/docs/flow/architecture.md`](./packages/jskit/docs/flow/architecture.md),
 along with the four places it deliberately trades precision for simplicity.
 It has no differential conformance suite — there is no reference
 implementation to diff against — so its integration tests in
-`packages/jsflow/tests/` are the contract.
+`packages/jskit/tests/flow/` are the contract.
 
-`jsscope` has **two entry points over one walk**: `analyze()` reads the binary
+`scope` has **two entry points over one walk**: `analyze()` reads the binary
 buffers and `analyzeTree()` reads an ordinary ESTree tree. Neither is a
 separate implementation — the walk goes through the `AstAccess` interface and
 each representation supplies an adapter. Both return an `ArrayBuffer` in the
 binary scope format; the escope-compatible object graph comes back through
 `toScopeManager(buffer, program)`, point queries through `Scopes`, and a JSON
 debugging view through `toScopeTree()`. The format is specified in
-[`packages/jsscope/docs/architecture.md`](./packages/jsscope/docs/architecture.md). A change to the walk's decisions belongs
+[`packages/jskit/docs/scope/architecture.md`](./packages/jskit/docs/scope/architecture.md).
+A change to the walk's decisions belongs
 in `referencer.ts`, a change to binding/resolution semantics in
 `scope-builder.ts`, and either lands on both representations; a change to how
 a node is *read* belongs in `binary-ast.ts` or `estree-ast.ts` and must be
@@ -61,7 +83,7 @@ Two things that are easy to miss when matching the surrounding code:
 
 - Source files import each other with `.js` extensions even though they are
   `.ts`. That is required, not a mistake.
-- The existing classes in `packages/jsparse` use TypeScript's `private`
+- The existing classes in `src/parse/` use TypeScript's `private`
   modifier rather than `#` fields. New code should follow the style guide, but
   do not churn existing files to match.
   
@@ -71,47 +93,47 @@ This project is meant to be highly-performant. When writing code, follow the gui
 
 ## Architecture
 
-Each package has its own technical specification, and all are worth reading
-before changing anything in them:
+Each analysis has an `api.md` describing what a consumer sees and an
+`architecture.md` specifying how it works. All are worth reading before
+changing anything in them:
 
-- [`packages/jsparse/docs/architecture.md`](./packages/jsparse/docs/architecture.md)
+- [`packages/jskit/docs/parse/architecture.md`](./packages/jskit/docs/parse/architecture.md)
   documents the tokenizer, the parser, and both binary formats field by field,
   the invariants that break subtly when violated, and a checklist for adding a
   node kind.
-- [`packages/jsparse/docs/embedded-source.md`](./packages/jsparse/docs/embedded-source.md)
+- [`packages/jskit/docs/parse/embedded-source.md`](./packages/jskit/docs/parse/embedded-source.md)
   explains `parse()`'s `embedSource` option — why a parse buffer can carry a copy
   of the program text, why it does not by default, and the loud failure that
   makes the default safe.
-- [`packages/jsparse/docs/types.md`](./packages/jsparse/docs/types.md) documents
-  `src/ast-types.ts` — the hand-written ESTree declarations `toAST()` returns.
-  **Read it before reaching for `@types/estree` or `@typescript-eslint/types`:**
+- [`packages/jskit/docs/parse/types.md`](./packages/jskit/docs/parse/types.md) documents
+  `src/parse/ast-types.ts` — the hand-written ESTree declarations `toAST()`
+  returns. **Read it before reaching for `@types/estree` or `@typescript-eslint/types`:**
   both were evaluated and rejected for reasons that are not obvious, and the
   file records what is machine-checked, what is not, and why.
-- [`packages/jsscope/docs/architecture.md`](./packages/jsscope/docs/architecture.md)
+- [`packages/jskit/docs/scope/architecture.md`](./packages/jskit/docs/scope/architecture.md)
   documents the walk, resolution, and the rule for reconciling the two scope
   analyzers it reproduces.
 - [`docs/deviations.md`](./docs/deviations.md) lists every place the output is
   deliberately not what a reference implementation produces, and why. Anything
   not in it is a bug.
 
-[`packages/jsparse/scripts/README.md`](./packages/jsparse/scripts/README.md)
-covers the six scripts behind `npm run conformance` and how they divide the
+[`packages/jskit/scripts/README.md`](./packages/jskit/scripts/README.md)
+covers the ten scripts behind `npm run conformance` and how they divide the
 work.
 
 Task-specific procedures live in [`.agents/skills/`](./.agents/skills), which
 `.claude/skills` symlinks to. Adding an AST node kind is one of them —
 [`.agents/skills/add-node-type/`](./.agents/skills/add-node-type/SKILL.md) has
 the seven registration sites and a driver that checks all of them and then runs
-the node through both packages.
+the node through the parser and the scope analyzer.
 
 ## Commands
 
 Run from the repository root; every one delegates to the workspaces, and any of
-them takes `--workspace=@eslint/jsparse` or `--workspace=@eslint/jsscope` to
-narrow it.
+them takes `--workspace=@eslint/jskit` to narrow it.
 
 ```bash
-npm test           # vitest, ~1350 tests
+npm test           # vitest, ~2900 tests
 npm run typecheck  # tsc --noEmit
 npm run lint       # builds first, then lints this repo with its own parser
 npm run build      # esbuild bundles + .d.ts files
@@ -119,7 +141,7 @@ npm run conformance   # differential tests against every reference implementatio
 npm run bench      # performance comparisons
 ```
 
-**`eslint.config.js` imports `./packages/jsparse/dist/jsparse.js`,** so linting
+**`eslint.config.js` imports `./packages/jskit/dist/jskit.js`,** so linting
 requires a build. `npm run lint` does that for you; a bare `npx eslint .` will
 use a stale bundle, or fail outright if `dist/` is missing.
 
@@ -174,9 +196,10 @@ module line throws, since the tree was built the other way; narrowing `script`
 to `commonjs` is allowed, because those two parse identically and differ only
 in what phase 2 permits.
 
-`jsscope` sits alongside phases 2 and 3 rather than after them: it reads the
-same buffers `parse()` produced and needs neither the validation problems nor
-the ESTree tree.
+Scope analysis sits alongside phases 2 and 3 rather than after them: it reads
+the same buffers `parse()` produced and needs neither the validation problems
+nor the ESTree tree. Control flow analysis then reads the parse and scope
+buffers together.
 
 ## Two kinds of test, told apart by their extension
 
@@ -185,8 +208,8 @@ the file goes and what it is allowed to import.
 
 | Kind | Name | Lives | Imports |
 | ---- | ---- | ----- | ------- |
-| Unit | `*.spec.ts` | `src/`, beside the module it covers | that one module |
-| Integration | `*.test.ts` | `tests/` | the package's public entry points |
+| Unit | `*.spec.ts` | `src/{parse,scope,flow}/`, beside the module it covers | that one module |
+| Integration | `*.test.ts` | `tests/{parse,scope,flow}/` | `../../src/index.js`, the package's public entry point |
 
 A **unit test** pins down one module's own behavior: the classification tables
 in `chars.ts`, the escape decoding in `values.ts`, the buffer layouts in
@@ -195,9 +218,11 @@ directly, so `entities.spec.ts` sits next to `entities.ts` and imports
 `./entities.js`. Reach for one when a function has edge cases that are tedious
 to provoke through a whole parse.
 
-An **integration test** goes through `parse()`, `toAST()`, `validate()`, or
-`analyze()` and checks what a consumer would see. The conformance suites are
-integration tests, and so is anything that needs a real AST.
+An **integration test** goes through `parse()`, `toAST()`, `validate()`,
+`analyze()`, or `createGraph()` and checks what a consumer would see. It
+imports `../../src/index.js` and nothing deeper, which is also what keeps the
+merged barrel honest — a name missing from it fails a test. The conformance
+suites are integration tests, and so is anything that needs a real AST.
 
 Two mechanical consequences of putting unit tests inside `src/`:
 
@@ -211,24 +236,26 @@ Two mechanical consequences of putting unit tests inside `src/`:
 
 `npm test` is the fast check. The differential corpus is what actually proves
 correctness: it runs every `.js`/`.jsx` and `.ts`/`.tsx` file in `node_modules`
-through both packages and compares the result against the implementation each
-one replaces.
+through the parser and the scope analyzer and compares the result against the
+implementation each one replaces.
 
 ```
-files=1433 ok=1433 mismatch=0 threw=0   # jsparse AST vs espree
-ok=1433 bad=0                           # jsparse tokens and comments vs espree
-files=1232 ok=1232 mismatch=0 threw=0   # jsparse AST vs @typescript-eslint/parser
+files=… ok=… mismatch=0 threw=0   # AST vs espree
+ok=… bad=0                        # tokens and comments vs espree
+files=… ok=… mismatch=0 threw=0   # AST vs @typescript-eslint/parser
 
-problems=0 unseen=0                     # ast-types.ts vs the decoder's output
-identical=159 differ=0                  # ast-types.ts vs the fill() switch
+problems=0 unseen=0               # ast-types.ts vs the decoder's output
+identical=… differ=0              # ast-types.ts vs the fill() switch
 
-binary files=1433 ok=1433 mismatch=0 threw=0   # jsscope vs eslint-scope
-tree   files=1433 ok=1433 mismatch=0 threw=0
-binary files=1232 ok=1232 mismatch=0 threw=0   # jsscope vs @typescript-eslint/scope-manager
-tree   files=1232 ok=1232 mismatch=0 threw=0
+binary files=… ok=… mismatch=0 threw=0   # scopes vs eslint-scope
+tree   files=… ok=… mismatch=0 threw=0
+binary files=… ok=… mismatch=0 threw=0   # scopes vs @typescript-eslint/scope-manager
+tree   files=… ok=… mismatch=0 threw=0
 ```
 
-`jsscope` is checked twice per file, once through each entry point. The tree
+The file counts move with whatever `node_modules` currently holds; `mismatch`
+and `threw` are the numbers that matter. Scope analysis is checked twice per
+file, once through each entry point. The tree
 run is the more direct of the two: `analyzeTree()` is handed the very tree
 object the reference analyzer was given, so a difference can only be a
 difference between the analyzers.
@@ -246,7 +273,7 @@ untested by every script above.
 
 Two scripts cover it, one per dialect.
 
-`npm run conformance:262 --workspace=@eslint/jsparse` is the JavaScript half.
+`npm run conformance:262 --workspace=@eslint/jskit` is the JavaScript half.
 test262 states its own verdict in each file's frontmatter, so a `negative`
 block with `phase: parse` is an assertion that the file must be rejected, by
 `parse()` throwing or by `validate()` reporting — the split decides which, and
@@ -254,7 +281,7 @@ the test asserts neither.
 
 ```bash
 git clone --depth 1 https://github.com/tc39/test262
-npm run conformance:262 --workspace=@eslint/jsparse
+npm run conformance:262 --workspace=@eslint/jskit
 ```
 
 ```
@@ -268,19 +295,19 @@ program it accepts; every early error the corpus tests is now implemented, on
 whichever side of the phase line it falls — 1,317 of them from `parse()` and
 3,093 from `validate()`.
 
-`npm run conformance:ts --workspace=@eslint/jsparse` is the TypeScript half.
+`npm run conformance:ts --workspace=@eslint/jskit` is the TypeScript half.
 There is no TypeScript corpus that states its own verdict, so this one is
 differential after all — against `@typescript-eslint/parser`, over TypeScript's
 own test suite, which is mostly negative tests. It pairs with
-`conformance-ts.mjs` rather than replacing it: that script compares trees, so
-it skips every file the reference parser throws on, which is exactly the set
-this one is about.
+`scripts/parse/conformance-ts.mjs` rather than replacing it: that script
+compares trees, so it skips every file the reference parser throws on, which is
+exactly the set this one is about.
 
 ```bash
 git clone --depth 1 --filter=blob:none --sparse \
     https://github.com/microsoft/TypeScript
 cd TypeScript && git sparse-checkout set tests/cases
-npm run conformance:ts --workspace=@eslint/jsparse -- ./TypeScript
+npm run conformance:ts --workspace=@eslint/jskit -- ./TypeScript
 ```
 
 ```
@@ -301,38 +328,38 @@ specification, so a directory names a rule there; TypeScript's
 `tests/cases/compiler` is one flat directory of several thousand files and
 names nothing.
 
-Both test262 counts are graded against `scripts/262-baseline.json`, a failure
-count per directory. It is now an empty object, so any directory that starts failing is
-one that was passing. Re-run with `--update` when a change moves a count, and
-commit the baseline with it.
-[`scripts/262-exclusions.mjs`](./packages/jsparse/scripts/262-exclusions.mjs)
+Both test262 counts are graded against `scripts/parse/262-baseline.json`, a
+failure count per directory. It is now an empty object, so any directory that
+starts failing is one that was passing. Re-run with `--update` when a change
+moves a count, and commit the baseline with it.
+[`scripts/parse/262-exclusions.mjs`](./packages/jskit/scripts/parse/262-exclusions.mjs)
 holds what is left out of the run entirely: two proposals whose syntax is not
 implemented at all.
 
-`tests/test262.test.ts` is the part that runs without a checkout: a hundred-odd
-negative tests reduced to a line each, plus the valid programs that this corpus
-caught the parser rejecting.
+`tests/parse/test262.test.ts` is the part that runs without a checkout: a
+hundred-odd negative tests reduced to a line each, plus the valid programs that
+this corpus caught the parser rejecting.
 
-The directory is resolved against the working directory, so run these from the
-package they belong to:
+The directory is resolved against the working directory, so run these from
+`packages/jskit`:
 
 ```bash
-cd packages/jsparse && node scripts/conformance-js.mjs ../../node_modules 200
-cd packages/jsscope && node scripts/conformance-ts.mjs ../some-project/src 500
+node scripts/parse/conformance-js.mjs ../../node_modules 200
+node scripts/scope/conformance-ts.mjs ../some-project/src 500
 ```
 
-Note that `node_modules/@eslint/jsparse` and `node_modules/@eslint/jsscope` are
-workspace symlinks, so the corpus includes this repository's own source. That
-is deliberate: it is the only TypeScript in reach that uses recent syntax
-heavily.
+Note that `node_modules/@eslint/jskit` is a workspace symlink, so the corpus
+includes this repository's own source. That is deliberate: it is the only
+TypeScript in reach that uses recent syntax heavily.
 
 `node_modules` contains no `.jsx` or `.tsx` files, so JSX has no real-world
-corpus — it is covered only by the `jsx.json` and `tsx.json` fixtures in each
-package, which are checked against both reference implementations. Pointing a
+corpus — it is covered only by the `jsx.json` and `tsx.json` fixtures under
+`tests/parse/` and `tests/scope/`, which are checked against both reference
+implementations. Pointing a
 conformance script at a React codebase is the way to close that gap.
 
-The fixture files in `packages/jsparse/tests/fixtures/` are the other half of
-that story: a list of source strings, each parsed and compared against the
+The fixture files in `packages/jskit/tests/parse/fixtures/` are the other half
+of that story: a list of source strings, each parsed and compared against the
 reference parser. They exist to reach the syntax the corpus does not, so they
 are derived from what `espree` and `@typescript-eslint/parser` test, from the
 examples in the TypeScript Handbook, and from TypeScript's own conformance
@@ -347,7 +374,8 @@ script at whenever the parser changes shape:
 ```bash
 git clone --depth 1 --filter=blob:none --sparse https://github.com/microsoft/TypeScript
 cd TypeScript && git sparse-checkout set tests/cases
-cd packages/jsparse && node scripts/conformance-ts.mjs <path>/tests/cases/conformance 20000
+cd packages/jskit
+node scripts/parse/conformance-ts.mjs <path>/tests/cases/conformance 20000
 ```
 
 Two things to know before reading its output. Most of the suite is **negative
@@ -382,26 +410,27 @@ add to it or "fix" an output to match a reference.
   them. There is a test pinning this.
 - In `dialect: "js"` mode the TypeScript-only properties are omitted entirely,
   not set to `null`.
-- Those three facts are also the contract `src/ast-types.ts` encodes, which is
-  why `start` and `end` are required there while `range`, `loc`, and every
-  TypeScript-only property are optional. See
-  [`docs/types.md`](./packages/jsparse/docs/types.md) before changing any of
-  them.
-- `jsscope` reproduces `eslint-scope` for JavaScript and JSX and
+- Those three facts are also the contract `src/parse/ast-types.ts` encodes,
+  which is why `start` and `end` are required there while `range`, `loc`, and
+  every TypeScript-only property are optional. See
+  [`docs/parse/types.md`](./packages/jskit/docs/parse/types.md) before changing
+  any of them.
+- The scope analyzer reproduces `eslint-scope` for JavaScript and JSX and
   `@typescript-eslint/scope-manager` for TypeScript. **Where the two disagree,
   `eslint-scope` wins.** The three disagreements that survive as options —
   `jsxPragma`, `jsxFragmentName`, and the TypeScript standard library — all
   default to the `eslint-scope` answer, and are written up in
   [`docs/deviations.md`](./docs/deviations.md).
-- `jsscope`'s two entry points must produce the same graph for the same
-  program, and `null` is the only spelling of "no node" above the accessor
+- The scope analyzer's two entry points must produce the same graph for the
+  same program, and `null` is the only spelling of "no node" above the accessor
   layer, whichever representation is underneath.
 
 ## Benchmarking
 
-The numbers move a lot with machine temperature, and both packages are more
-sensitive to it than the allocation-heavy reference implementations, so a hot
-machine does not just add noise — it changes the ratio.
+The numbers move a lot with machine temperature, and both the parser and the
+scope analyzer are more sensitive to it than the allocation-heavy reference
+implementations, so a hot machine does not just add noise — it changes the
+ratio.
 
 The parser benchmark spends its running time defending against exactly that,
 which is why it takes minutes rather than seconds:
@@ -424,16 +453,16 @@ which is why it takes minutes rather than seconds:
   of them. Never quote a number from one against a number from the other.
 - Compare ratios within a single suite, not absolute numbers across runs.
 - Run one suite alone when comparing two things:
-  `node benchmarks/benchmark.js --suite=ts`.
+  `node benchmarks/parse/benchmark.js --suite=ts`.
 - The TypeScript 7 row in the parser benchmark self-reports as skipped. That is
   expected: `@typescript-eslint/parser` does not accept TypeScript 7 yet.
 
-`npm run bench:chart --workspace=@eslint/jsparse` runs the parser benchmark,
-writes `benchmarks/results.json`, and renders `benchmarks/results.svg` from it —
-a self-contained, theme-aware chart meant to be shared. `benchmarks/chart.js`
-draws the two tiers as separate panels for the reason above, and orders the rows
-by hand rather than by rank so that two charts of different runs can be laid
-over each other.
+`npm run bench:chart --workspace=@eslint/jskit` runs the parser benchmark,
+writes `benchmarks/parse/results.json`, and renders
+`benchmarks/parse/results.svg` from it — a self-contained, theme-aware chart
+meant to be shared. `benchmarks/parse/chart.js` draws the two tiers as separate
+panels for the reason above, and orders the rows by hand rather than by rank so
+that two charts of different runs can be laid over each other.
 
 The scope analyzer's benchmark is unrelated and still measures its contenders in
 one process.

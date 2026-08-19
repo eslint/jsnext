@@ -22,14 +22,14 @@ const ROOT = new URL("../../../", import.meta.url);
 /** Every registration site, in the order the skill walks them. */
 const SITES = [
 	{
-		file: "packages/jsparse/src/node-kinds.ts",
+		file: "packages/jskit/src/parse/node-kinds.ts",
 		label: "kind constant",
 		always: true,
 		test: (src, kind) =>
 			new RegExp(`^export const ${kind} = (\\d+);`, "mu").test(src),
 	},
 	{
-		file: "packages/jsparse/src/node-kinds.ts",
+		file: "packages/jskit/src/parse/node-kinds.ts",
 		label: "kind name",
 		always: true,
 		test: (src, kind, type) =>
@@ -38,20 +38,20 @@ const SITES = [
 			),
 	},
 	{
-		file: "packages/jsparse/src/slots.ts",
+		file: "packages/jskit/src/parse/slots.ts",
 		label: "slot layout",
 		always: false,
 		note: "only needed when the node has child slots",
 		test: (src, kind) => referencedInDefine(src, kind),
 	},
 	{
-		file: "packages/jsparse/src/parser.ts",
+		file: "packages/jskit/src/parse/parser.ts",
 		label: "parser emits it",
 		always: true,
 		alsoSearch: [
-			"packages/jsparse/src/parser-expressions.ts",
-			"packages/jsparse/src/parser-types.ts",
-			"packages/jsparse/src/parser-jsx.ts",
+			"packages/jskit/src/parse/parser-expressions.ts",
+			"packages/jskit/src/parse/parser-types.ts",
+			"packages/jskit/src/parse/parser-jsx.ts",
 		],
 
 		/*
@@ -63,21 +63,21 @@ const SITES = [
 			new RegExp(`\\b${kind}\\b`, "u").test(withoutImports(src)),
 	},
 	{
-		file: "packages/jsparse/src/to-ast.ts",
+		file: "packages/jskit/src/parse/to-ast.ts",
 		label: "decoder case",
 		always: false,
 		note: "only needed when the node carries properties",
 		test: (src, kind) => new RegExp(`case ${kind}:`, "u").test(src),
 	},
 	{
-		file: "packages/jsparse/src/ast-types.ts",
+		file: "packages/jskit/src/parse/ast-types.ts",
 		label: "type declaration",
 		always: true,
 		test: (src, kind, type) =>
 			new RegExp(`\ttype: "${type}";`, "u").test(src),
 	},
 	{
-		file: "packages/jsscope/src/slot-names.ts",
+		file: "packages/jskit/src/scope/slot-names.ts",
 		label: "scope slot names",
 		always: false,
 		note: "only needed when the node has child slots",
@@ -205,11 +205,11 @@ function stable(value) {
 /*
  * The two entry points do not represent a node the same way -- the binary walk
  * works in node indices and the tree walk in objects -- so the graphs cannot
- * be compared field by field. `jsscope`'s own conformance scripts already
- * solve this, and reusing their serializer keeps this honest with them.
+ * be compared field by field. The scope conformance scripts already solve
+ * this, and reusing their serializer keeps this honest with them.
  */
 const { serializeBinary, serializeReference, firstDifference } = await import(
-	pathToFileURL(new URL("packages/jsscope/scripts/serialize.mjs", ROOT).pathname)
+	pathToFileURL(new URL("packages/jskit/scripts/scope/serialize.mjs", ROOT).pathname)
 );
 
 /** What the JavaScript conformance run compares. */
@@ -290,11 +290,8 @@ if (!code) {
 	process.exit(failures > 0 ? 1 : 0);
 }
 
-const jsparse = await import(
-	pathToFileURL(new URL("packages/jsparse/dist/jsparse.js", ROOT).pathname)
-);
-const jsscope = await import(
-	pathToFileURL(new URL("packages/jsscope/dist/jsscope.js", ROOT).pathname)
+const jskit = await import(
+	pathToFileURL(new URL("packages/jskit/dist/jskit.js", ROOT).pathname)
 );
 
 console.log("\n## Round trip\n");
@@ -304,14 +301,14 @@ const dialect = isTypeScript ? "ts" : "js";
 let result;
 
 try {
-	result = jsparse.parse(code);
+	result = jskit.parse(code, { sourceType });
 	console.log("  ok    parse");
 } catch (error) {
 	console.log(`  FAIL  parse: ${error.message}`);
 	process.exit(1);
 }
 
-const { ast, errors } = jsparse.toAST(result, { sourceType, dialect });
+const { ast, errors } = jskit.toAST(result, { sourceType, dialect });
 const found = collect(ast, type);
 
 if (found.length === 0) {
@@ -357,7 +354,7 @@ if (errors.length > 0) {
  * TypeScript but accepted in JavaScript is in the wrong partition.
  */
 if (isTypeScript) {
-	const asJs = jsparse.toAST(result, { sourceType, dialect: "js" });
+	const asJs = jskit.toAST(result, { sourceType, dialect: "js" });
 
 	if (asJs.errors.length === 0) {
 		failures++;
@@ -373,22 +370,28 @@ const options = { sourceType, dialect };
 const flags = isTypeScript ? TS_FLAGS : JS_FLAGS;
 
 try {
-	const binary = serializeBinary(jsscope.analyze(result, options), {
-		...flags,
-		...(isTypeScript ? { tsProgramExtent: true } : {}),
-	});
-	const tree = serializeReference(jsscope.analyzeTree(ast, options), flags);
+	const binary = serializeBinary(
+		jskit.toScopeManager(jskit.analyze(result, options), result),
+		{
+			...flags,
+			...(isTypeScript ? { tsProgramExtent: true } : {}),
+		},
+	);
+	const tree = serializeReference(
+		jskit.toScopeManager(jskit.analyzeTree(ast, options), ast),
+		flags,
+	);
 	const diff = firstDifference(binary, tree);
 
 	if (diff === null) {
-		console.log("  ok    jsscope: both entry points produce the same graph");
+		console.log("  ok    scope: both entry points produce the same graph");
 	} else {
 		failures++;
-		console.log(`  FAIL  jsscope entry points disagree:\n        ${diff}`);
+		console.log(`  FAIL  scope entry points disagree:\n        ${diff}`);
 	}
 } catch (error) {
 	failures++;
-	console.log(`  FAIL  jsscope threw: ${error.message}`);
+	console.log(`  FAIL  scope analysis threw: ${error.message}`);
 }
 
 /*
@@ -435,7 +438,7 @@ try {
 console.log(
 	failures > 0
 		? `\n${failures} problem(s). See .agents/skills/add-node-type/SKILL.md`
-		: "\nAll checks passed. Now run the corpus checks:\n  npm run conformance --workspace=@eslint/jsparse",
+		: "\nAll checks passed. Now run the corpus checks:\n  npm run conformance --workspace=@eslint/jskit",
 );
 
 process.exit(failures > 0 ? 1 : 0);

@@ -1,17 +1,19 @@
 /**
- * @fileoverview Runs a program through all three packages and collects what
+ * @fileoverview Runs a program through all three analyses and collects what
  * each one produced, keeping the failures separate so one analysis breaking
  * does not blank the others.
  */
 
 import {
+	analyze,
+	createGraph,
 	parse,
 	toAST,
+	toGraphTree,
+	toScopeTree,
 	type ParseResult,
 	type ValidationError,
-} from "@eslint/jsparse";
-import { analyze, toScopeTree } from "@eslint/jsscope";
-import { createGraph, toGraphTree } from "@eslint/jsflow";
+} from "@eslint/jskit";
 
 /**
  * How the program should be interpreted, shared by `toAST()` and

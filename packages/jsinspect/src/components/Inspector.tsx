@@ -94,7 +94,7 @@ export default function Inspector(): ReactNode {
 				<div className="flex items-baseline gap-3">
 					<h1 className="text-base font-semibold">jsinspect</h1>
 					<p className="text-muted-foreground hidden text-sm sm:block">
-						jsparse · jsscope · jsflow
+						parse · scope · flow
 					</p>
 				</div>
 				<div className="flex flex-wrap items-center gap-4 text-sm">

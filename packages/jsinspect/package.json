@@ -1,16 +1,16 @@
 {
 	"name": "@eslint/jsinspect",
 	"version": "0.0.0",
-	"description": "A web app for inspecting how @eslint/jsparse, @eslint/jsscope, and @eslint/jsflow see a program.",
+	"description": "A web app for inspecting how @eslint/jskit parses, scopes, and graphs a program.",
 	"type": "module",
 	"private": true,
 	"scripts": {
-		"predev": "npm run build --workspace=@eslint/jsparse && npm run build --workspace=@eslint/jsscope && npm run build --workspace=@eslint/jsflow",
+		"predev": "npm run build --workspace=@eslint/jskit",
 		"dev": "astro dev",
-		"prebuild": "npm run build --workspace=@eslint/jsparse && npm run build --workspace=@eslint/jsscope && npm run build --workspace=@eslint/jsflow",
+		"prebuild": "npm run build --workspace=@eslint/jskit",
 		"build": "astro build",
 		"preview": "astro preview",
-		"pretypecheck": "npm run build --workspace=@eslint/jsparse && npm run build --workspace=@eslint/jsscope && npm run build --workspace=@eslint/jsflow",
+		"pretypecheck": "npm run build --workspace=@eslint/jskit",
 		"typecheck": "tsc --noEmit"
 	},
 	"keywords": [
@@ -27,9 +27,7 @@
 		"@astrojs/react": "^4.2.0",
 		"@codemirror/lang-javascript": "^6.2.2",
 		"@codemirror/theme-one-dark": "^6.1.2",
-		"@eslint/jsflow": "^0.0.0",
-		"@eslint/jsparse": "^0.0.0",
-		"@eslint/jsscope": "^0.0.0",
+		"@eslint/jskit": "^0.0.0",
 		"@radix-ui/react-tabs": "^1.1.2",
 		"@tailwindcss/vite": "^4.0.0",
 		"astro": "^5.2.0",

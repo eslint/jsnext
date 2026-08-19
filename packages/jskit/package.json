@@ -1,0 +1,46 @@
+{
+	"name": "@eslint/jskit",
+	"version": "0.0.0",
+	"description": "A fast, ESLint-compatible parser, scope analyzer, and control flow analyzer for JavaScript and TypeScript.",
+	"type": "module",
+	"main": "./dist/jskit.js",
+	"module": "./dist/jskit.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/jskit.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"sideEffects": false,
+	"scripts": {
+		"build": "node scripts/build.js && tsc -p tsconfig.build.json",
+		"pretest": "npm run build",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"typecheck": "tsc --noEmit",
+		"bench": "npm run build && node benchmarks/parse/benchmark.js && node benchmarks/scope/benchmark.js",
+		"bench:chart": "npm run build && node benchmarks/parse/benchmark.js --json=benchmarks/parse/results.json && node benchmarks/parse/chart.js benchmarks/parse/results.json benchmarks/parse/results.svg",
+		"conformance": "npm run build && node scripts/parse/conformance-js.mjs ../../node_modules 5000 && node scripts/parse/conformance-tokens.mjs ../../node_modules 5000 && node scripts/parse/conformance-ts.mjs ../../node_modules 5000 && node scripts/parse/conformance-types.mjs ../../node_modules 5000 && node scripts/parse/derive-shapes.mjs && node scripts/scope/conformance-js.mjs ../../node_modules 5000 && node scripts/scope/conformance-ts.mjs ../../node_modules 5000",
+		"conformance:262": "npm run build && node scripts/parse/conformance-262.mjs",
+		"conformance:ts": "npm run build && node scripts/parse/conformance-ts-negative.mjs"
+	},
+	"keywords": [
+		"parser",
+		"scope",
+		"scope-analysis",
+		"control-flow",
+		"cfg",
+		"code-path",
+		"javascript",
+		"typescript",
+		"eslint",
+		"estree",
+		"ast"
+	],
+	"author": "",
+	"license": "Apache-2.0"
+}

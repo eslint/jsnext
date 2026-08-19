@@ -2,11 +2,11 @@ dist
 node_modules
 
 # The default place to clone test262, which `npm run conformance:262
-# --workspace=@eslint/jsparse` reads. It is a large checkout of somebody
-# else's repository; see packages/jsparse/scripts/README.md.
+# --workspace=@eslint/jskit` reads. It is a large checkout of somebody
+# else's repository; see packages/jskit/scripts/README.md.
 /test262
 
 # What `npm run bench:chart` produces. Regenerable in one command, and a
 # committed benchmark number is stale the moment the parser changes.
-packages/*/benchmarks/results.json
-packages/*/benchmarks/results.svg
+packages/jskit/benchmarks/*/results.json
+packages/jskit/benchmarks/*/results.svg
