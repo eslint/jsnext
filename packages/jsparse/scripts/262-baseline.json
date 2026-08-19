@@ -1,13 +1,8 @@
 {
-	"test/language/expressions/arrow-function": 1,
-	"test/language/expressions/async-generator": 1,
 	"test/language/expressions/class": 1,
 	"test/language/expressions/delete": 2,
-	"test/language/expressions/generators": 1,
-	"test/language/expressions/object": 2,
 	"test/language/expressions/optional-chaining": 4,
 	"test/language/identifiers": 1,
-	"test/language/statements/class": 2,
-	"test/language/statements/generators": 1,
+	"test/language/statements/class": 1,
 	"test/language/statements/switch": 1
 }

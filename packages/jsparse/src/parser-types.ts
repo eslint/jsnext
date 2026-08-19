@@ -1322,12 +1322,26 @@ export abstract class TypeParser extends ParserBase {
 	}
 
 	/**
+	 * Whether a line terminator preceded the token `kindAfterMatchingParen()`
+	 * last reported. Only the arrow reads it, and only ever right after that
+	 * call.
+	 */
+	private newlineAfterMatchingParen = false;
+
+	/**
 	 * Scans forward from the current `(` to its match and reports whether an
 	 * arrow follows.
+	 *
+	 * `ArrowParameters [no LineTerminator here] =>` — so an arrow on the next
+	 * line is not this arrow's, and the parenthesized expression ends where
+	 * it stands.
 	 * @returns `true` when the matching `)` is followed by `=>`.
 	 */
 	protected parenthesizedIsFollowedByArrow(): boolean {
-		return this.kindAfterMatchingParen() === T_ARROW;
+		return (
+			this.kindAfterMatchingParen() === T_ARROW &&
+			!this.newlineAfterMatchingParen
+		);
 	}
 
 	/**
@@ -1372,6 +1386,7 @@ export abstract class TypeParser extends ParserBase {
 			}
 
 			result = this.kind;
+			this.newlineAfterMatchingParen = this.newlineBefore;
 		} catch {
 			/*
 			 * This scan runs in ordinary JavaScript mode, so content that only
@@ -1380,6 +1395,7 @@ export abstract class TypeParser extends ParserBase {
 			 * list, which is all this lookahead needs to decide.
 			 */
 			result = T_EOF;
+			this.newlineAfterMatchingParen = false;
 		} finally {
 			this.tokenizer.restore(state);
 		}

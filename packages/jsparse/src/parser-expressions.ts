@@ -251,7 +251,12 @@ export abstract class ExpressionParser extends TypeParser {
 
 		this.next();
 
-		if (this.eat(T_STAR)) {
+		/*
+		 * `yield [no LineTerminator here] *`. A newline between the two ends
+		 * the `yield`, and the `*` on the next line begins nothing, so the
+		 * parse fails there rather than here.
+		 */
+		if (!this.newlineBefore && this.eat(T_STAR)) {
 			this.writer.addFlags(node, NF_DELEGATE);
 			this.writer.set(node, NODE_A, this.parseAssignmentExpression());
 		} else if (
@@ -1225,7 +1230,7 @@ export abstract class ExpressionParser extends TypeParser {
 		let isGenerator = false;
 		let methodKind = MKIND_INIT;
 
-		if (this.at(T_async) && this.nextStartsPropertyName()) {
+		if (this.at(T_async) && this.nextStartsPropertyName(false)) {
 			this.next();
 			isAsync = true;
 		}
@@ -1362,21 +1367,25 @@ export abstract class ExpressionParser extends TypeParser {
 
 	/**
 	 * Determines whether a property name follows the current token.
+	 * @param allowNewline Whether a line terminator may come between the two.
+	 *      Only `async` forbids one, so `({ get\n x() {} })` is an ordinary
+	 *      getter while `({ async\n x() {} })` is not a method at all.
 	 * @returns `true` when the next token can start a property name.
 	 */
-	private nextStartsPropertyName(): boolean {
+	private nextStartsPropertyName(allowNewline = true): boolean {
 		const state = this.tokenizer.save();
 
 		this.next();
 
 		const kind = this.kind;
 		const result =
-			isIdentifierNameKind(kind) ||
-			kind === T_STRING ||
-			kind === T_NUMBER ||
-			kind === T_BRACKET_OPEN ||
-			kind === T_PRIVATE_IDENT ||
-			kind === T_STAR;
+			(isIdentifierNameKind(kind) ||
+				kind === T_STRING ||
+				kind === T_NUMBER ||
+				kind === T_BRACKET_OPEN ||
+				kind === T_PRIVATE_IDENT ||
+				kind === T_STAR) &&
+			(allowNewline || !this.newlineBefore);
 
 		this.tokenizer.restore(state);
 

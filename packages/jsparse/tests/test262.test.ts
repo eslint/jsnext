@@ -572,6 +572,13 @@ const valid: [string, "script" | "module"][] = [
 	["import.meta;", "module"],
 	["class C { static { async function g() { await 0; } } }", "script"],
 	["class C { static { () => { return 1; } } }", "script"],
+
+	// A line terminator only matters where the grammar says it does.
+	["function* g() { yield\n1; }", "script"],
+	["({ get\nx() {} });", "script"],
+	["({ set\nx(v) {} });", "script"],
+	["({ *\ng() {} });", "script"],
+	["class C { async\nx() {} }", "script"],
 ];
 
 describe("test262 positive tests", () => {

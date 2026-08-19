@@ -589,5 +589,10 @@
 	{ "code": "new.target;", "sourceType": "module" },
 	{ "code": "function f() { class C { static { return; } } }", "sourceType": "script" },
 	{ "code": "async function f() { class C { static { await 0; } } }", "sourceType": "script" },
-	{ "code": "function* g() { class C { static { yield; } } }", "sourceType": "script" }
+	{ "code": "function* g() { class C { static { yield; } } }", "sourceType": "script" },
+
+	{ "code": "function* g() { yield\n* 1; }", "sourceType": "script" },
+	{ "code": "var af = ()\n=> {};", "sourceType": "script" },
+	{ "code": "var f = (x)\n=> {};", "sourceType": "script" },
+	{ "code": "({ async\nfoo() {} });", "sourceType": "script" }
 ]

@@ -351,6 +351,41 @@ describe("syntax errors", () => {
 	});
 
 	/*
+	 * Three places the grammar writes `[no LineTerminator here]`. Each one
+	 * exists so that automatic semicolon insertion cannot reach across and
+	 * change what the line means.
+	 */
+	it("throws for a line terminator the grammar forbids", () => {
+		for (const code of [
+			"function* g() { yield\n* 1; }",
+			"var af = ()\n=> {};",
+			"var f = (x)\n=> {};",
+			"var f = x\n=> {};",
+			"({ async\nfoo() {} });",
+			"async\n() => 1;",
+		]) {
+			expect(() => parse(code, { sourceType: "script" })).toThrow();
+		}
+	});
+
+	/*
+	 * Only `async` carries the restriction among the property-name prefixes,
+	 * and a class body sidesteps it: `async` on a line of its own is a field
+	 * called `async`, with the method after it.
+	 */
+	it("accepts a line terminator where none is forbidden", () => {
+		for (const code of [
+			"function* g() { yield\n1; }",
+			"({ get\nx() {} });",
+			"({ set\nx(v) {} });",
+			"({ *\ng() {} });",
+			"class C { async\nx() {} }",
+		]) {
+			expect(() => parse(code, { sourceType: "script" })).not.toThrow();
+		}
+	});
+
+	/*
 	 * `ExponentiationExpression` takes an `UpdateExpression` on the left, and
 	 * `CoalesceExpression` takes a `BitwiseORExpression` on either side. Both
 	 * refuse an operand whose reading would be a guess, and parentheses are
