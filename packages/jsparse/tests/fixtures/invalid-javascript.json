@@ -601,5 +601,10 @@
 	{ "code": "a?.[b]`h`;", "sourceType": "script" },
 	{ "code": "a?.b`h`.c;", "sourceType": "script" },
 	{ "code": "delete x;", "sourceType": "module" },
-	{ "code": "delete ((x));", "sourceType": "module" }
+	{ "code": "delete ((x));", "sourceType": "module" },
+
+	{ "code": "var this = 1;", "sourceType": "script" },
+	{ "code": "try {} catch (this) {}", "sourceType": "script" },
+	{ "code": "class C extends async () => {} {}", "sourceType": "script" },
+	{ "code": "switch (q) { default: ; default: ; }", "sourceType": "script" }
 ]

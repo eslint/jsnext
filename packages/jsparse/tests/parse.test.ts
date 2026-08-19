@@ -351,6 +351,27 @@ describe("syntax errors", () => {
 	});
 
 	/*
+	 * `ClassHeritage : extends LeftHandSideExpression`, and an arrow is an
+	 * `AssignmentExpression`. Only the async form gets far enough to need
+	 * this: `class C extends x => x {}` stops at the `=>` on its own.
+	 */
+	it("throws for a class extending an arrow function", () => {
+		expect(() => parse("class C extends async () => {} {}")).toThrow(
+			/may not extend an arrow function/u,
+		);
+	});
+
+	it("still takes the heritage clauses that are expressions", () => {
+		for (const code of [
+			"class C extends (async () => {}) {}",
+			"class C extends Mix(A, B) {}",
+			"class C extends a.b {}",
+		]) {
+			expect(() => parse(code)).not.toThrow();
+		}
+	});
+
+	/*
 	 * Three places the grammar writes `[no LineTerminator here]`. Each one
 	 * exists so that automatic semicolon insertion cannot reach across and
 	 * change what the line means.

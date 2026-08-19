@@ -289,7 +289,7 @@ is always there.
 
 Not deviations — bugs that are simply not fixed yet.
 
-The first three were found by running TypeScript's own conformance suite (see
+All three were found by running TypeScript's own conformance suite (see
 [AGENTS.md](../AGENTS.md#conformance-is-the-real-test-suite)) and all three are
 confined to input that is already an error, which is why they have been left.
 
@@ -306,17 +306,11 @@ confined to input that is already an error, which is why they have been left.
   Matching TypeScript's recovery is not a goal — see [the rule that decides
   where code goes](../AGENTS.md#the-rule-that-decides-where-code-goes).
 
-The last one comes from test262, which is the only corpus that tests what the
-parser *rejects*. No valid program is rejected — that count is zero and has to
-stay there — so what is left is invalid programs accepted in silence.
-
-- **Most of ECMAScript's early errors.** Four test262 files are invalid
-  programs that both phases accept: `class C extends async () => {}`,
-  `var this`, and two `default` clauses in one `switch`.
-  The families are enumerated with rough counts in
-  [`packages/jsparse/scripts/262-exclusions.mjs`](../packages/jsparse/scripts/262-exclusions.mjs),
-  and the per-directory counts are pinned in `262-baseline.json` so that the
-  number cannot quietly grow.
+ECMAScript's early errors used to be the fourth entry here, and are not any
+more. test262 is the only corpus that tests what the parser *rejects*, and both
+of its counts are now zero: no valid program is rejected, and no invalid one is
+accepted. `262-baseline.json` is an empty object, so any directory that starts
+failing is one that was passing.
 
 ## Not deviations
 

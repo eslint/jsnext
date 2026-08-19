@@ -131,6 +131,7 @@ import {
 	T_await,
 	T_delete,
 	T_in,
+	T_this,
 	T_yield,
 	lookupKeyword,
 	hashChar,
@@ -185,6 +186,9 @@ const CH_BACKSLASH = 0x5c;
  */
 const CH_a = 0x61;
 const CH_e = 0x65;
+
+/** The letter `this` begins with. */
+const CH_t = 0x74;
 
 /**
  * Which characters an identifier that might be a reserved word can start with.
@@ -907,14 +911,31 @@ class Validator {
 			case N_SwitchStatement: {
 				const cases = reader.field(node, NODE_B);
 				const size = reader.listSize(cases);
+				let sawDefault = false;
 
 				this.enterScope(false);
 
 				for (let i = 0; i < size; i++) {
-					this.hoist(
-						reader.field(reader.listItem(cases, i), NODE_B),
-						false,
-					);
+					const clause = reader.listItem(cases, i);
+
+					/*
+					 * A `default` clause is the one with no test, and a
+					 * second would be unreachable: the switch runs the first
+					 * it finds and there is no order in which the other could
+					 * win.
+					 */
+					if (reader.field(clause, NODE_A) === 0) {
+						if (sawDefault) {
+							this.report(
+								"A switch statement may only have one default clause.",
+								reader.start(clause),
+							);
+						}
+
+						sawDefault = true;
+					}
+
+					this.hoist(reader.field(clause, NODE_B), false);
 				}
 
 				this.switchDepth++;
@@ -2163,6 +2184,26 @@ class Validator {
 				) {
 					this.report(
 						"'let' may not be the name a lexical declaration binds.",
+						reader.start(node),
+					);
+				}
+
+				/*
+				 * `this` gets this far only because a parameter list may bind
+				 * it: TypeScript's `this` parameter names the receiver rather
+				 * than an argument. Everywhere else it is a name no reference
+				 * could reach, since `this` in the body would still mean the
+				 * receiver. Written with an escape it never arrives at all —
+				 * the tokenizer refuses that outright — so the first letter
+				 * rules out every other name.
+				 */
+				if (
+					binding !== BINDING_PARAM &&
+					reader.source.charCodeAt(reader.start(node)) === CH_t &&
+					this.keywordAt(node) === T_this
+				) {
+					this.report(
+						"'this' may not be bound as a name.",
 						reader.start(node),
 					);
 				}

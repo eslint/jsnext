@@ -6,11 +6,14 @@
  * two kinds of failure and they are not equally bad:
  *
  * - **overzealous** — a valid program this parser rejects. This breaks working
- *   code and the standard is zero. Anything above zero is a defect, and the
- *   remaining handful are named below.
- * - **missed** — an invalid program this parser accepts. There are still
- *   thousands, because most of ECMAScript's early errors are not implemented.
- *   They are grouped into families below.
+ *   code and the standard is zero.
+ * - **missed** — an invalid program this parser accepts. This is zero as well,
+ *   as of the last of the early-error families landing; `262-baseline.json` is
+ *   an empty object because there is no directory left with a failure in it.
+ *
+ * Both being zero is what makes this file short. What remains in it is the two
+ * proposals whose tests are skipped outright, because the syntax is not
+ * implemented at all.
  */
 
 /**
@@ -53,26 +56,19 @@ export const UNSUPPORTED_FEATURES = new Set([
 export const KNOWN_OVERZEALOUS = 0;
 
 /*
- * The families of early error that are not implemented, largest first. This is
- * the list to read before deciding what to implement next.
+ * There is no list of unimplemented early errors here any more, because there
+ * are none: every invalid program in the corpus is now rejected by one phase
+ * or the other. The run reports which phase does it, and the balance is worth
+ * knowing before adding a rule — today 1,317 come from `parse()` against 3,093
+ * from `validate()`.
  *
- * Nearly all of it belongs to `validate()` rather than to `parse()`, and the
- * reason is the phase rule: `parse()` already built a tree for every one of
- * these files, so by definition the tokens *could* be shaped into one and the
- * complaint is a static-semantics rule about the tree. The exceptions are the
- * lexical family and the two grammar ones — `import(...spread)`, `a ?? b || c`
- * — where no tree should have been built at all, and those are the parser's.
+ * That split is the phase rule at work rather than an accident. `parse()`
+ * rejects what cannot be tokenized or shaped into a tree: a malformed escape,
+ * a numeric separator against a leading zero, `-a ** b`, a line terminator
+ * where the grammar forbids one. Everything else is a static-semantics rule
+ * about a tree that was built successfully, and belongs to `validate()`.
  *
- * The run reports which phase catches what it does catch, so the balance is
- * visible: today it is 1,315 from `parse()` against 3,091 from `validate()`.
- *
- * Counts are approximate: a test usually violates one rule but the families
- * overlap at the edges, and the authority on the totals is
- * `262-baseline.json`. They are here to say what implementing one would be
- * worth, not to be summed.
- *
- * - **Expression-level grammar** (~6, mixed). `delete x` in strict mode, and a
- *   template literal in the tail position of an optional chain.
- * - **Stragglers** (4, mixed). `class C extends async () => {}`, `var this`,
- *   and two `default` clauses in one `switch`.
+ * A new rule goes on whichever side of that line it falls, and
+ * `262-baseline.json` is the guard: it is an empty object, so any directory
+ * that starts failing is a directory that was passing.
  */

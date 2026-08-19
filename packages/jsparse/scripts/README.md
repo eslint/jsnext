@@ -89,22 +89,20 @@ Two counts come out of it and they are not equally bad:
 - **overzealous** — a valid program the parser rejects. This breaks working
   code. It is zero, and `KNOWN_OVERZEALOUS` in `262-exclusions.mjs` fails the
   run if it climbs.
-- **missed** — an invalid program the parser accepts. Thousands, because most
-  of ECMAScript's early errors are not implemented yet.
+- **missed** — an invalid program the parser accepts. Also zero: every early
+  error this corpus tests is implemented.
 
-Only one of them can be graded against zero, so both are also
-graded against `262-baseline.json`, which holds a failure count per directory:
-a count that went up is a regression even in a directory that was never clean,
-and a count that went down is a fix the baseline should record. Re-run with
-`--update` once the change is understood, and commit the result along with it.
+Both are graded against `262-baseline.json` as well, which holds a failure
+count per directory. It is an empty object now, so any directory that starts
+failing is one that was passing. Re-run with `--update` once the change is
+understood, and commit the result along with it.
 
-`262-exclusions.mjs` is the prose half of the same story. It lists the
-proposals whose tests are skipped outright because the syntax is not
-implemented at all, and groups the missed early errors into families with rough
-counts — which is the list to read before deciding what to implement next.
+`262-exclusions.mjs` is the prose half of the same story: the proposals whose
+tests are skipped outright because the syntax is not implemented at all, and
+why the phase split falls where it does.
 
 ```
-files=52095 valid=47149 invalid=2230 (parse=998 validate=1232) skipped=536 missed=2180 overzealous=0
+files=52095 valid=47149 invalid=4410 (parse=1317 validate=3093) skipped=536 missed=0 overzealous=0
 baseline unchanged
 ```
 

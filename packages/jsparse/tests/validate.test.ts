@@ -1091,6 +1091,49 @@ describe("rest elements", () => {
 	});
 });
 
+describe("this as a name", () => {
+	/*
+	 * `this` reaches the binding paths at all only because a parameter list
+	 * may bind it: TypeScript's `this` parameter names the receiver rather
+	 * than an argument.
+	 */
+	it("refuses this as a bound name", () => {
+		expect(messages("var this = 1;")).toEqual([
+			"'this' may not be bound as a name.",
+		]);
+		expect(messages("try {} catch (this) {}")).toHaveLength(1);
+		expect(messages("const [this] = x;")).toHaveLength(1);
+	});
+
+	it("still takes a TypeScript this parameter", () => {
+		expect(messages("function f(this) {}")).toEqual([]);
+		expect(messages("function f(this: T) {}")).toEqual([]);
+	});
+
+	it("leaves names that merely begin with a t alone", () => {
+		expect(messages("var that = 1, t = 2;")).toEqual([]);
+	});
+});
+
+describe("switch statements", () => {
+	/*
+	 * A `default` clause is the one with no test, and a second would be
+	 * unreachable: the switch runs the first it finds.
+	 */
+	it("refuses a second default clause", () => {
+		expect(messages("switch (q) { default: ; default: ; }")).toEqual([
+			"A switch statement may only have one default clause.",
+		]);
+	});
+
+	it("allows one default among any number of cases", () => {
+		expect(messages("switch (q) { case 1: ; default: ; case 2: ; }")).toEqual(
+			[],
+		);
+		expect(messages("switch (q) {}")).toEqual([]);
+	});
+});
+
 describe("optional chains", () => {
 	const script = { sourceType: "script" } as const;
 

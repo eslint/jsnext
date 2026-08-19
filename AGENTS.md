@@ -256,22 +256,23 @@ npm run conformance:262 --workspace=@eslint/jsparse
 ```
 
 ```
-files=52095 valid=47149 invalid=4406 (parse=1315 validate=3091) skipped=536 missed=4 overzealous=0
+files=52095 valid=47149 invalid=4410 (parse=1317 validate=3093) skipped=536 missed=0 overzealous=0
 baseline unchanged
 ```
 
-Read those two counts differently. **overzealous** is a valid program the
-parser rejects, which breaks working code; it is zero and has to stay there.
-**missed** is an invalid program it accepts, and there are still thousands,
-because most of ECMAScript's early errors are not implemented.
-[`scripts/262-exclusions.mjs`](./packages/jsparse/scripts/262-exclusions.mjs)
-groups them into families, and it is the list to read before deciding what to
-implement next.
+Both counts are zero and both have to stay there. **overzealous** is a valid
+program the parser rejects, which breaks working code. **missed** is an invalid
+program it accepts; every early error the corpus tests is now implemented, on
+whichever side of the phase line it falls — 1,317 of them from `parse()` and
+3,093 from `validate()`.
 
 Both are graded against `scripts/262-baseline.json`, a failure count per
-directory, so a new failure shows up even where the count was never zero.
-Re-run with `--update` when a change moves a count, and commit the baseline
-with it.
+directory. It is now an empty object, so any directory that starts failing is
+one that was passing. Re-run with `--update` when a change moves a count, and
+commit the baseline with it.
+[`scripts/262-exclusions.mjs`](./packages/jsparse/scripts/262-exclusions.mjs)
+holds what is left out of the run entirely: two proposals whose syntax is not
+implemented at all.
 
 `tests/test262.test.ts` is the part that runs without a checkout: a hundred-odd
 negative tests reduced to a line each, plus the valid programs that this corpus

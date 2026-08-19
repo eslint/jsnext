@@ -587,6 +587,10 @@ const valid: [string, "script" | "module"][] = [
 	["(a?.b)`h`.c;", "script"],
 	["delete x;", "script"],
 	["delete x.y;", "module"],
+	["class C extends (async () => {}) {}", "script"],
+	["class C extends Mix(A, B) {}", "script"],
+	["switch (q) { case 1: ; default: ; case 2: ; }", "script"],
+	["var that = 1, t = 2;", "script"],
 ];
 
 describe("test262 positive tests", () => {

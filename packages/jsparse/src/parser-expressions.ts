@@ -2393,11 +2393,29 @@ export abstract class ExpressionParser extends TypeParser {
 			 * The type arguments that may follow are the class's own, as in
 			 * `class C extends B<T> {}`, and are parsed separately below.
 			 */
-			this.writer.set(
-				node,
-				NODE_B,
-				this.parseCallOrMemberExpression(false),
-			);
+			const heritage = this.parseCallOrMemberExpression(false);
+
+			/*
+			 * `ClassHeritage : extends LeftHandSideExpression`, and an arrow
+			 * is an `AssignmentExpression`. Only the async form gets this
+			 * far: `class C extends x => x {}` stops at the `=>` on its own,
+			 * because `x` is the whole of the heritage and nothing may follow
+			 * it, while `async (...)` reads as a call and the arrow is
+			 * decided after. Parentheses make it an expression again.
+			 */
+			if (
+				this.writer.get(heritage, NODE_KIND) ===
+					N_ArrowFunctionExpression &&
+				(this.writer.get(heritage, NODE_FLAGS) & NF_PARENTHESIZED) ===
+					0
+			) {
+				throw this.error(
+					"A class may not extend an arrow function.",
+					this.writer.get(heritage, NODE_START),
+				);
+			}
+
+			this.writer.set(node, NODE_B, heritage);
 
 			if (this.at(T_LT)) {
 				this.writer.set(node, NODE_E, this.parseTypeArguments());
