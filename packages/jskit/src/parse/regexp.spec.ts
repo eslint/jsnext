@@ -467,6 +467,92 @@ describe("RegExpValidator", () => {
 		});
 	});
 
+	describe("the v flag's class set grammar", () => {
+		accepts([
+			// Nested classes, unions, and the two set operators.
+			["[[a][b]]", "v"],
+			["[[a]&&[b]]", "v"],
+			["[[a]&&\\d]", "v"],
+			["[a&&b&&c]", "v"],
+			["[[a]--[b]]", "v"],
+			["[a--b]", "v"],
+			["[\\d--\\w]", "v"],
+			["[\\p{ASCII}--\\p{Letter}]", "v"],
+			["[^[a]]", "v"],
+
+			// String literals, and the one-character case that is not a string.
+			["[\\q{ab}]", "v"],
+			["[\\q{ab|cd}]", "v"],
+			["[\\q{}]", "v"],
+			["[^\\q{a}]", "v"],
+			["[\\q{a}--\\q{b}]", "v"],
+
+			// `\\b` means a backspace inside a class, in both modes.
+			["[\\b]", "v"],
+			["[\\b]", ""],
+		]);
+
+		rejects([
+			[
+				"[^\\q{ab}]",
+				"v",
+				"Negated character class may contain strings.",
+			],
+			[
+				"[[^\\q{ab}]]",
+				"v",
+				"Negated character class may contain strings.",
+			],
+			["[z-a]", "v", "Range out of order in character class."],
+			["[&&]", "v", "Invalid character in character class."],
+			["[a&&]", "v", "Invalid character in character class."],
+			["[[a]&&&]", "v", "Invalid character in character class."],
+			["[--]", "v", "Invalid character in character class."],
+			["[a---b]", "v", "Invalid character in character class."],
+			["[\\z]", "v", "Invalid character in character class."],
+			["[[]", "v", "Unterminated character class."],
+		]);
+	});
+
+	describe("code points above the basic plane", () => {
+		accepts([
+			// A surrogate pair is one code point under `u`, written either way.
+			["\\u{1F600}", "u"],
+			["\\uD83D\\uDE00", "u"],
+			["😀", "u"],
+			["[😀]", "u"],
+			["[\\u{1F600}-\\u{1F601}]", "u"],
+			["[😀-😁]", "u"],
+
+			// A lead surrogate with nothing after it stays a lone code unit.
+			["\\uD800", "u"],
+			["\\uD800a", "u"],
+
+			// A non-ASCII group name, which needs the same code point reading.
+			["(?<é>a)\\k<é>", "u"],
+			["(?<\\u{10400}>a)\\\\k<\\u{10400}>", "u"],
+		]);
+	});
+
+	describe("unterminated constructs", () => {
+		rejects([
+			["(a", "", "Unterminated group."],
+			["(?:a", "", "Unterminated group."],
+			["(?<n>a", "", "Unterminated group."],
+		]);
+	});
+
+	describe("Annex B escapes outside unicode mode", () => {
+		accepts([
+			// Legacy octal escapes, one to three digits.
+			["\\1", ""],
+			["\\12", ""],
+			["\\123", ""],
+			["\\0", ""],
+			["[\\123]", ""],
+		]);
+	});
+
 	describe("reuse", () => {
 		it("does not carry state from one pattern to the next", () => {
 			expect(check("(?<n>a)")).toBeNull();

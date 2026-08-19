@@ -133,7 +133,8 @@ Run from the repository root; every one delegates to the workspaces, and any of
 them takes `--workspace=@eslint/jskit` to narrow it.
 
 ```bash
-npm test           # vitest, ~2900 tests
+npm test           # vitest, ~3300 tests
+npm run test:coverage # the same run, with a coverage report and its gate
 npm run typecheck  # tsc --noEmit
 npm run lint       # builds first, then lints this repo with its own parser
 npm run build      # esbuild bundles + .d.ts files
@@ -231,6 +232,35 @@ Two mechanical consequences of putting unit tests inside `src/`:
   typechecks them.
 - `vitest.config.ts` lists both globs. A `.spec.ts` file under `tests/`, or a
   `.test.ts` file under `src/`, is simply never run.
+
+Setup a unit test wants to share with another one goes in a
+`*.spec-helpers.ts` beside them — `tsconfig.build.json` and the coverage
+config both exclude that suffix, so it is neither shipped nor measured.
+`src/scope/fake-ast.spec-helpers.ts` is the one that exists: an `AstAccess`
+over a table of literal nodes, which is what lets `Scope`, `ScopeManager`, and
+`PatternVisitor` be tested without a program to parse.
+
+### The coverage gate
+
+`npm run test:coverage` runs the same suite under v8 coverage and fails below
+**95%** of statements, branches, functions, and lines. The thresholds are
+global rather than per-file, so a module that is genuinely hard to reach is
+carried by the rest; raise them when the real number moves up, and never lower
+them to make a run pass.
+
+Two things about reading the report:
+
+- **A declaration-only module reports 0%, not 100%.** It compiles to nothing,
+  so v8 has no statements to attribute, and `include` puts it in the report
+  anyway. `src/parse/ast-types.ts` is excluded for that reason. Anything else
+  added to that exclusion has to be types all the way down — one `const` makes
+  it real code again.
+- **The last few percent are not unit-testable, and that is the point.** What
+  is left uncovered lives in `validate.ts`, `referencer.ts`, and the three
+  parser files: paths reached only by feeding the whole pipeline a particular
+  program. The way to close one of those is a fixture in
+  `tests/parse/fixtures/` or a case in `tests/{parse,scope,flow}/`, not a
+  `.spec.ts` reaching into a private method.
 
 ## Conformance is the real test suite
 

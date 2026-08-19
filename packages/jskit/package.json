@@ -20,6 +20,7 @@
 		"build": "node scripts/build.js && tsc -p tsconfig.build.json",
 		"pretest": "npm run build",
 		"test": "vitest run",
+		"test:coverage": "vitest run --coverage",
 		"test:watch": "vitest",
 		"typecheck": "tsc --noEmit",
 		"bench": "npm run build && node benchmarks/parse/benchmark.js && node benchmarks/scope/benchmark.js",

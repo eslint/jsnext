@@ -57,6 +57,36 @@ describe("the scope buffer", () => {
 		);
 	});
 
+	it("refuses a tree whose nodes are not stable between two reads", () => {
+		/*
+		 * `analyzeTree()` enumerates the tree to assign handles and then walks
+		 * it again to build the graph. A property that hands back a different
+		 * object each time breaks the one assumption the whole scheme rests
+		 * on, so it is reported rather than silently mis-recorded.
+		 */
+		const program = {
+			type: "Program",
+			range: [0, 1],
+			get body(): EsTreeNode[] {
+				return [
+					{
+						type: "ExpressionStatement",
+						range: [0, 1],
+						expression: {
+							type: "Identifier",
+							name: "a",
+							range: [0, 1],
+						},
+					} as unknown as EsTreeNode,
+				];
+			},
+		} as unknown as EsTreeNode;
+
+		expect(() => analyzeTree(program)).toThrow(
+			/not reachable from the program/u,
+		);
+	});
+
 	it("rejects a source from the other path", () => {
 		const { parsed, buffer } = analyzed("a;");
 		const tree = espree.parse("a;", {
@@ -204,6 +234,67 @@ describe("Scopes", () => {
 		expect(scopes.getScope(manager.scopes[1].variables[0].identifiers[0])).toBe(
 			null,
 		);
+	});
+
+	it("counts the scopes, symbols, and references it holds", () => {
+		const { parsed, buffer } = analyzed("const a = 1; function f() { a; }");
+		const scopes = new Scopes(buffer, parsed);
+		const manager = toScopeManager(buffer, parsed);
+
+		expect(scopes.scopeCount).toBe(manager.scopes.length);
+		expect(scopes.symbolCount).toBe(
+			manager.scopes.reduce(
+				(total, scope) => total + scope.variables.length,
+				0,
+			),
+		);
+		expect(scopes.referenceCount).toBe(
+			manager.scopes.reduce(
+				(total, scope) => total + scope.references.length,
+				0,
+			),
+		);
+		expect(scopes.globalScope).toBe(0);
+	});
+
+	it("hands back the node a scope was opened by", () => {
+		const { parsed, buffer } = analyzed("function f() {}");
+		const scopes = new Scopes(buffer, parsed);
+		const manager = toScopeManager(buffer, parsed);
+
+		for (let scope = 0; scope < scopes.scopeCount; scope++) {
+			expect(scopes.scopeBlock(scope)).toBe(manager.scopes[scope].block);
+		}
+	});
+
+	it("prefers the innermost scope a node opened when asked", () => {
+		const { parsed, buffer } = analyzed("const f = function g() {};");
+		const scopes = new Scopes(buffer, parsed);
+		const manager = toScopeManager(buffer, parsed);
+		const functionNode = manager.scopes.find(
+			scope => scope.type === "function",
+		)!.block;
+		const program = manager.scopes[0].block;
+
+		// The function node opens the name scope and the function scope; both
+		// directions skip the name scope, so both land on the function.
+		expect(scopes.scopeType(scopes.getScope(functionNode, true)!)).toBe(
+			"function",
+		);
+
+		// The program opens the global scope and the module scope.
+		expect(scopes.getScope(program)).toBe(0);
+		expect(scopes.scopeType(scopes.getScope(program, true)!)).toBe("module");
+	});
+
+	it("reports no scope for a node that opened none, either direction", () => {
+		const { parsed, buffer } = analyzed("const a = 1;");
+		const scopes = new Scopes(buffer, parsed);
+		const manager = toScopeManager(buffer, parsed);
+		const identifier = manager.scopes[1].variables[0].identifiers[0];
+
+		expect(scopes.getScope(identifier)).toBeNull();
+		expect(scopes.getScope(identifier, true)).toBeNull();
 	});
 
 	it("resolves a single identifier to its reference", () => {

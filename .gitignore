@@ -10,3 +10,6 @@ node_modules
 # committed benchmark number is stale the moment the parser changes.
 packages/jskit/benchmarks/*/results.json
 packages/jskit/benchmarks/*/results.svg
+
+# What `npm run test:coverage` writes. Regenerable in one command.
+coverage

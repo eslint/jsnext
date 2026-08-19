@@ -13,7 +13,8 @@
 		"typecheck": "npm run typecheck --workspaces --if-present",
 		"lint": "npm run build && eslint .",
 		"bench": "npm run bench --workspaces --if-present",
-		"conformance": "npm run conformance --workspaces --if-present"
+		"conformance": "npm run conformance --workspaces --if-present",
+		"test:coverage": "npm run test:coverage --workspaces --if-present"
 	},
 	"keywords": [
 		"parser",
@@ -36,6 +37,7 @@
 		"@typescript-eslint/parser": "^8.0.0",
 		"@typescript-eslint/scope-manager": "^8.0.0",
 		"@typescript-eslint/types": "^8.0.0",
+		"@vitest/coverage-v8": "^2.1.9",
 		"acorn": "^8.12.0",
 		"esbuild": "^0.24.0",
 		"eslint": "^10.8.1",
