@@ -9,6 +9,7 @@ import { TypeParser } from "./parser-types.js";
 import {
 	ACCESS_PRIVATE,
 	ACCESS_PROTECTED,
+	ACCESS_MASK,
 	ACCESS_PUBLIC,
 	ACCESS_SHIFT,
 	LIT_STRING,
@@ -2590,6 +2591,20 @@ export abstract class ExpressionParser extends TypeParser {
 							? ACCESS_PRIVATE
 							: ACCESS_PROTECTED;
 
+				/*
+				 * One node holds one accessibility, in two bits, so a second
+				 * modifier has nowhere to go: `public private x` would pack
+				 * to the value `protected` and read back as a member the
+				 * program never wrote. There is no tree for this, which is
+				 * what puts it here rather than in `validate()`.
+				 */
+				if ((flags & ACCESS_MASK) !== 0) {
+					throw this.error(
+						"An accessibility modifier may only be written once.",
+						this.start,
+					);
+				}
+
 				this.next();
 				flags |= access << ACCESS_SHIFT;
 				continue;
@@ -2677,6 +2692,19 @@ export abstract class ExpressionParser extends TypeParser {
 			this.at(T_PAREN_OPEN) ||
 			this.at(T_LT)
 		) {
+			/*
+			 * `accessor` makes a field into a getter and setter pair, so
+			 * there is no accessor method for it to make and no node kind to
+			 * record it on. Like a repeated accessibility modifier, it would
+			 * otherwise be dropped and read back as a plain method.
+			 */
+			if (isAccessor) {
+				throw this.error(
+					"An 'accessor' modifier may only appear on a class field.",
+					this.writer.get(key, NODE_START),
+				);
+			}
+
 			return this.finishMethodDefinition(
 				start,
 				key,

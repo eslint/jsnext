@@ -727,3 +727,31 @@ describe("embedSource", () => {
 		).toBeUndefined();
 	});
 });
+
+describe("modifiers with nowhere to go", () => {
+	/*
+	 * One node holds one accessibility, in two bits, so `public private x`
+	 * would pack to the value `protected` and read back as a member the
+	 * program never wrote. There is no tree for it, which is what puts these
+	 * two in `parse()` rather than in `validate()`.
+	 */
+	it("rejects a repeated accessibility modifier", () => {
+		expect(() => parse("class C { public private x = 1; }")).toThrow(
+			/accessibility modifier may only be written once/u,
+		);
+	});
+
+	it("rejects accessor on a method", () => {
+		expect(() => parse("class C { accessor m() {} }")).toThrow(
+			/'accessor' modifier may only appear on a class field/u,
+		);
+	});
+
+	it("still accepts one accessibility modifier", () => {
+		expect(() => parse("class C { private x = 1; }")).not.toThrow();
+	});
+
+	it("still accepts accessor on a field", () => {
+		expect(() => parse("class C { accessor x = 1; }")).not.toThrow();
+	});
+});

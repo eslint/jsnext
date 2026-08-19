@@ -13,6 +13,7 @@ import {
 	LIT_STRING,
 	DECL_AWAIT_USING,
 	DECL_CONST,
+	ACCESS_MASK,
 	DECL_KIND_NAMES,
 	DECL_USING,
 	DECL_MASK,
@@ -33,6 +34,8 @@ import {
 	NF_DECLARE,
 	NF_DEFINITE,
 	NF_GENERATOR,
+	NF_IN,
+	NF_READONLY,
 	NF_IDENTIFIER_NAME,
 	NF_INVALID_ESCAPE,
 	NF_LEGACY_OCTAL,
@@ -96,10 +99,12 @@ import {
 	N_TSEnumDeclaration,
 	N_TSImportEqualsDeclaration,
 	N_TSInterfaceDeclaration,
+	N_TSIndexSignature,
 	N_TSParameterProperty,
 	N_TSModuleBlock,
 	N_TSModuleDeclaration,
 	N_TSTypeAliasDeclaration,
+	N_TSTypeParameterDeclaration,
 	N_VariableDeclaration,
 	N_VariableDeclarator,
 	N_WhileStatement,
@@ -357,6 +362,24 @@ class Validator {
 
 	/** Whether TypeScript syntax is allowed. */
 	private readonly dialect: "js" | "ts";
+
+	/**
+	 * The type parameter lists whose parameters may carry `in` or `out`.
+	 *
+	 * A class, an interface, and a type alias each register their own list
+	 * here before the walk descends into it, so by the time a list is
+	 * checked the question of who owns it is already answered.
+	 */
+	private readonly variantTypeParameters = new Set<number>();
+
+	/**
+	 * The parameter properties a constructor implementation introduced.
+	 *
+	 * A constructor with a body registers its own before the walk descends
+	 * into its parameter list, so a parameter property reached without
+	 * having been registered is one written somewhere it may not be.
+	 */
+	private readonly permittedParameterProperties = new Set<number>();
 
 	/** Whether JSX syntax is allowed. */
 	private readonly jsx: boolean;
@@ -1776,6 +1799,175 @@ class Validator {
 		}
 
 		this.ambient = previousAmbient;
+	}
+
+	/**
+	 * Reports a modifier a method may not carry.
+	 *
+	 * `readonly` describes a property that cannot be assigned, and a method
+	 * is not assigned in the first place; `declare` describes a member
+	 * defined elsewhere, which for a method is what an overload signature is
+	 * already for. Both are dropped by the decoder rather than emitted, so
+	 * nothing downstream would show they were written.
+	 * @param node The method node index.
+	 * @returns Nothing.
+	 */
+	private checkMethodModifiers(node: number): void {
+		const flags = this.reader.flags(node);
+
+		if ((flags & NF_READONLY) !== 0) {
+			this.report(
+				"A method may not be marked 'readonly'.",
+				this.reader.start(node),
+			);
+		}
+
+		if ((flags & NF_DECLARE) !== 0) {
+			this.report(
+				"A method may not be marked 'declare'.",
+				this.reader.start(node),
+			);
+		}
+	}
+
+	/**
+	 * Reports an accessibility modifier on an index signature.
+	 *
+	 * An index signature names no member, so there is nothing for `public`,
+	 * `private`, or `protected` to describe the visibility of. `static` and
+	 * `readonly` are the two that do mean something here and are left alone.
+	 * @param node The index signature node index.
+	 * @returns Nothing.
+	 */
+	private checkIndexSignature(node: number): void {
+		if ((this.reader.flags(node) & ACCESS_MASK) !== 0) {
+			this.report(
+				"An index signature may not have an accessibility modifier.",
+				this.reader.start(node),
+			);
+		}
+	}
+
+	/**
+	 * Records the parameter properties a constructor implementation may have.
+	 *
+	 * Only a constructor with a body may declare them, because a parameter
+	 * property is an assignment the constructor performs, and a signature
+	 * performs nothing. That rules out every other method, every plain
+	 * function, and a constructor overload signature alike.
+	 * @param node The method node index.
+	 * @returns Nothing.
+	 */
+	private permitParameterProperties(node: number): void {
+		const reader = this.reader;
+		const flags = reader.flags(node);
+
+		if ((flags & MKIND_MASK) >>> MKIND_SHIFT !== MKIND_CONSTRUCTOR) {
+			return;
+		}
+
+		const value = reader.field(node, NODE_B);
+
+		if (value === 0 || reader.field(value, NODE_C) === 0) {
+			return;
+		}
+
+		const params = reader.field(value, NODE_B);
+		const size = reader.listSize(params);
+
+		for (let i = 0; i < size; i++) {
+			const param = reader.listItem(params, i);
+
+			if (reader.kind(param) === N_TSParameterProperty) {
+				this.permittedParameterProperties.add(param);
+			}
+		}
+	}
+
+	/**
+	 * Reports a parameter property written where none may stand.
+	 *
+	 * Beyond the constructor it needs, the modifier names a field to copy
+	 * the parameter into, so the parameter has to be one thing with one
+	 * name: a rest parameter is a list, and a binding pattern names no
+	 * single thing at all.
+	 * @param node The parameter property node index.
+	 * @returns Nothing.
+	 */
+	private checkParameterProperty(node: number): void {
+		const reader = this.reader;
+
+		if (!this.permittedParameterProperties.has(node)) {
+			this.report(
+				"A parameter property may only appear in a constructor implementation.",
+				reader.start(node),
+			);
+			return;
+		}
+
+		const parameter = reader.field(node, NODE_A);
+		const kind = reader.kind(parameter);
+
+		if (kind === N_RestElement) {
+			this.report(
+				"A parameter property may not be a rest parameter.",
+				reader.start(node),
+			);
+		} else if (
+			kind === N_ObjectPattern ||
+			kind === N_ArrayPattern
+		) {
+			this.report(
+				"A parameter property may not use a binding pattern.",
+				reader.start(node),
+			);
+		}
+	}
+
+	/**
+	 * Records a type parameter list whose parameters may carry variance.
+	 * @param node The type parameter declaration node index, or `0`.
+	 * @returns Nothing.
+	 */
+	private permitVariance(node: number): void {
+		if (node !== 0) {
+			this.variantTypeParameters.add(node);
+		}
+	}
+
+	/**
+	 * Reports `in` or `out` on a type parameter that may not vary.
+	 *
+	 * Variance annotations say how a parameterized type relates to another
+	 * with a different argument, which only a named type has to answer for.
+	 * A function's type parameter is solved at the call rather than related
+	 * to anything, so the annotation has nothing to say there.
+	 *
+	 * The four declarations that may carry them register their list before
+	 * the walk descends into it, which is the same order the private-name
+	 * check relies on.
+	 * @param node The type parameter declaration node index.
+	 * @returns Nothing.
+	 */
+	private checkTypeParameterVariance(node: number): void {
+		if (this.variantTypeParameters.has(node)) {
+			return;
+		}
+
+		const reader = this.reader;
+		const size = reader.listSize(reader.field(node, NODE_A));
+		const params = reader.field(node, NODE_A);
+
+		for (let i = 0; i < size; i++) {
+			const param = reader.listItem(params, i);
+
+			if ((reader.flags(param) & (NF_IN | NF_STATIC)) !== 0) {
+				this.report(
+					"A variance annotation may only appear on a type parameter of a class, an interface, or a type alias.",
+					reader.start(param),
+				);
+			}
+		}
 	}
 
 	/**
@@ -4035,11 +4227,37 @@ class Validator {
 			}
 
 			case N_MethodDefinition:
+				this.checkMethodModifiers(node);
+				this.permitParameterProperties(node);
 				this.checkClassElementName(node, kind);
+				return;
+
+			case N_TSParameterProperty:
+				this.checkParameterProperty(node);
+				return;
+
+			case N_TSIndexSignature:
+				this.checkIndexSignature(node);
+				return;
+
+			case N_TSTypeParameterDeclaration:
+				this.checkTypeParameterVariance(node);
+				return;
+
+			case N_ClassDeclaration:
+			case N_ClassExpression:
+				this.permitVariance(this.reader.field(node, NODE_D));
+				return;
+
+			case N_TSInterfaceDeclaration:
+			case N_TSTypeAliasDeclaration:
+				this.permitVariance(this.reader.field(node, NODE_C));
 				return;
 
 			case N_TSAbstractMethodDefinition: {
 				const value = this.reader.field(node, NODE_B);
+
+				this.checkMethodModifiers(node);
 
 				if (
 					value !== 0 &&

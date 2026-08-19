@@ -2158,3 +2158,137 @@ describe("ambient variable initializers", () => {
 		]);
 	});
 });
+
+describe("modifier placement", () => {
+	it("reports readonly on a method", () => {
+		expect(messages("class C { readonly m() {} }")).toEqual([
+			expect.stringMatching(/may not be marked 'readonly'/u),
+		]);
+	});
+
+	it("reports declare on a method", () => {
+		expect(messages("class C { declare m() {} }")).toEqual([
+			expect.stringMatching(/may not be marked 'declare'/u),
+		]);
+	});
+
+	it("still allows readonly and declare on a field", () => {
+		expect(
+			messages("class C { readonly x = 1; declare y: number; }"),
+		).toEqual([]);
+	});
+
+	it("reports an accessibility modifier on an index signature", () => {
+		expect(
+			messages("class C { public [k: string]: number; }"),
+		).toEqual([
+			expect.stringMatching(/may not have an accessibility modifier/u),
+		]);
+	});
+
+	/*
+	 * `static` and `readonly` are the two modifiers an index signature can
+	 * actually carry.
+	 */
+	it("still allows static and readonly on an index signature", () => {
+		expect(
+			messages(
+				"class C { static [k: string]: number; }\nclass D { readonly [k: string]: number; }",
+			),
+		).toEqual([]);
+	});
+});
+
+describe("variance annotations", () => {
+	it("allows in and out on a class type parameter", () => {
+		expect(messages("class C<in T, out U> { x?: T; y?: U; }")).toEqual([]);
+	});
+
+	it("allows in on an interface type parameter", () => {
+		expect(messages("interface I<in T> { x: T; }")).toEqual([]);
+	});
+
+	it("allows in on a type alias type parameter", () => {
+		expect(messages("type A<in T> = (x: T) => void;")).toEqual([]);
+	});
+
+	it("reports one on a function type parameter", () => {
+		expect(messages("function f<in T>(x: T) {}")).toEqual([
+			expect.stringMatching(/variance annotation/u),
+		]);
+	});
+
+	it("reports one on a function type's type parameter", () => {
+		expect(messages("type F = <in T>(x: T) => void;")).toEqual([
+			expect.stringMatching(/variance annotation/u),
+		]);
+	});
+
+	it("still allows a plain type parameter on a function", () => {
+		expect(messages("function f<T>(x: T) {}")).toEqual([]);
+	});
+});
+
+describe("parameter properties", () => {
+	it("allows one in a constructor implementation", () => {
+		expect(
+			messages("class C { constructor(private x: number) {} }"),
+		).toEqual([]);
+	});
+
+	it("allows readonly, optional, and defaulted forms", () => {
+		expect(
+			messages(
+				"class C { constructor(readonly a: number, private b?: number, protected c = 1) {} }",
+			),
+		).toEqual([]);
+	});
+
+	it("reports one on an ordinary method", () => {
+		expect(messages("class C { m(private x: number) {} }")).toEqual([
+			expect.stringMatching(/only appear in a constructor/u),
+		]);
+	});
+
+	it("reports one on a plain function", () => {
+		expect(messages("function f(private x: number) {}")).toEqual([
+			expect.stringMatching(/only appear in a constructor/u),
+		]);
+	});
+
+	/*
+	 * A parameter property is an assignment the constructor performs, and a
+	 * signature performs nothing.
+	 */
+	it("reports one on a constructor overload signature", () => {
+		expect(
+			messages(
+				"class C { constructor(private x: number); constructor(x: number) {} }",
+			),
+		).toEqual([expect.stringMatching(/only appear in a constructor/u)]);
+	});
+
+	it("reports one in an ambient class", () => {
+		expect(
+			messages("declare class C { constructor(private x: number); }"),
+		).toEqual([expect.stringMatching(/only appear in a constructor/u)]);
+	});
+
+	it("reports one on a rest parameter", () => {
+		expect(
+			messages("class C { constructor(private ...x: number[]) {} }"),
+		).toEqual([expect.stringMatching(/may not be a rest parameter/u)]);
+	});
+
+	it("reports one on an object binding pattern", () => {
+		expect(
+			messages("class C { constructor(private { x }: any) {} }"),
+		).toEqual([expect.stringMatching(/may not use a binding pattern/u)]);
+	});
+
+	it("reports one on an array binding pattern", () => {
+		expect(
+			messages("class C { constructor(private [x]: any) {} }"),
+		).toEqual([expect.stringMatching(/may not use a binding pattern/u)]);
+	});
+});
