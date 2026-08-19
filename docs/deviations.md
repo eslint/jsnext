@@ -229,7 +229,8 @@ diagnostics, and the differential corpus compares trees.
 escape it cannot read a `cooked` value equal to its `raw` text.
 
 ```ts
-String.raw`\u{}`;   // cooked: "\\u{}"
+String.raw`\u{}`;      // cooked: "\\u{}"
+type T = `\u{}`;       // the same, in a template literal type
 ```
 
 **Here:** `cooked` is `null`, which is what `espree` produces and what the
@@ -238,9 +239,15 @@ specification calls for: `TV` of a `TemplateCharacters` containing a
 a template no untagged one may hold. Evaluating the tag in V8 confirms it —
 `(s => s[0])` `` `\u{}` `` is `undefined`, not the raw text.
 
+The second line is the same case in a position where nothing is tagged at all:
+a template literal type is a `TemplateLiteral` here, so the rule that makes an
+untagged one an error has to be turned off for it, and the cooked value it
+carries is the one every other template carries.
+
 **How conformance absorbs it:** the differential corpus would see this, but
-`node_modules` contains no tagged template with an unreadable escape.
-`tests/validate.test.ts` and `tests/parse.test.ts` pin the behaviour instead.
+`node_modules` contains no tagged template with an unreadable escape and no
+template literal type with one. `tests/parse/validate.test.ts` and
+`tests/parse/parse.test.ts` pin the behaviour instead.
 
 ---
 
@@ -282,9 +289,10 @@ still visible.
 ## Scope analysis
 
 The scope analyzer reproduces two analyzers that disagree with each other in
-three
-places. **Where they disagree, `eslint-scope` wins**, and each of the three is
-an option that defaults to the `eslint-scope` answer.
+six places. **Where they disagree, `eslint-scope` wins.** Three of the six are
+reachable through an option that defaults to the `eslint-scope` answer —
+`jsxPragma`, `jsxFragmentName`, and `globals`. The other three are not
+configurable.
 
 ### The JSX factory reference
 
@@ -311,6 +319,34 @@ value and a type reference, which is what TypeScript needs.
 
 **Here:** both under `dialect: "ts"`, and an ordinary value read under
 `dialect: "js"`, which is `eslint-scope`'s answer.
+
+### The name a JSX closing tag repeats
+
+**Reference:** `@typescript-eslint/scope-manager` creates a reference for the
+name in `</Foo>` as well as for the one in `<Foo>`, so a component used with a
+closing tag is referenced twice. `eslint-scope` creates only the opening one.
+
+**Here:** only the opening one. A JSX element evaluates its name once — the
+closing tag is punctuation the grammar requires, not a second read — and every
+rule that cares only needs to know the name was used at all.
+
+**How conformance absorbs it:** `scripts/scope/serialize.mjs` exports
+`jsxClosingNameKeys()`, and the two `@typescript-eslint/scope-manager` runs
+drop those references from both sides before comparing. The `eslint-scope` runs
+need nothing, because they agree.
+
+### A namespaced JSX name
+
+**Reference:** `@typescript-eslint/scope-manager` references both halves of
+`<x:y />`. `eslint-scope` references neither.
+
+**Here:** neither. A namespaced name is not a JavaScript binding — it exists
+for XML-shaped dialects, where `x` names a namespace rather than a value in
+scope.
+
+**How conformance absorbs it:** it does not. No file in the corpus uses a
+namespaced JSX name, and none of the fixtures may, since the two references
+disagree. `tests/scope/analyze.test.ts` pins the behavior instead.
 
 ### `Reference#partial`
 

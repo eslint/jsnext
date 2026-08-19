@@ -17,5 +17,7 @@
 	"const a = <foo-bar data-x={value} />;",
 	"const a = <div>{list.map(item => <Item key={item.id} />)}</div>;",
 	"import React from 'react'; const a = <div />;",
-	"const a = <Component>{() => <Nested />}</Component>;"
+	"const a = <Component>{() => <Nested />}</Component>;",
+	"const C = 1; const a = <C></C>;",
+	"const N = { M: 1 }; const a = <N.M>{x}</N.M>;"
 ]

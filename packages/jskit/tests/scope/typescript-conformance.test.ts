@@ -18,6 +18,7 @@ import {
 	toScopeManager,
 } from "../../src/index.js";
 import {
+	jsxClosingNameKeys,
 	serializeBinary,
 	serializeReference,
 } from "../../scripts/scope/serialize.mjs";
@@ -71,13 +72,20 @@ function compare(code: string, jsx: boolean): void {
 		jsx,
 		globals: ["const"],
 	};
+	/*
+	 * The reference analyzer references the name in `</Foo>` as well as the
+	 * one in `<Foo>`; `eslint-scope` references only the opening one, and this
+	 * analyzer follows `eslint-scope`. `docs/deviations.md` records it.
+	 */
+	const flags = { ...FLAGS, dropReferences: jsxClosingNameKeys(tree) };
+	const binaryFlags = { ...BINARY_FLAGS, dropReferences: flags.dropReferences };
 	const expected = serializeReference(
 		analyzeReference(tree, {
 			sourceType: "module",
 			lib: [],
 			jsxPragma: null,
 		}),
-		FLAGS,
+		flags,
 	);
 
 	const parsed = parse(code);
@@ -85,13 +93,13 @@ function compare(code: string, jsx: boolean): void {
 	expect(
 		serializeBinary(
 			toScopeManager(analyze(parsed, options), parsed),
-			BINARY_FLAGS,
+			binaryFlags,
 		),
 	).toEqual(expected);
 	expect(
 		serializeReference(
 			toScopeManager(analyzeTree(tree, options), tree),
-			FLAGS,
+			flags,
 		),
 	).toEqual(expected);
 }

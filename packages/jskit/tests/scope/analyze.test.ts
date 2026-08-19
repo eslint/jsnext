@@ -400,6 +400,36 @@ describe("jsx", () => {
 			1,
 		);
 	});
+
+	/*
+	 * The two reference analyzers disagree about the closing tag, and about a
+	 * namespaced name; `eslint-scope` is the tiebreak, and both of these are
+	 * written up in `docs/deviations.md`.
+	 */
+	it("references an element's name once, at the opening tag", () => {
+		const scopeManager = scopesOf("const C = 1; const a = <C>{x}</C>;");
+		const component = scopeManager.scopes[1].set.get("C")!;
+
+		// The declaration's own identifier, and the opening tag. Not `</C>`.
+		expect(
+			component.references.map(ref => ref.identifier),
+		).toHaveLength(2);
+	});
+
+	it("references the object of a member name once, at the opening tag", () => {
+		const scopeManager = scopesOf(
+			"const N = { M: 1 }; const a = <N.M>{x}</N.M>;",
+		);
+
+		expect(scopeManager.scopes[1].set.get("N")!.references).toHaveLength(2);
+	});
+
+	it("references neither half of a namespaced name", () => {
+		const scopeManager = scopesOf("const x = 1; const a = <x:y></x:y>;");
+
+		expect(scopeManager.scopes[1].through).toEqual([]);
+		expect(scopeManager.scopes[1].set.get("x")!.references).toHaveLength(1);
+	});
 });
 
 describe("analyzeTree", () => {

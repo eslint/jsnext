@@ -109,6 +109,7 @@ import {
 	N_TSEnumMember,
 	N_TSInterfaceDeclaration,
 	N_TSIndexSignature,
+	N_TSLiteralType,
 	N_TSParameterProperty,
 	N_TSModuleBlock,
 	N_TSModuleDeclaration,
@@ -572,6 +573,20 @@ class Validator {
 	private taggedQuasi = 0;
 
 	/**
+	 * The one `TemplateLiteral` a `TSLiteralType` holds, if the walk has
+	 * reached one.
+	 *
+	 * A template with no substitutions in type position is a string literal
+	 * type written with backticks, and the parser gives it the same
+	 * `TemplateLiteral` node an expression would get. TypeScript reads what
+	 * the escapes spell rather than applying ECMAScript's rule about an
+	 * untagged template, so the node has to be exempted the way a tag's quasi
+	 * is — and for the same reason one slot is enough: a template cannot be
+	 * both.
+	 */
+	private typeQuasi = 0;
+
+	/**
 	 * Whether the class body being walked has declared its constructor.
 	 *
 	 * Saved and restored around each class, so a constructor in a nested one
@@ -813,6 +828,17 @@ class Validator {
 				this.taggedQuasi = reader.field(node, NODE_B);
 				this.visit(this.taggedQuasi);
 				return;
+
+			case N_TSLiteralType: {
+				const literal = reader.field(node, NODE_A);
+
+				if (reader.kind(literal) === N_TemplateLiteral) {
+					this.typeQuasi = literal;
+				}
+
+				this.visit(literal);
+				return;
+			}
 
 			case N_FunctionDeclaration:
 			case N_FunctionExpression:
@@ -4603,7 +4629,7 @@ class Validator {
 			 * value is `undefined`. Untagged, there is nothing to hand it to.
 			 */
 			case N_TemplateLiteral: {
-				if (node === this.taggedQuasi) {
+				if (node === this.taggedQuasi || node === this.typeQuasi) {
 					return;
 				}
 

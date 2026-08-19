@@ -7,5 +7,7 @@
 	"const a = <A.B value={c as D} />;",
 	"const a = <>{items.map((item: Item) => <Row key={item.id} />)}</>;",
 	"interface Props { x: number } const C = (p: Props) => <div>{p.x}</div>;",
-	"const a = <this.Component />;"
+	"const a = <this.Component />;",
+	"const C = 1; const a = <C></C>;",
+	"const N = { M: 1 }; const a = <N.M>{x}</N.M>;"
 ]

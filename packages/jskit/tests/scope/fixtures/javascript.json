@@ -80,5 +80,7 @@
 	"const re = /x/g; re.test(s);",
 	"function f() { if (a) { function g() {} } g(); }",
 	"var x = 1; function x() {}",
-	"let a; { function a() {} }"
+	"let a; { function a() {} }",
+	"let attrs; attrs = { with: { type: 'json' } }; import('./m.json', attrs);",
+	"const spec = './m'; import(spec);"
 ]

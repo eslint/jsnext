@@ -13,6 +13,7 @@
 
 import { readFileSync } from "node:fs";
 import { analyze as analyzeReference } from "eslint-scope";
+import { KEYS } from "eslint-visitor-keys";
 import * as espree from "espree";
 import { describe, expect, it } from "vitest";
 import {
@@ -72,7 +73,19 @@ function compare(
 
 	const options = { sourceType, dialect: "js" as const, jsx };
 	const expected = serializeReference(
-		analyzeReference(tree, { ecmaVersion: 2025, sourceType, jsx }),
+		/*
+		 * `childVisitorKeys` is what ESLint's own `Linter` passes, and it
+		 * matters: without it `esrecurse` falls back to `estraverse`'s table,
+		 * where `ImportExpression` still names only `source`, so nothing in
+		 * `import(specifier, options)` is ever visited. Comparing against that
+		 * would be comparing against an `eslint-scope` nobody runs.
+		 */
+		analyzeReference(tree, {
+			ecmaVersion: 2025,
+			sourceType,
+			jsx,
+			childVisitorKeys: KEYS,
+		}),
 		FLAGS,
 	);
 

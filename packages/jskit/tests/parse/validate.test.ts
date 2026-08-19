@@ -1684,6 +1684,34 @@ describe("template literals", () => {
 		expect(messages("`${ tag`\\u1` }`")).toEqual([]);
 		expect(messages("tag`${ `\\u1` }`")).toHaveLength(1);
 	});
+
+	/*
+	 * A template with no substitutions in type position is a string literal
+	 * type written with backticks, and the parser gives it the same
+	 * `TemplateLiteral` node an expression would get. ECMAScript's rule about
+	 * an untagged template does not reach there — TypeScript accepts all of
+	 * these, and so does `@typescript-eslint/parser`.
+	 */
+	it("allows an unreadable escape in a template literal type", () => {
+		for (const code of [
+			"type T = `\\u1`;",
+			"type T = `\\u{}`;",
+			"type T = `\\xZ`;",
+			"type T = `\\01`;",
+			"let x: `\\u{}`;",
+			"type T = `\\u{}` | `\\xZ`;",
+		]) {
+			expect(messages(code)).toEqual([]);
+		}
+	});
+
+	/*
+	 * The mark is per template, so a template literal type does not exempt an
+	 * ordinary one that happens to be interpolated into the same declaration.
+	 */
+	it("still reports one in an expression beside a template literal type", () => {
+		expect(messages("type T = `\\u{}`; const a = `\\u{}`;")).toHaveLength(1);
+	});
 });
 
 describe("ambient declarations", () => {

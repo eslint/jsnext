@@ -449,8 +449,12 @@ add to it or "fix" an output to match a reference.
   `@typescript-eslint/scope-manager` for TypeScript. **Where the two disagree,
   `eslint-scope` wins.** The three disagreements that survive as options —
   `jsxPragma`, `jsxFragmentName`, and the TypeScript standard library — all
-  default to the `eslint-scope` answer, and are written up in
-  [`docs/deviations.md`](./docs/deviations.md).
+  default to the `eslint-scope` answer. Those and the three that are not
+  configurable are written up in
+  [`docs/deviations.md`](./docs/deviations.md). One of them — the name a JSX
+  closing tag repeats — shows up in the corpus, so the
+  `@typescript-eslint/scope-manager` runs drop it from both sides through
+  `jsxClosingNameKeys()` in `scripts/scope/serialize.mjs` before comparing.
 - The scope analyzer's two entry points must produce the same graph for the
   same program, and `null` is the only spelling of "no node" above the accessor
   layer, whichever representation is underneath.

@@ -574,6 +574,82 @@ describe("toAST()", () => {
 	});
 });
 
+describe("template literal types", () => {
+	/**
+	 * The type a declaration annotates.
+	 * @param code The source text, whose first statement is a type alias.
+	 * @returns The aliased type node.
+	 */
+	function aliasedType(code: string): Record<string, never> {
+		const { ast } = toAST(parse(code));
+
+		return (
+			ast.body[0] as unknown as { typeAnnotation: Record<string, never> }
+		).typeAnnotation;
+	}
+
+	/*
+	 * A template with no substitutions denotes one fixed string, so it is a
+	 * string literal type written with backticks — the same type `"a"` is.
+	 * TypeScript's own AST says so, and `@typescript-eslint/parser` follows
+	 * it.
+	 */
+	it("reads a template with no substitutions as a literal type", () => {
+		expect(aliasedType("type T = `a`;")).toMatchObject({
+			type: "TSLiteralType",
+			start: 9,
+			end: 12,
+			literal: {
+				type: "TemplateLiteral",
+				start: 9,
+				end: 12,
+				expressions: [],
+				quasis: [
+					{
+						type: "TemplateElement",
+						start: 9,
+						end: 12,
+						tail: true,
+						value: { raw: "a", cooked: "a" },
+					},
+				],
+			},
+		});
+	});
+
+	it("reads an empty one the same way", () => {
+		expect(aliasedType("type T = ``;")).toMatchObject({
+			type: "TSLiteralType",
+			literal: { type: "TemplateLiteral", quasis: [{ tail: true }] },
+		});
+	});
+
+	it("reads one that interpolates a type as a template literal type", () => {
+		expect(aliasedType("type T = `a${B}c`;")).toMatchObject({
+			type: "TSTemplateLiteralType",
+			start: 9,
+			end: 17,
+			quasis: [{ tail: false }, { tail: true }],
+			types: [{ type: "TSTypeReference" }],
+		});
+	});
+
+	/*
+	 * `cooked` is `null` for an escape that cannot be read, here as anywhere
+	 * else. `@typescript-eslint/parser` gives the raw text instead; that
+	 * difference is one `docs/deviations.md` records, and it is the reason
+	 * this is pinned here rather than in a fixture.
+	 */
+	it("leaves the cooked value of an unreadable escape null", () => {
+		expect(aliasedType("type T = `\\u{}`;")).toMatchObject({
+			type: "TSLiteralType",
+			literal: {
+				quasis: [{ value: { raw: "\\u{}", cooked: null } }],
+			},
+		});
+	});
+});
+
 describe("program extent", () => {
 	/**
 	 * The offsets a program covers in one dialect.

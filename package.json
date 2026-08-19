@@ -42,6 +42,7 @@
 		"esbuild": "^0.24.0",
 		"eslint": "^10.8.1",
 		"eslint-scope": "^9.0.0",
+		"eslint-visitor-keys": "^5.0.1",
 		"espree": "^10.0.0",
 		"globals": "^17.9.0",
 		"typescript": "^5.6.0",

@@ -25,6 +25,7 @@ import {
 } from "../../dist/jskit.js";
 import {
 	firstDifference,
+	jsxClosingNameKeys,
 	serializeBinary,
 	serializeReference,
 } from "./serialize.mjs";
@@ -177,6 +178,16 @@ for (const file of files) {
 		jsx,
 		globals: ["const"],
 	};
+	/*
+	 * The reference analyzer references the name in `</Foo>` as well as the
+	 * one in `<Foo>`; `eslint-scope` references only the opening one, and this
+	 * analyzer follows `eslint-scope`. `docs/deviations.md` records it.
+	 */
+	const flags = { ...FLAGS, dropReferences: jsxClosingNameKeys(tree) };
+	const binaryFlags = {
+		...BINARY_FLAGS,
+		dropReferences: flags.dropReferences,
+	};
 	let expected;
 
 	try {
@@ -186,7 +197,7 @@ for (const file of files) {
 				lib: [],
 				jsxPragma: null,
 			}),
-			FLAGS,
+			flags,
 		);
 	} catch {
 		continue;
@@ -197,13 +208,13 @@ for (const file of files) {
 
 		return serializeBinary(
 			toScopeManager(analyze(parsed, options), parsed),
-			BINARY_FLAGS,
+			binaryFlags,
 		);
 	});
 	check("tree", file, expected, () =>
 		serializeReference(
 			toScopeManager(analyzeTree(tree, options), tree),
-			FLAGS,
+			flags,
 		),
 	);
 }

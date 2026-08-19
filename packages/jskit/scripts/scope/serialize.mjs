@@ -75,6 +75,63 @@ function binaryKey(reader, node, tsProgramExtent) {
 }
 
 /**
+ * Collects the identifiers a JSX closing tag names.
+ *
+ * `@typescript-eslint/scope-manager` creates a reference for the name in
+ * `</Foo>` as well as the one in `<Foo>`; `eslint-scope` creates only the
+ * opening one, and this analyzer follows `eslint-scope`. See
+ * [`docs/deviations.md`](../../../../docs/deviations.md). Both sides of the
+ * comparison drop these so the run reports the differences that are not that
+ * one.
+ * @param root The `Program` node the reference analyzer was given.
+ * @returns The node keys of every identifier inside a closing tag.
+ */
+export function jsxClosingNameKeys(root) {
+	const keys = new Set();
+
+	/**
+	 * Walks a value, remembering whether it sits inside a closing tag.
+	 * @param value A node, an array, or anything else.
+	 * @param closing Whether a closing tag encloses it.
+	 * @returns Nothing.
+	 */
+	function walk(value, closing) {
+		if (Array.isArray(value)) {
+			for (const item of value) {
+				walk(item, closing);
+			}
+
+			return;
+		}
+
+		if (
+			value === null ||
+			typeof value !== "object" ||
+			typeof value.type !== "string"
+		) {
+			return;
+		}
+
+		const inside = closing || value.type === "JSXClosingElement";
+
+		if (inside && value.type === "JSXIdentifier") {
+			keys.add(esKey(value));
+		}
+
+		for (const key of Object.keys(value)) {
+			// `parent` would cycle, and neither list can hold a JSX name.
+			if (key !== "parent" && key !== "tokens" && key !== "comments") {
+				walk(value[key], inside);
+			}
+		}
+	}
+
+	walk(root, false);
+
+	return keys;
+}
+
+/**
  * Reduces one scope graph to a comparable structure.
  * @param scopes Every scope, in creation order.
  * @param toKey Turns whatever the implementation calls a node into a key.
@@ -85,6 +142,18 @@ function serializeScopes(scopes, toKey, flags) {
 	const indexOf = new Map();
 
 	scopes.forEach((scope, index) => indexOf.set(scope, index));
+
+	/**
+	 * Whether a reference is one the comparison leaves out entirely.
+	 * @param reference The reference.
+	 * @returns `true` when neither side should report it.
+	 */
+	function isDropped(reference) {
+		return (
+			flags.dropReferences !== undefined &&
+			flags.dropReferences.has(toKey(reference.identifier))
+		);
+	}
 
 	/**
 	 * Names the variable a reference resolved to.
@@ -171,10 +240,16 @@ function serializeScopes(scopes, toKey, flags) {
 				name: variable.name,
 				identifiers: variable.identifiers.map(toKey),
 				defs: variable.defs.map(definition),
-				references: variable.references.map(ref => toKey(ref.identifier)),
+				references: variable.references
+					.filter(ref => !isDropped(ref))
+					.map(ref => toKey(ref.identifier)),
 			})),
-		references: scope.references.map(reference),
-		through: scope.through.map(ref => toKey(ref.identifier)),
+		references: scope.references
+			.filter(ref => !isDropped(ref))
+			.map(reference),
+		through: scope.through
+			.filter(ref => !isDropped(ref))
+			.map(ref => toKey(ref.identifier)),
 	}));
 }
 

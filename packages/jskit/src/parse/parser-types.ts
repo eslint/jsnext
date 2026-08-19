@@ -74,8 +74,10 @@ import {
 	N_TSUnknownKeyword,
 	N_TSVoidKeyword,
 	N_TemplateElement,
+	N_TemplateLiteral,
 	NF_TAIL,
 	NF_INVALID_ESCAPE,
+	EMPTY_LIST,
 } from "./node-kinds.js";
 import { TF_INVALID_ESCAPE } from "./binary.js";
 import {
@@ -1478,31 +1480,55 @@ export abstract class TypeParser extends ParserBase {
 
 	/**
 	 * Parses a template literal type such as `` `a${T}b` ``.
-	 * @returns The index of the `TSTemplateLiteralType` node.
+	 *
+	 * A template with no substitutions denotes one fixed string, so it is a
+	 * string literal type written with backticks rather than a template
+	 * literal type — `` `a` `` and `"a"` are the same type. TypeScript's own
+	 * AST says so, and `@typescript-eslint/parser` follows it: the node is a
+	 * `TSLiteralType` whose `literal` is the `TemplateLiteral`, exactly the
+	 * shape a template in expression position has. Only a template that
+	 * interpolates something becomes a `TSTemplateLiteralType`.
+	 * @returns The index of the `TSLiteralType` or `TSTemplateLiteralType`
+	 *      node.
 	 */
 	private parseTemplateLiteralType(): number {
-		const node = this.writer.alloc(N_TSTemplateLiteralType, this.start);
-		const mark = this.writer.startList();
+		const start = this.start;
 
 		if (this.at(T_TEMPLATE_FULL)) {
-			this.writer.pushList(this.parseTemplateElement(true));
-		} else {
-			this.writer.pushList(this.parseTemplateElement(false));
+			const node = this.writer.alloc(N_TSLiteralType, start);
+			const literal = this.writer.alloc(N_TemplateLiteral, start);
+			const quasi = this.parseTemplateElement(true);
 
-			for (;;) {
-				this.writer.pushList(this.parseType());
+			this.writer.set(
+				literal,
+				NODE_A,
+				this.writer.singletonList(quasi),
+			);
+			this.writer.set(literal, NODE_B, EMPTY_LIST);
+			this.writer.finish(literal, this.lastEnd);
+			this.writer.set(node, NODE_A, literal);
 
-				if (this.at(T_TEMPLATE_TAIL)) {
-					this.writer.pushList(this.parseTemplateElement(true));
-					break;
-				}
+			return this.writer.finish(node, this.lastEnd);
+		}
 
-				if (!this.at(T_TEMPLATE_MIDDLE)) {
-					throw this.unexpected();
-				}
+		const node = this.writer.alloc(N_TSTemplateLiteralType, start);
+		const mark = this.writer.startList();
 
-				this.writer.pushList(this.parseTemplateElement(false));
+		this.writer.pushList(this.parseTemplateElement(false));
+
+		for (;;) {
+			this.writer.pushList(this.parseType());
+
+			if (this.at(T_TEMPLATE_TAIL)) {
+				this.writer.pushList(this.parseTemplateElement(true));
+				break;
 			}
+
+			if (!this.at(T_TEMPLATE_MIDDLE)) {
+				throw this.unexpected();
+			}
+
+			this.writer.pushList(this.parseTemplateElement(false));
 		}
 
 		const [quasis, types] = this.writer.endInterleavedLists(mark);

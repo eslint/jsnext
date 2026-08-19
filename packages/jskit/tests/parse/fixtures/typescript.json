@@ -443,5 +443,11 @@
  "type T = string & {} | number;",
  "class C { accessor x = 1; }",
  "type T = { -readonly [K in keyof A]-?: A[K] };",
- "type T = { +readonly [K in keyof A]+?: A[K] };"
+ "type T = { +readonly [K in keyof A]+?: A[K] };",
+ "type T = ``;",
+ "type T = `a`;",
+ "type T = `a` | `b`;",
+ "let x: `${A}`;",
+ "type T = `\\n`;",
+ "type T = `\\u0041`;"
 ]

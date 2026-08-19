@@ -16,6 +16,7 @@
  */
 
 import { analyze as analyzeReference } from "eslint-scope";
+import { KEYS } from "eslint-visitor-keys";
 import * as espree from "espree";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -33,6 +34,21 @@ import {
 
 /** The fields both implementations fill in. */
 const FLAGS = { index: true, partial: true, typeRefs: false };
+
+/**
+ * The visitor keys `eslint-scope` is run with.
+ *
+ * `eslint-scope` walks through `esrecurse`, which falls back to `estraverse`'s
+ * table when it is not told otherwise — and that table is old enough to have
+ * `ImportExpression: ["source"]`, so the second argument of
+ * `import(specifier, options)` is never visited and the names in it resolve to
+ * nothing. ESLint does not run it that way: `Linter` passes
+ * `childVisitorKeys: visitorKeys || evk.KEYS`, so the reference is created for
+ * every rule that asks. Passing the same table here compares against the
+ * `eslint-scope` that actually ships rather than against a configuration
+ * nothing uses.
+ */
+const CHILD_VISITOR_KEYS = KEYS;
 
 /**
  * Collects every JavaScript file under a directory.
@@ -161,6 +177,7 @@ for (const file of files) {
 					ecmaVersion: 2025,
 					sourceType,
 					jsx: true,
+					childVisitorKeys: CHILD_VISITOR_KEYS,
 				}),
 				FLAGS,
 			);
