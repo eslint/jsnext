@@ -37,6 +37,7 @@ import {
 	NF_INVALID_ESCAPE,
 	NF_LEGACY_OCTAL,
 	NF_METHOD,
+	NF_OPTIONAL,
 	NF_PARENTHESIZED,
 	NF_SHORTHAND,
 	NF_STATIC,
@@ -4007,19 +4008,38 @@ class Validator {
 			}
 
 			/*
-			 * `delete o.#x` is an early error however the reference is
-			 * written, because a private field cannot be removed.
+			 * Two things `delete` may not be given. A private field cannot be
+			 * removed however the reference is written; and strict mode
+			 * refuses a bare name, because deleting one would reach into the
+			 * scope chain, which is exactly the reasoning an engine relies on
+			 * to resolve names ahead of time. Parentheses do not help — they
+			 * are transparent to `UnaryExpression : delete UnaryExpression`.
 			 */
 			case N_UnaryExpression: {
 				const argument = this.reader.field(node, NODE_A);
 
 				if (
-					this.reader.field(node, NODE_B) === T_delete &&
-					argument !== 0 &&
-					this.isPrivateReference(argument)
+					this.reader.field(node, NODE_B) !== T_delete ||
+					argument === 0
 				) {
+					return;
+				}
+
+				if (this.isPrivateReference(argument)) {
 					this.report(
 						"Private fields cannot be deleted.",
+						this.reader.start(node),
+					);
+
+					return;
+				}
+
+				if (
+					this.strict &&
+					this.reader.kind(argument) === N_Identifier
+				) {
+					this.report(
+						"Deleting a local variable is not allowed in strict mode.",
 						this.reader.start(node),
 					);
 				}
@@ -4157,6 +4177,67 @@ class Validator {
 			case N_ObjectExpression:
 				this.checkObjectLiteral(node);
 				return;
+
+			/*
+			 * `OptionalChain TemplateLiteral` is a production the grammar
+			 * writes down only to call it an error. A tag receives the raw
+			 * text whether or not it is a function, so there is nothing for
+			 * `a?.fn` to short-circuit *to* when `a` is nullish — the
+			 * template would have to be evaluated regardless.
+			 *
+			 * The tree tells the two apart on its own: an unparenthesized
+			 * chain ending in a tag is `ChainExpression(TaggedTemplate…)`,
+			 * while `(a?.fn)` ends the chain and comes back the other way
+			 * round.
+			 */
+			case N_ChainExpression: {
+				const reader = this.reader;
+				let current = reader.field(node, NODE_A);
+				let tag = 0;
+
+				/*
+				 * The tag, the object, and the callee are all the first slot,
+				 * so one loop walks the whole spine of the chain, outermost
+				 * link first. A parenthesized link would have ended the chain
+				 * and begun one of its own, so it is where the walk stops.
+				 *
+				 * A tag is only a problem when an optional link turns up
+				 * *below* it, since that is what makes the thing being tagged
+				 * an `OptionalChain`. `` f`x`?.a `` has the two the other way
+				 * round and is fine.
+				 */
+				while (
+					current !== 0 &&
+					(reader.flags(current) & NF_PARENTHESIZED) === 0
+				) {
+					const linkKind = reader.kind(current);
+
+					if (
+						tag !== 0 &&
+						(reader.flags(current) & NF_OPTIONAL) !== 0
+					) {
+						this.report(
+							"A template literal may not be tagged with an optional chain.",
+							reader.start(tag),
+						);
+
+						return;
+					}
+
+					if (linkKind === N_TaggedTemplateExpression) {
+						tag = current;
+					} else if (
+						linkKind !== N_MemberExpression &&
+						linkKind !== N_CallExpression
+					) {
+						return;
+					}
+
+					current = reader.field(current, NODE_A);
+				}
+
+				return;
+			}
 
 			/*
 			 * `new.target` and `import.meta` are each spelled out in the

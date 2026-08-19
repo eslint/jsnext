@@ -1,7 +1,5 @@
 {
 	"test/language/expressions/class": 1,
-	"test/language/expressions/delete": 2,
-	"test/language/expressions/optional-chaining": 4,
 	"test/language/identifiers": 1,
 	"test/language/statements/class": 1,
 	"test/language/statements/switch": 1

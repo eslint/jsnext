@@ -1091,6 +1091,61 @@ describe("rest elements", () => {
 	});
 });
 
+describe("optional chains", () => {
+	const script = { sourceType: "script" } as const;
+
+	/*
+	 * `OptionalChain TemplateLiteral` is a production the grammar writes down
+	 * only to call it an error: a tag receives the raw text whether or not it
+	 * is a function, so there is nothing for a nullish chain to short-circuit
+	 * to.
+	 */
+	it("refuses a template tagged with one", () => {
+		expect(messages("a?.fn`h`;", script)).toEqual([
+			"A template literal may not be tagged with an optional chain.",
+		]);
+		expect(messages("a?.b.c`h`;", script)).toHaveLength(1);
+		expect(messages("a?.[b]`h`;", script)).toHaveLength(1);
+		expect(messages("a?.b`h`.c;", script)).toHaveLength(1);
+	});
+
+	/*
+	 * The optional link has to be *below* the tag for the tagged thing to be
+	 * a chain, and parentheses end a chain and begin another.
+	 */
+	it("takes a tag the chain is applied to rather than the other way", () => {
+		expect(messages("f`h`?.a;", script)).toEqual([]);
+		expect(messages("`h`?.[0];", script)).toEqual([]);
+		expect(messages("(a?.fn)`h`;", script)).toEqual([]);
+		expect(messages("(a?.b)`h`.c;", script)).toEqual([]);
+		expect(messages("a.fn`h`;", script)).toEqual([]);
+	});
+});
+
+describe("delete", () => {
+	/*
+	 * Deleting a bare name would reach into the scope chain, which is the one
+	 * thing an engine relies on being able to resolve ahead of time.
+	 * Parentheses are transparent to `delete UnaryExpression`.
+	 */
+	it("refuses a bare name in strict code", () => {
+		expect(messages("delete x;")).toEqual([
+			"Deleting a local variable is not allowed in strict mode.",
+		]);
+		expect(messages("delete ((x));")).toHaveLength(1);
+		expect(
+			messages('"use strict"; delete x;', { sourceType: "script" }),
+		).toHaveLength(1);
+	});
+
+	it("allows one in sloppy code, and a property either way", () => {
+		expect(messages("delete x;", { sourceType: "script" })).toEqual([]);
+		expect(messages("delete x.y;")).toEqual([]);
+		expect(messages("delete (x.y);")).toEqual([]);
+		expect(messages("delete a[b];")).toEqual([]);
+	});
+});
+
 describe("new.target and import.meta", () => {
 	const script = { sourceType: "script" } as const;
 

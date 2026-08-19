@@ -594,5 +594,12 @@
 	{ "code": "function* g() { yield\n* 1; }", "sourceType": "script" },
 	{ "code": "var af = ()\n=> {};", "sourceType": "script" },
 	{ "code": "var f = (x)\n=> {};", "sourceType": "script" },
-	{ "code": "({ async\nfoo() {} });", "sourceType": "script" }
+	{ "code": "({ async\nfoo() {} });", "sourceType": "script" },
+
+	{ "code": "a?.fn`h`;", "sourceType": "script" },
+	{ "code": "a?.b.c`h`;", "sourceType": "script" },
+	{ "code": "a?.[b]`h`;", "sourceType": "script" },
+	{ "code": "a?.b`h`.c;", "sourceType": "script" },
+	{ "code": "delete x;", "sourceType": "module" },
+	{ "code": "delete ((x));", "sourceType": "module" }
 ]

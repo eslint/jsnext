@@ -579,6 +579,14 @@ const valid: [string, "script" | "module"][] = [
 	["({ set\nx(v) {} });", "script"],
 	["({ *\ng() {} });", "script"],
 	["class C { async\nx() {} }", "script"],
+
+	// A tag the chain is applied to, rather than the other way round.
+	["f`h`?.a;", "script"],
+	["`h`?.[0];", "script"],
+	["(a?.fn)`h`;", "script"],
+	["(a?.b)`h`.c;", "script"],
+	["delete x;", "script"],
+	["delete x.y;", "module"],
 ];
 
 describe("test262 positive tests", () => {

@@ -64,7 +64,7 @@ export const KNOWN_OVERZEALOUS = 0;
  * — where no tree should have been built at all, and those are the parser's.
  *
  * The run reports which phase catches what it does catch, so the balance is
- * visible: today it is 1,315 from `parse()` against 3,085 from `validate()`.
+ * visible: today it is 1,315 from `parse()` against 3,091 from `validate()`.
  *
  * Counts are approximate: a test usually violates one rule but the families
  * overlap at the edges, and the authority on the totals is
@@ -73,7 +73,6 @@ export const KNOWN_OVERZEALOUS = 0;
  *
  * - **Expression-level grammar** (~6, mixed). `delete x` in strict mode, and a
  *   template literal in the tail position of an optional chain.
- * - **Stragglers** (10, mixed). `delete x` in strict mode, a template literal
- *   in the tail position of an optional chain, `class C extends
- *   async () => {}`, `var this`, and two `default` clauses in one `switch`.
+ * - **Stragglers** (4, mixed). `class C extends async () => {}`, `var this`,
+ *   and two `default` clauses in one `switch`.
  */
