@@ -241,6 +241,41 @@ a template no untagged one may hold. Evaluating the tag in V8 confirms it —
 
 ---
 
+### Three places TypeScript is looser than ECMAScript
+
+**Reference:** `@typescript-eslint/parser` accepts all three, and so does
+`tsc`.
+
+```ts
+class D { #y = 1 }
+class C { static { const g = (o: D) => o.#y; } }  // a private name from D
+
+declare namespace Foo { export var static: any; } // a reserved word in strict
+
+var v =0;                                       // NEL as whitespace
+```
+
+**Here:** all three are reported.
+
+**Why:** each is an early error in ECMAScript, and the leniency is
+TypeScript's own. Reading a private name that no enclosing class declares is
+an early error the specification states outright; TypeScript reports it as
+TS2339, a *type* error, which is a classification rather than a disagreement,
+and `@babel/parser` rejects it here too. `static`, `public`, and the rest are
+future reserved words in strict mode, and a module is strict. U+0085 is in
+neither `WhiteSpace` nor `LineTerminator`, so a program that uses it as a
+space is not a program; TypeScript's scanner treats it as one anyway.
+
+V8 rejects all three, which is the tiebreaker the scope analyzer already uses
+where the two references disagree: the ECMAScript answer wins.
+
+**How conformance absorbs it:** they appear as `overzealous` in
+`conformance-ts-negative.mjs`, where most of that count is this parser being
+right rather than wrong. Its baseline records them per rule, so a *new* one is
+still visible.
+
+---
+
 ## Scope analysis
 
 `jsscope` reproduces two analyzers that disagree with each other in three
@@ -307,10 +342,19 @@ confined to input that is already an error, which is why they have been left.
   where code goes](../AGENTS.md#the-rule-that-decides-where-code-goes).
 
 ECMAScript's early errors used to be the fourth entry here, and are not any
-more. test262 is the only corpus that tests what the parser *rejects*, and both
-of its counts are now zero: no valid program is rejected, and no invalid one is
+more. test262 tests what the parser *rejects* in JavaScript, and both of its
+counts are now zero: no valid program is rejected, and no invalid one is
 accepted. `262-baseline.json` is an empty object, so any directory that starts
 failing is one that was passing.
+
+**TypeScript's grammar errors are the fourth entry, and are still open.**
+`conformance-ts-negative.mjs` is the same kind of check for the other dialect,
+run against `@typescript-eslint/parser` over TypeScript's own test suite. It
+began at 154 programs the reference rejects and this parser accepts, and is now
+at 40 spread thin across about fifteen rules — a `/// <reference>` directive,
+an AMD module name, a decorator on a `this` parameter, and a tail of one- and
+two-file rules. `ts-negative-baseline.json` records them per rule, so a
+regression names the rule it broke rather than the directory it sits in.
 
 ## Not deviations
 

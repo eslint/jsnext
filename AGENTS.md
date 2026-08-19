@@ -244,8 +244,10 @@ It can only compare two implementations on a program **both** accept, and
 the other half of the parser's job — rejecting what is not JavaScript —
 untested by every script above.
 
-`npm run conformance:262 --workspace=@eslint/jsparse` is the check that covers
-it. test262 states its own verdict in each file's frontmatter, so a `negative`
+Two scripts cover it, one per dialect.
+
+`npm run conformance:262 --workspace=@eslint/jsparse` is the JavaScript half.
+test262 states its own verdict in each file's frontmatter, so a `negative`
 block with `phase: parse` is an assertion that the file must be rejected, by
 `parse()` throwing or by `validate()` reporting — the split decides which, and
 the test asserts neither.
@@ -266,8 +268,41 @@ program it accepts; every early error the corpus tests is now implemented, on
 whichever side of the phase line it falls — 1,317 of them from `parse()` and
 3,093 from `validate()`.
 
-Both are graded against `scripts/262-baseline.json`, a failure count per
-directory. It is now an empty object, so any directory that starts failing is
+`npm run conformance:ts --workspace=@eslint/jsparse` is the TypeScript half.
+There is no TypeScript corpus that states its own verdict, so this one is
+differential after all — against `@typescript-eslint/parser`, over TypeScript's
+own test suite, which is mostly negative tests. It pairs with
+`conformance-ts.mjs` rather than replacing it: that script compares trees, so
+it skips every file the reference parser throws on, which is exactly the set
+this one is about.
+
+```bash
+git clone --depth 1 --filter=blob:none --sparse \
+    https://github.com/microsoft/TypeScript
+cd TypeScript && git sparse-checkout set tests/cases
+npm run conformance:ts --workspace=@eslint/jsparse -- ./TypeScript
+```
+
+```
+files=19205 agreed=12565 rejected=778 (parse=590 validate=188) skipped=5372 missed=40 overzealous=450
+baseline unchanged
+```
+
+**Read its two counts differently from test262's.** **missed** is a rule that
+is not implemented yet, and is the count to drive down. **overzealous** is
+mostly this parser being *right*: `@typescript-eslint/parser` enforces a small
+subset of the grammar rules `tsc` does and almost no ECMAScript early errors at
+all, so `continue` outside a loop and `with` in strict mode pass through it
+untouched. Read a new one before fixing it.
+
+Its baseline is keyed by **rule** rather than by directory, which is where it
+departs from test262's. test262's directories mirror sections of the
+specification, so a directory names a rule there; TypeScript's
+`tests/cases/compiler` is one flat directory of several thousand files and
+names nothing.
+
+Both test262 counts are graded against `scripts/262-baseline.json`, a failure
+count per directory. It is now an empty object, so any directory that starts failing is
 one that was passing. Re-run with `--update` when a change moves a count, and
 commit the baseline with it.
 [`scripts/262-exclusions.mjs`](./packages/jsparse/scripts/262-exclusions.mjs)
