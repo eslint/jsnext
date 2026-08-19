@@ -2382,7 +2382,15 @@ export abstract class ExpressionParser extends TypeParser {
 		const node = this.writer.alloc(nodeKind, start);
 
 		this.writer.set(node, NODE_G, decorators);
-		this.next();
+
+		/*
+		 * Every caller reaches here having established that a class begins,
+		 * but reading the keyword rather than stepping over it is what keeps
+		 * that true. A caller that was wrong once built a class out of
+		 * whatever stood here and dropped the word that said otherwise, so
+		 * `@dec interface I {}` came back as `class I {}`.
+		 */
+		this.expect(T_class);
 
 		if (this.atBindingName() && !this.at(T_implements)) {
 			this.writer.set(node, NODE_A, this.parseIdentifier());

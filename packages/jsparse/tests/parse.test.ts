@@ -787,6 +787,25 @@ describe("decorated class declarations", () => {
 	 * These used to build a `ClassDeclaration` and drop the keyword, so
 	 * `@dec interface I {}` read back as `class I {}`.
 	 */
+	/*
+	 * The expression form has its own decorator path, and `parseClass()`
+	 * reading the keyword rather than stepping over it is what covers both
+	 * without each caller having to remember.
+	 */
+	it("rejects a decorated class expression that is not a class", () => {
+		for (const code of [
+			"const C = @dec interface I {};",
+			"const C = @dec abstract class {};",
+			"x = @dec 1;",
+		]) {
+			expect(() => parse(code)).toThrow(/Expected 'class'/u);
+		}
+	});
+
+	it("still accepts a decorated class expression", () => {
+		expect(() => parse("const C = @dec class {};")).not.toThrow();
+	});
+
 	it("rejects a decorator on anything that is not a class", () => {
 		for (const code of [
 			"@dec interface I {}",
