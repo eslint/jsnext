@@ -27,6 +27,7 @@ npm run conformance:262 # the test262 run, which needs a checkout
 | `conformance-types.mjs` | `src/ast-types.ts` | what the decoder emits |
 | `derive-shapes.mjs` | `src/ast-types.ts` | what the decoder's source says |
 | `conformance-262.mjs` | accepted or rejected | what test262 says |
+| `conformance-ts-negative.mjs` | accepted or rejected | `@typescript-eslint/parser` |
 
 Zero mismatches is the standard. Anything else is a regression.
 
@@ -50,7 +51,7 @@ files=2886 threw=0 kinds=158 exercised=158 problems=0 unseen=0 # conformance-typ
 derived=144 declared=158 identical=158 differ=0 undeclared=0   # derive-shapes
 ```
 
-## `conformance-262.mjs` is the odd one out
+## Two scripts test the rejecting half
 
 The other five are **differential**: they run a program through two
 implementations and compare what comes back, which means they can only ever
@@ -73,6 +74,32 @@ npm run conformance:262 -- ./test262
 
 `/test262` at the repository root is the default path and is gitignored, so a
 clone there needs no argument.
+
+`conformance-ts-negative.mjs` does the same job for TypeScript, and it has to
+be differential because there is no TypeScript corpus that states its own
+verdict. It pairs with `conformance-ts.mjs` rather than replacing it: that
+script compares trees, so it skips every file the reference parser throws on,
+which is exactly the set this one is interested in.
+
+```bash
+git clone --depth 1 --filter=blob:none --sparse \
+    https://github.com/microsoft/TypeScript
+cd TypeScript && git sparse-checkout set tests/cases
+npm run conformance:ts -- ./TypeScript
+```
+
+Read its two counts differently. **missed** is a program the reference rejects
+and this parser accepts, and every one is a TypeScript grammar rule that is not
+implemented yet — that is the count to drive to zero. **overzealous** is the
+reverse, and most of them are *correct*: `@typescript-eslint/parser` enforces a
+small subset of the grammar rules `tsc` does and almost no ECMAScript early
+errors at all, so `continue` outside a loop passes through it untouched. Read a
+new one before fixing it.
+
+Its baseline is keyed by **rule** rather than by directory, unlike test262's.
+test262's directories mirror the sections of the specification, so a directory
+names a rule there; TypeScript's `tests/cases/compiler` is one flat directory of
+several thousand files and names nothing.
 
 Every count is a count of files. A test with neither a `module` nor a
 strictness flag has to hold up read both ways, so it is run twice, but it is

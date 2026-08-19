@@ -23,7 +23,8 @@
 		"bench": "npm run build && node benchmarks/benchmark.js",
 		"bench:chart": "npm run build && node benchmarks/benchmark.js --json=benchmarks/results.json && node benchmarks/chart.js benchmarks/results.json benchmarks/results.svg",
 		"conformance": "npm run build && node scripts/conformance-js.mjs ../../node_modules 5000 && node scripts/conformance-tokens.mjs ../../node_modules 5000 && node scripts/conformance-ts.mjs ../../node_modules 5000 && node scripts/conformance-types.mjs ../../node_modules 5000 && node scripts/derive-shapes.mjs",
-		"conformance:262": "npm run build && node scripts/conformance-262.mjs"
+		"conformance:262": "npm run build && node scripts/conformance-262.mjs",
+		"conformance:ts": "npm run build && node scripts/conformance-ts-negative.mjs"
 	},
 	"keywords": [
 		"parser",
