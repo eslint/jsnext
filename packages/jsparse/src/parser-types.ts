@@ -314,8 +314,16 @@ export abstract class TypeParser extends ParserBase {
 		this.noConditionalTypes = false;
 
 		try {
-			if (this.atConstructorTypeStart() || this.atFunctionTypeStart()) {
+			if (this.atConstructorTypeStart()) {
 				return this.parseFunctionOrConstructorType();
+			}
+
+			if (this.atFunctionTypeStart()) {
+				const functionType = this.tryFunctionType();
+
+				if (functionType !== 0) {
+					return functionType;
+				}
 			}
 
 			const checkType = this.parseUnionType();
@@ -1290,6 +1298,29 @@ export abstract class TypeParser extends ParserBase {
 		this.tokenizer.restore(state);
 
 		return result;
+	}
+
+	/**
+	 * Parses a function type, giving the shape back when it is not one.
+	 *
+	 * `(` ... `)` `=>` reads as a function type, and the same shape is a
+	 * parenthesized type in front of an arrow function's body: the `=>` in
+	 * `(): (A | B) => x` is the arrow's, not the type's. Nothing short of
+	 * parsing the parentheses tells the two apart, since `(A | B)` and
+	 * `(a: A) => B` begin alike, so the function type is tried first and a
+	 * failure falls back to reading the parentheses as a type.
+	 *
+	 * Only the parenthesized form is in doubt. `new` and `<` open a
+	 * constructor or generic function type and can open nothing else, and
+	 * `()` is an empty parameter list wherever it appears.
+	 * @returns The index of the type node, or `0` when it is not one.
+	 */
+	private tryFunctionType(): number {
+		if (!this.at(T_PAREN_OPEN)) {
+			return this.parseFunctionOrConstructorType();
+		}
+
+		return this.speculate(() => this.parseFunctionOrConstructorType());
 	}
 
 	/**

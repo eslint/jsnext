@@ -653,6 +653,25 @@ export abstract class ExpressionParser extends TypeParser {
 					continue;
 				}
 
+				/*
+				 * A `<` here can only open a type argument list, since the
+				 * grammar allows nothing else after `?.` that could begin
+				 * with one. That is what makes this the only place type
+				 * arguments are read outright rather than tried and rewound.
+				 */
+				if (this.at(T_LT)) {
+					const typeArguments = this.parseTypeArguments();
+
+					expression = this.finishCall(
+						start,
+						expression,
+						true,
+						noCalls,
+						typeArguments,
+					);
+					continue;
+				}
+
 				if (this.at(T_BRACKET_OPEN)) {
 					const previousAllowIn = this.allowIn;
 
@@ -919,10 +938,13 @@ export abstract class ExpressionParser extends TypeParser {
 			/*
 			 * A type argument list in an expression only makes sense when it
 			 * is followed by a call, a tagged template, or something that
-			 * cannot continue an expression.
+			 * cannot continue an expression. `?.` counts as a call: the
+			 * arguments belong to the call the optional link introduces, as
+			 * in `f<string>?.()`.
 			 */
 			if (
 				following === T_PAREN_OPEN ||
+				following === T_QUESTION_DOT ||
 				following === T_TEMPLATE_FULL ||
 				following === T_TEMPLATE_HEAD ||
 				following === T_SEMICOLON ||
@@ -1680,25 +1702,6 @@ export abstract class ExpressionParser extends TypeParser {
 	 */
 	private speculateArrowFunction(start: number, isAsync: boolean): number {
 		return this.speculate(() => this.parseArrowFunction(start, isAsync));
-	}
-
-	/**
-	 * Runs a parse that may fail, undoing everything it wrote if it does.
-	 * @param attempt The parse to try.
-	 * @returns The node index the attempt produced, or `0` when it failed.
-	 */
-	protected speculate(attempt: () => number): number {
-		const state = this.tokenizer.save();
-		const snapshot = this.writer.mark();
-
-		try {
-			return attempt();
-		} catch {
-			this.writer.rewind(snapshot);
-			this.tokenizer.restore(state);
-
-			return 0;
-		}
 	}
 
 	/**

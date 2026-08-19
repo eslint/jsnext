@@ -605,4 +605,23 @@ export abstract class ParserBase {
 	 * @returns The index of the instantiation node.
 	 */
 	abstract parseTypeArguments(): number;
+
+	/**
+	 * Runs a parse that may fail, undoing everything it wrote if it does.
+	 * @param attempt The parse to try.
+	 * @returns The node index the attempt produced, or `0` when it failed.
+	 */
+	protected speculate(attempt: () => number): number {
+		const state = this.tokenizer.save();
+		const snapshot = this.writer.mark();
+
+		try {
+			return attempt();
+		} catch {
+			this.writer.rewind(snapshot);
+			this.tokenizer.restore(state);
+
+			return 0;
+		}
+	}
 }

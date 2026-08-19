@@ -304,7 +304,7 @@
  "type QuietGreeting = Lowercase<Greeting>",
  "type Greeting = Capitalize<LowercaseGreeting>;",
  "type UncomfortableGreeting = Uncapitalize<UppercaseGreeting>;",
- "import { pi as \u03c0 } from \"./maths.js\";\nconsole.log(\u03c0);",
+ "import { pi as π } from \"./maths.js\";\nconsole.log(π);",
  "export type Cat = { breed: string; yearOfBirth: number };\nexport interface Dog {\n  breeds: string[];\n  yearOfBirth: number;\n}",
  "import type { Cat, Dog } from \"./animal.js\";\nexport type Animals = Cat | Dog;",
  "import { createCatName, type Cat, type Dog } from \"./animal.js\";\nexport type Animals = Cat | Dog;",
@@ -396,5 +396,12 @@
  "export { type as as };",
  "import { type as } from \"m\";",
  "import { type as as } from \"m\";",
- "import { type type as foo } from \"m\";"
+ "import { type type as foo } from \"m\";",
+ "const f = (): (A | B) => x;",
+ "const f = (): (() => number) => g;",
+ "const f = (): ((a: number) => void) => g;",
+ "const f = <T,>(): (() => T) => g;",
+ "const f = (): (new () => T) => g;",
+ "const f = (): () => number => g;",
+ "declare const a: any; a?.<number>(); a<number>?.(); a?.b?.<T>(1);"
 ]
