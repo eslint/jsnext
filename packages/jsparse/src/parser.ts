@@ -322,7 +322,7 @@ export class Parser extends JsxParser {
 					return this.parseDecoratedExport(decorators);
 				}
 
-				return this.parseClass(N_ClassDeclaration, decorators, start);
+				return this.parseDecoratedClass(decorators, start);
 			}
 
 			case T_if:
@@ -1424,7 +1424,7 @@ export class Parser extends JsxParser {
 		if (this.at(T_AT)) {
 			const decorators = this.parseDecorators();
 
-			return this.parseClass(N_ClassDeclaration, decorators, start);
+			return this.parseDecoratedClass(decorators, start);
 		}
 
 		if (this.at(T_abstract) && this.nextIs(T_class, true)) {
@@ -1690,6 +1690,54 @@ export class Parser extends JsxParser {
 		this.expect(T_BRACE_CLOSE);
 		this.writer.set(body, NODE_A, this.writer.endList(mark));
 		this.writer.set(node, NODE_B, this.writer.finish(body, this.lastEnd));
+
+		return this.writer.finish(node, this.lastEnd);
+	}
+
+	/**
+	 * Parses the class a set of decorators is written on.
+	 *
+	 * A decorator decorates a class and nothing else, so the only things that
+	 * may stand between it and the `class` keyword are `abstract` and
+	 * `declare`, in either order. Without this the decorator path called
+	 * `parseClass()` outright, which takes the current token for `class`
+	 * without reading it: `@dec interface I {}` built a `class I {}` and
+	 * dropped the keyword, and `@dec abstract class C {}` — which is valid —
+	 * threw instead.
+	 * @param decorators The list handle of the decorators.
+	 * @param start The offset at which the first decorator began.
+	 * @returns The index of the class declaration node.
+	 */
+	private parseDecoratedClass(decorators: number, start: number): number {
+		let flags = 0;
+
+		/*
+		 * Either order is written, so both are read rather than a fixed one.
+		 * Consuming them before knowing a `class` follows is safe because
+		 * anything else throws below whichever way it is spelled.
+		 */
+		for (;;) {
+			if (this.at(T_abstract)) {
+				flags |= NF_ABSTRACT;
+			} else if (this.at(T_declare)) {
+				flags |= NF_DECLARE;
+			} else {
+				break;
+			}
+
+			this.next();
+		}
+
+		if (!this.at(T_class)) {
+			throw this.error(
+				"A decorator may only be applied to a class declaration.",
+				this.start,
+			);
+		}
+
+		const node = this.parseClass(N_ClassDeclaration, decorators, start);
+
+		this.writer.addFlags(node, flags);
 
 		return this.writer.finish(node, this.lastEnd);
 	}

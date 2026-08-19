@@ -403,5 +403,8 @@
  "const f = <T,>(): (() => T) => g;",
  "const f = (): (new () => T) => g;",
  "const f = (): () => number => g;",
- "declare const a: any; a?.<number>(); a<number>?.(); a?.b?.<T>(1);"
+ "declare const a: any; a?.<number>(); a<number>?.(); a?.b?.<T>(1);",
+ "@dec abstract class C {}",
+ "@dec declare class C {}",
+ "@dec declare abstract class C {}"
 ]

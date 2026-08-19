@@ -755,3 +755,50 @@ describe("modifiers with nowhere to go", () => {
 		expect(() => parse("class C { accessor x = 1; }")).not.toThrow();
 	});
 });
+
+describe("decorated class declarations", () => {
+	/*
+	 * A decorator decorates a class and nothing else, so the only things
+	 * that may stand between it and the `class` keyword are `abstract` and
+	 * `declare`, in either order.
+	 */
+	it("accepts abstract and declare in either order", () => {
+		for (const code of [
+			"@dec abstract class C {}",
+			"@dec declare class C {}",
+			"@dec declare abstract class C {}",
+			"@dec abstract declare class C {}",
+		]) {
+			expect(() => parse(code)).not.toThrow();
+		}
+	});
+
+	it("still accepts a plain decorated class and both export orders", () => {
+		for (const code of [
+			"@dec class C {}",
+			"export @dec class C {}",
+			"@dec export class C {}",
+		]) {
+			expect(() => parse(code)).not.toThrow();
+		}
+	});
+
+	/*
+	 * These used to build a `ClassDeclaration` and drop the keyword, so
+	 * `@dec interface I {}` read back as `class I {}`.
+	 */
+	it("rejects a decorator on anything that is not a class", () => {
+		for (const code of [
+			"@dec interface I {}",
+			"@dec enum E { A }",
+			"@dec namespace N {}",
+			"@dec function f() {}",
+			"@dec let x = 1;",
+			"@dec type T = number;",
+		]) {
+			expect(() => parse(code)).toThrow(
+				/only be applied to a class declaration/u,
+			);
+		}
+	});
+});

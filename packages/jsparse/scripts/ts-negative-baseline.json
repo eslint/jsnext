@@ -7,7 +7,7 @@
 	"missed: An AMD module cannot have multiple name assignments.": 1,
 	"missed: An element access expression should take an argument.": 1,
 	"missed: An optional chain cannot contain private identifiers.": 1,
-	"missed: Decorators are not valid here.": 6,
+	"missed: Decorators are not valid here.": 3,
 	"missed: Expression expected.": 4,
 	"missed: Invalid '…' directive syntax.": 1,
 	"missed: Invalid optional chain from new expression. Did you mean to call '…'?": 1,
