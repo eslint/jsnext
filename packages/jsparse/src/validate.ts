@@ -1287,6 +1287,8 @@ class Validator {
 		// A function with no body is a signature, not a definition.
 		this.ambient = previousAmbient || body === 0;
 
+		this.checkAmbientFunction(node, kind, flags, body);
+
 		/*
 		 * A function's name is checked here rather than where it is bound,
 		 * because a `"use strict"` directive in the body reaches back over
@@ -1705,6 +1707,38 @@ class Validator {
 			const target = reader.field(declarator, NODE_A);
 
 			this.declarePattern(target, binding);
+			const initializer = reader.field(declarator, NODE_B);
+			const annotation =
+				reader.kind(target) === N_Identifier
+					? reader.field(target, NODE_B)
+					: 0;
+
+			this.checkDefiniteAssertion(
+				declarator,
+				initializer,
+				annotation,
+				(flags & NF_DECLARE) !== 0 ||
+					declarationKind === DECL_CONST ||
+					isUsing,
+			);
+
+			/*
+			 * An ambient declaration names something defined elsewhere, so
+			 * an initializer here would be defining it twice. The one that
+			 * stands is `declare const x = 1` with no type written, where
+			 * the value is what says what the type is and TypeScript keeps
+			 * it for that.
+			 */
+			if (
+				(flags & NF_DECLARE) !== 0 &&
+				initializer !== 0 &&
+				(declarationKind !== DECL_CONST || annotation !== 0)
+			) {
+				this.report(
+					"An ambient declaration may not have an initializer.",
+					reader.start(declarator),
+				);
+			}
 
 			/*
 			 * A `using` disposes of what its name holds when the scope ends,
@@ -1742,6 +1776,117 @@ class Validator {
 		}
 
 		this.ambient = previousAmbient;
+	}
+
+	/**
+	 * Reports a function declaration that says two things at once.
+	 *
+	 * `declare` says the function is defined elsewhere, so a body contradicts
+	 * it outright, and `async` and `function*` describe how a body runs — a
+	 * declaration with neither has nothing to say about either. A body-less
+	 * generator is the same objection from the other side: a signature
+	 * describes a call, and being a generator is a fact about the body it
+	 * does not have.
+	 *
+	 * The `declare` read here is the keyword on the declaration itself, not
+	 * the ambient context it may sit in, which is what the reference parser
+	 * reads: `declare namespace N { function f() {} }` is accepted.
+	 * @param node The function node index.
+	 * @param kind The function node kind.
+	 * @param flags The function node flags.
+	 * @param body The body node index, or `0` for a signature.
+	 * @returns Nothing.
+	 */
+	private checkAmbientFunction(
+		node: number,
+		kind: number,
+		flags: number,
+		body: number,
+	): void {
+		if (kind !== N_FunctionDeclaration && kind !== N_TSDeclareFunction) {
+			return;
+		}
+
+		const start = this.reader.start(node);
+
+		if ((flags & NF_DECLARE) !== 0) {
+			if (body !== 0) {
+				this.report(
+					"An ambient function declaration may not have a body.",
+					start,
+				);
+			} else if ((flags & NF_ASYNC) !== 0) {
+				this.report(
+					"An ambient function declaration may not be async.",
+					start,
+				);
+			} else if ((flags & NF_GENERATOR) !== 0) {
+				this.report(
+					"An ambient function declaration may not be a generator.",
+					start,
+				);
+			}
+
+			return;
+		}
+
+		if (body === 0 && (flags & NF_GENERATOR) !== 0) {
+			this.report(
+				"A function signature may not be a generator.",
+				start,
+			);
+		}
+	}
+
+	/**
+	 * Reports a definite assignment assertion that promises nothing.
+	 *
+	 * `!` tells TypeScript a binding is assigned before it is read, which is
+	 * a claim about code the declaration does not contain. It is therefore
+	 * only meaningful where an initializer is absent and a type is written,
+	 * and only where the binding could have been left unassigned at all — a
+	 * `const`, a `using`, an ambient declaration, and an abstract member each
+	 * settle that question already.
+	 * @param node The declarator or class property.
+	 * @param initializer The initializer node index, or `0`.
+	 * @param typeAnnotation The type annotation node index, or `0`.
+	 * @param settled Whether the binding's assignment is already decided.
+	 * @returns Nothing.
+	 */
+	private checkDefiniteAssertion(
+		node: number,
+		initializer: number,
+		typeAnnotation: number,
+		settled: boolean,
+	): void {
+		const reader = this.reader;
+
+		if ((reader.flags(node) & NF_DEFINITE) === 0) {
+			return;
+		}
+
+		if (settled) {
+			this.report(
+				"A definite assignment assertion is not allowed here.",
+				reader.start(node),
+			);
+			return;
+		}
+
+		if (initializer !== 0) {
+			this.report(
+				"A definite assignment assertion may not be combined with an initializer.",
+				reader.start(node),
+			);
+			return;
+		}
+
+		if (typeAnnotation === 0) {
+			this.report(
+				"A definite assignment assertion requires a type annotation.",
+				reader.start(node),
+			);
+		}
 	}
 
 	/**
@@ -3858,14 +4003,57 @@ class Validator {
 		}
 
 		switch (kind) {
-			case N_MethodDefinition:
 			case N_PropertyDefinition:
 			case N_AccessorProperty:
-			case N_TSAbstractMethodDefinition:
 			case N_TSAbstractPropertyDefinition:
-			case N_TSAbstractAccessorProperty:
+			case N_TSAbstractAccessorProperty: {
+				const isAbstract =
+					kind === N_TSAbstractPropertyDefinition ||
+					kind === N_TSAbstractAccessorProperty;
+				const value = this.reader.field(node, NODE_B);
+
+				this.checkDefiniteAssertion(
+					node,
+					value,
+					this.reader.field(node, NODE_D),
+					isAbstract,
+				);
+
+				/*
+				 * `abstract` says a derived class supplies the member, so
+				 * supplying it here is the one thing the modifier rules out.
+				 */
+				if (isAbstract && value !== 0) {
+					this.report(
+						"An abstract class element may not have an initializer.",
+						this.reader.start(node),
+					);
+				}
+
 				this.checkClassElementName(node, kind);
 				return;
+			}
+
+			case N_MethodDefinition:
+				this.checkClassElementName(node, kind);
+				return;
+
+			case N_TSAbstractMethodDefinition: {
+				const value = this.reader.field(node, NODE_B);
+
+				if (
+					value !== 0 &&
+					this.reader.field(value, NODE_C) !== 0
+				) {
+					this.report(
+						"An abstract class element may not have an implementation.",
+						this.reader.start(node),
+					);
+				}
+
+				this.checkClassElementName(node, kind);
+				return;
+			}
 
 			case N_ImportDeclaration:
 			case N_ExportNamedDeclaration:

@@ -1945,3 +1945,216 @@ describe("parameter properties", () => {
 		).toEqual([expect.stringMatching(/non-simple parameter list/u)]);
 	});
 });
+
+describe("definite assignment assertions", () => {
+	it("allows one on an annotated let", () => {
+		expect(messages("let x!: number;")).toEqual([]);
+	});
+
+	it("allows one on an annotated class field", () => {
+		expect(messages("class C { x!: number; }")).toEqual([]);
+	});
+
+	it("reports one beside an initializer", () => {
+		expect(messages("let x!: number = 1;")).toEqual([
+			expect.stringMatching(/may not be combined with an initializer/u),
+		]);
+	});
+
+	it("reports one on a class field beside an initializer", () => {
+		expect(messages("class C { x!: number = 1; }")).toEqual([
+			expect.stringMatching(/may not be combined with an initializer/u),
+		]);
+	});
+
+	it("reports one with no type annotation", () => {
+		expect(messages("let x!;")).toEqual([
+			expect.stringMatching(/requires a type annotation/u),
+		]);
+	});
+
+	it("reports one on a class field with no type annotation", () => {
+		expect(messages("class C { x!; }")).toEqual([
+			expect.stringMatching(/requires a type annotation/u),
+		]);
+	});
+
+	/*
+	 * `const`, `using`, `declare`, and `abstract` each settle whether the
+	 * binding is assigned, so the assertion has nothing left to promise.
+	 */
+	it("reports one on a const", () => {
+		expect(messages("const x!: number = 1;")).toEqual([
+			expect.stringMatching(/not allowed here/u),
+		]);
+	});
+
+	it("reports one on a declared variable", () => {
+		expect(messages("declare let x!: number;")).toEqual([
+			expect.stringMatching(/not allowed here/u),
+		]);
+	});
+
+	it("reports one on a using declaration", () => {
+		expect(messages("using x!: number = f();")).toEqual([
+			expect.stringMatching(/not allowed here/u),
+		]);
+	});
+
+	it("reports one on an abstract property", () => {
+		expect(
+			messages("abstract class C { abstract x!: number; }"),
+		).toEqual([expect.stringMatching(/not allowed here/u)]);
+	});
+
+	/*
+	 * The reference parser reads the `declare` written on the declaration
+	 * itself, not the ambient context it may sit in.
+	 */
+	it("allows one inside an ambient namespace", () => {
+		expect(messages("declare namespace N { let x!: number; }")).toEqual(
+			[],
+		);
+	});
+});
+
+describe("abstract class elements", () => {
+	/*
+	 * `abstract` says a derived class supplies the member, so supplying it
+	 * here is the one thing the modifier rules out. A signature is what an
+	 * abstract member is supposed to be.
+	 */
+	it("allows an abstract method signature", () => {
+		expect(
+			messages("abstract class C { abstract m(): void; }"),
+		).toEqual([]);
+	});
+
+	it("allows an abstract property with only a type", () => {
+		expect(
+			messages("abstract class C { abstract x: number; }"),
+		).toEqual([]);
+	});
+
+	it("allows an abstract accessor signature", () => {
+		expect(
+			messages("abstract class C { abstract get x(): number; }"),
+		).toEqual([]);
+	});
+
+	it("reports an abstract method with a body", () => {
+		expect(messages("abstract class C { abstract m() {} }")).toEqual([
+			expect.stringMatching(/may not have an implementation/u),
+		]);
+	});
+
+	it("reports an abstract getter with a body", () => {
+		expect(
+			messages("abstract class C { abstract get x() { return 1; } }"),
+		).toEqual([expect.stringMatching(/may not have an implementation/u)]);
+	});
+
+	it("reports an abstract setter with a body", () => {
+		expect(
+			messages("abstract class C { abstract set x(v) {} }"),
+		).toEqual([expect.stringMatching(/may not have an implementation/u)]);
+	});
+
+	it("reports an abstract property with an initializer", () => {
+		expect(messages("abstract class C { abstract x = 1; }")).toEqual([
+			expect.stringMatching(/may not have an initializer/u),
+		]);
+	});
+
+	it("still allows a concrete member beside abstract ones", () => {
+		expect(
+			messages("abstract class C { abstract m(): void; n() {} x = 1; }"),
+		).toEqual([]);
+	});
+});
+
+describe("ambient function declarations", () => {
+	it("allows a declared signature", () => {
+		expect(messages("declare function f(): void;")).toEqual([]);
+	});
+
+	it("reports a declared function with a body", () => {
+		expect(messages("declare function f() {}")).toEqual([
+			expect.stringMatching(/may not have a body/u),
+		]);
+	});
+
+	it("reports a declared async function", () => {
+		expect(
+			messages("declare async function f(): Promise<void>;"),
+		).toEqual([expect.stringMatching(/may not be async/u)]);
+	});
+
+	it("reports a declared generator", () => {
+		expect(
+			messages("declare function* f(): Iterable<number>;"),
+		).toEqual([expect.stringMatching(/may not be a generator/u)]);
+	});
+
+	/*
+	 * The same objection from the other side: being a generator is a fact
+	 * about a body, and a signature has none.
+	 */
+	it("reports a body-less generator signature", () => {
+		expect(messages("function* f(): Iterable<number>;")).toEqual([
+			expect.stringMatching(/signature may not be a generator/u),
+		]);
+	});
+
+	it("still allows an ordinary generator and async function", () => {
+		expect(messages("function* g() {}\nasync function h() {}")).toEqual(
+			[],
+		);
+	});
+
+	/*
+	 * The reference parser reads the keyword on the declaration itself, not
+	 * the ambient context around it.
+	 */
+	it("allows a function with a body inside an ambient namespace", () => {
+		expect(messages("declare namespace N { function f() {} }")).toEqual(
+			[],
+		);
+	});
+
+	it("allows a method with a body in an ambient class", () => {
+		expect(messages("declare class C { m() {} }")).toEqual([]);
+	});
+});
+
+describe("ambient variable initializers", () => {
+	it("allows a declared variable with no initializer", () => {
+		expect(messages("declare let x: number;")).toEqual([]);
+	});
+
+	/*
+	 * `declare const x = 1` with no type written is the one that stands: the
+	 * value is what says what the type is, so TypeScript keeps it.
+	 */
+	it("allows a declared const whose value stands in for a type", () => {
+		expect(messages("declare const x = 1;")).toEqual([]);
+	});
+
+	it("reports an initializer on a declared let", () => {
+		expect(messages("declare let x: number = 1;")).toEqual([
+			expect.stringMatching(/may not have an initializer/u),
+		]);
+	});
+
+	it("reports an initializer on a declared var", () => {
+		expect(messages("declare var x: number = 1;")).toEqual([
+			expect.stringMatching(/may not have an initializer/u),
+		]);
+	});
+
+	it("reports an initializer on an annotated declared const", () => {
+		expect(messages("declare const x: number = 1;")).toEqual([
+			expect.stringMatching(/may not have an initializer/u),
+		]);
+	});
+});
