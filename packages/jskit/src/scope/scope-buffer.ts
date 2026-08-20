@@ -143,13 +143,22 @@ export const SF_DIRECT_EVAL = 8;
 export const SF_THIS_FOUND = 16;
 
 /** Words per symbol record. */
-export const SYMBOL_WORDS = 6;
+export const SYMBOL_WORDS = 8;
 export const V_NAME = 0; // string ID
 export const V_SCOPE = 1; // scope ID
 export const V_FLAGS = 2;
 export const V_IDENTIFIERS = 3; // pool handle: node handles
 export const V_DEFINITIONS = 4; // pool handle: definition IDs
 export const V_REFERENCES = 5; // pool handle: reference IDs
+export const V_READ_COUNT = 6; // references that read the symbol
+export const V_WRITE_COUNT = 7; // references that write it
+
+/*
+ * The two counts summarize `V_REFERENCES` so that the questions rules ask
+ * most of a binding — is it read at all, is it written more than once — cost
+ * a word read rather than a walk of the list. A read-write reference such as
+ * `x += 1` counts in **both**, so the two do not sum to the reference count.
+ */
 
 export const VF_TAINTED = 1;
 export const VF_STACK = 2;

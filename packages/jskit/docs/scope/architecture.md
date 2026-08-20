@@ -386,8 +386,8 @@ header               24 words: magic "JSSC", version, flags, counts, section
                      bases, the options the analysis ran with
 scope records        9 words each: type, flags, block, upper+1, variableScope,
                      variables, references, through, implicit
-symbol records       6 words each: name, scope, flags, identifiers,
-                     definitions, references
+symbol records       8 words each: name, scope, flags, identifiers,
+                     definitions, references, read count, write count
 reference records    8 words each: identifier, name, from, resolved+1, flags,
                      writeExpr, implicit-global pattern and node
 definition records   7 words each: type, name, node, parent, index+1, kind+1,
@@ -418,9 +418,18 @@ The enum code tables in `scope-buffer.ts` — scope types, definition types —
 are part of the format, and their order is **append-only**: repositioning an
 entry changes what every previously written buffer means.
 
+The two counts on a symbol record are the one summary the format keeps.
+They are what pattern 3 of the rule survey asks over and over — is this
+binding read at all, is it written more than once — and answering either by
+walking the reference list costs a pool read per reference to learn something
+a word already knows. A read-write such as `x += 1` counts in both, so the
+counts do not sum to the reference count. The emitter computes them in the
+pass that lays the reference list down, so they cost the writer nothing.
+
 ### What is stored and what is re-derived
 
-Serialization keeps exactly what cannot be recomputed and drops what can.
+Serialization keeps what cannot be recomputed and drops what can, with the
+read and write counts above as the deliberate exception.
 Stored: every flag the walk decided (`isStrict`, `dynamic`, taint, `stack`),
 every list in its final order, the `through` lists, the declared-variables
 index (its per-node order is walk order, not derivable from the records), and

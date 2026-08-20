@@ -30,6 +30,11 @@ below needs each of them without recomputation:
   exactly `variable.defs.length === 0`; make that one bit read. The symbol ID
   is what references resolve to and what the `eslintUsed` side bitset is
   keyed by, so it must be stable across the lifetime of the analysis result.
+- **Per symbol, continued:** a **read count** and a **write count** over the
+  symbol's references. Pattern 3 below asks both of a binding constantly —
+  `no-unused-vars` wants "read at all?", `prefer-const` wants "written more
+  than once?" — and neither should cost a walk of the reference list. A
+  read-write (`x += 1`) counts in both.
 - **Per reference:** identifier node offset, containing scope, resolved symbol
   ID or an explicit unresolved marker, and read/write/init flags.
 
@@ -81,6 +86,12 @@ must be *possible* but does not need to be optimized for.
   - `getDeclaredSymbols(node)` — declaration node → symbol IDs.
   - `getReferences(symbolId)` — iterate a symbol's references with their
     read/write/init flags exposed.
+  - `getSymbolReadCount(symbolId)` / `getSymbolWriteCount(symbolId)` /
+    `getSymbolReferenceCount(symbolId)` — the same list summarized, for the
+    rules that only need to count.
+  - `getOwnSymbolByName(scope, name)` / `getSymbolByName(scope, name)` —
+    `getVariableByName()`, the second-most-used entry point in the survey:
+    one scope's own binding, and the same lookup climbing the chain.
   - `getUnresolvedReferences(scope)` — the `through` list, for the global
     scope (`no-undef`) or any function scope (`no-loop-func`).
   - `getScope(node)`, `upper(scope)`, `variableScope(scope)`,

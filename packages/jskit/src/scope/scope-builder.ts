@@ -131,6 +131,7 @@ import {
 	RF_TAINTED,
 	RF_TYPE,
 	RF_VALUE,
+	RF_WRITE,
 	S_BLOCK,
 	S_FLAGS,
 	S_IMPLICIT,
@@ -154,7 +155,9 @@ import {
 	V_FLAGS,
 	V_IDENTIFIERS,
 	V_NAME,
+	V_READ_COUNT,
 	V_REFERENCES,
+	V_WRITE_COUNT,
 	V_SCOPE,
 	VF_IMPLICIT_GLOBAL,
 	VF_STACK,
@@ -2160,9 +2163,37 @@ export class ScopeBuilder<TNode> {
 			}
 
 			outSymbols[to + V_DEFINITIONS] = defsHandle;
-			outSymbols[to + V_REFERENCES] = listFromCells(
-				symbolWords[from + BV_REFS_HEAD],
-			);
+
+			const refsHandle = listFromCells(symbolWords[from + BV_REFS_HEAD]);
+
+			outSymbols[to + V_REFERENCES] = refsHandle;
+
+			/*
+			 * The counts are summarized here rather than kept during
+			 * resolution: the list has just been laid down contiguously, so
+			 * one pass over it costs a walk the emitter is already paying
+			 * for, and the builder's symbol record stays two words smaller.
+			 * `RF_READ` is 1 and `RF_WRITE` is 2, so each flag turns into its
+			 * own increment without a branch.
+			 */
+			if (refsHandle !== 0) {
+				const poolWords = pool.data;
+				const refWords = this.refs.data;
+				const end = refsHandle + poolWords[refsHandle];
+				let reads = 0;
+				let writes = 0;
+
+				for (let at = refsHandle + 1; at <= end; at++) {
+					const refFlags =
+						refWords[poolWords[at] * REFERENCE_WORDS + R_FLAGS];
+
+					reads += refFlags & RF_READ;
+					writes += (refFlags & RF_WRITE) >> 1;
+				}
+
+				outSymbols[to + V_READ_COUNT] = reads;
+				outSymbols[to + V_WRITE_COUNT] = writes;
+			}
 		}
 
 		// References are already final: copy, then remap what they resolved to.

@@ -18,8 +18,22 @@ export class Variable<TNode> {
 	/** The `Identifier` nodes that declare the name. */
 	readonly identifiers: TNode[] = [];
 
-	/** Every occurrence that resolved to this variable. */
+	/**
+	 * Every occurrence that resolved to this variable. Append through
+	 * `addReference()` rather than directly, so that `readCount` and
+	 * `writeCount` keep pace with it.
+	 */
 	readonly references: Reference<TNode>[] = [];
+
+	/** How many of those occurrences read the variable. */
+	readCount = 0;
+
+	/**
+	 * How many of them write it, its initializer included. A read-write such
+	 * as `x += 1` counts in both, so the two do not sum to
+	 * `references.length`.
+	 */
+	writeCount = 0;
 
 	/** Every declaration of the name. */
 	readonly defs: Definition<TNode>[] = [];
@@ -55,6 +69,26 @@ export class Variable<TNode> {
 	constructor(name: string, scope: Scope<TNode>) {
 		this.name = name;
 		this.scope = scope;
+	}
+
+	/**
+	 * Records an occurrence of the variable and keeps the read and write
+	 * counts current. The counts are what rules like `prefer-const` and
+	 * `no-unused-vars` ask for, and asking them should not mean walking the
+	 * reference list.
+	 * @param reference The occurrence that resolved here.
+	 * @returns Nothing.
+	 */
+	addReference(reference: Reference<TNode>): void {
+		this.references.push(reference);
+
+		if (reference.isRead()) {
+			this.readCount++;
+		}
+
+		if (reference.isWrite()) {
+			this.writeCount++;
+		}
 	}
 
 	/**

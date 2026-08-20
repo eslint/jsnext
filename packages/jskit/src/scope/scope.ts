@@ -467,7 +467,7 @@ export class Scope<TNode> {
 			return false;
 		}
 
-		variable.references.push(reference);
+		variable.addReference(reference);
 		variable.stack =
 			variable.stack &&
 			reference.from.variableScope === this.variableScope;

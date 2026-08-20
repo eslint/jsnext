@@ -181,6 +181,90 @@ describe("Scopes", () => {
 		expect(scopes.symbolDefinitionTypes(symbol)).toEqual(["Variable"]);
 	});
 
+	it("summarizes a symbol's reads and writes without walking its references", () => {
+		const { parsed, buffer } = analyzed(
+			"let a = 1; a; a = 2; a += 3; let unused; let readOnce = 1; readOnce;",
+		);
+		const scopes = new Scopes(buffer, parsed);
+		const manager = toScopeManager(buffer, parsed);
+		const module = manager.scopes[1];
+
+		/**
+		 * The counts recorded for one binding of the module scope.
+		 * @param name The binding's name.
+		 * @returns Its read, write, and reference counts.
+		 */
+		function counts(name: string): [number, number, number] {
+			const symbol = module.set.get(name)!.symbolId;
+
+			return [
+				scopes.getSymbolReadCount(symbol),
+				scopes.getSymbolWriteCount(symbol),
+				scopes.getSymbolReferenceCount(symbol),
+			];
+		}
+
+		// `a += 3` reads and writes, so the counts outnumber the references.
+		expect(counts("a")).toEqual([2, 3, 4]);
+		expect(counts("unused")).toEqual([0, 0, 0]);
+
+		// What `prefer-const` asks: one write, and it is the initializer.
+		expect(counts("readOnce")).toEqual([1, 1, 2]);
+	});
+
+	it("agrees with the reference flags on every symbol of a program", () => {
+		const { parsed, buffer } = analyzed(
+			`
+				const a = 1;
+				let b = a;
+				b = a + 1;
+				b++;
+				for (const item of [a, b]) { console.log(item); }
+				function f(p = a) { p = p + 1; return p; }
+				class C { m() { return f(b); } }
+				new C();
+				undeclared = a;
+			`,
+			{ sourceType: "script" },
+		);
+		const scopes = new Scopes(buffer, parsed);
+
+		for (let symbol = 0; symbol < scopes.symbolCount; symbol++) {
+			const references = scopes.getReferences(symbol);
+
+			expect(scopes.getSymbolReadCount(symbol)).toBe(
+				references.filter(id => scopes.referenceIsRead(id)).length,
+			);
+			expect(scopes.getSymbolWriteCount(symbol)).toBe(
+				references.filter(id => scopes.referenceIsWrite(id)).length,
+			);
+			expect(scopes.getSymbolReferenceCount(symbol)).toBe(
+				references.length,
+			);
+		}
+	});
+
+	it("resolves a name from a scope the way a reference does", () => {
+		const { parsed, buffer } = analyzed(
+			"let a = 1; function f() { let a = 2; return a; }",
+		);
+		const scopes = new Scopes(buffer, parsed);
+		const module = scopes.upper(scopes.scopeCount - 1)!;
+		const inner = scopes.scopeCount - 1;
+		const outer = scopes.getOwnSymbolByName(module, "a")!;
+		const shadowing = scopes.getOwnSymbolByName(inner, "a")!;
+
+		expect(shadowing).not.toBe(outer);
+		expect(scopes.getSymbolByName(inner, "a")).toBe(shadowing);
+
+		// `f` is bound outside, so the chain has to be climbed to find it.
+		expect(scopes.getOwnSymbolByName(inner, "f")).toBeNull();
+		expect(scopes.getSymbolByName(inner, "f")).toBe(
+			scopes.getOwnSymbolByName(module, "f"),
+		);
+		expect(scopes.getSymbolByName(inner, "nothing")).toBeNull();
+	});
+
 	it("reports unresolved references per scope", () => {
 		const { parsed, buffer } = analyzed(
 			"function f() { return outer + inner; } let inner;",
@@ -357,6 +441,39 @@ describe("toScopeManager", () => {
 		expect(variable.eslintUsed).toBe(true);
 	});
 
+	it("carries the read and write counts onto every variable", () => {
+		const { parsed, buffer } = analyzed("let a = 1; a; a = 2; a += 3;");
+		const scopes = new Scopes(buffer, parsed);
+		const manager = toScopeManager(buffer, parsed);
+
+		for (const scope of manager.scopes) {
+			for (const variable of scope.variables) {
+				expect(variable.readCount).toBe(
+					variable.references.filter(reference =>
+						reference.isRead(),
+					).length,
+				);
+				expect(variable.writeCount).toBe(
+					variable.references.filter(reference =>
+						reference.isWrite(),
+					).length,
+				);
+
+				// The rehydrated graph and the buffer say the same thing.
+				expect(variable.readCount).toBe(
+					scopes.getSymbolReadCount(variable.symbolId),
+				);
+				expect(variable.writeCount).toBe(
+					scopes.getSymbolWriteCount(variable.symbolId),
+				);
+			}
+		}
+
+		const a = manager.scopes[1].set.get("a")!;
+
+		expect([a.readCount, a.writeCount]).toEqual([2, 3]);
+	});
+
 	it("assigns each variable its stable symbol ID", () => {
 		const { parsed, buffer } = analyzed("const a = 1; function f(b) {}");
 		const scopes = new Scopes(buffer, parsed);
@@ -396,6 +513,11 @@ describe("toScopeTree", () => {
 			"a",
 			"f",
 		]);
+		expect(root.variables[0]).toMatchObject({
+			name: "a",
+			readCount: 1,
+			writeCount: 1,
+		});
 		expect(root.implicit!.map(variable => variable.name)).toEqual([
 			"undeclared",
 		]);

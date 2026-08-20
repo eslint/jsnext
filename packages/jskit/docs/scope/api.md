@@ -120,10 +120,21 @@ for (const symbol of scopes.getDeclaredSymbols(declarationNode)) {
 	}
 }
 
+// How often a binding is read and written, without walking that list:
+scopes.getSymbolReadCount(symbol); // 0 means nothing ever reads it
+scopes.getSymbolWriteCount(symbol); // more than 1 settles prefer-const
+
+// getVariableByName(): a name as the scope it is written in resolves it:
+scopes.getSymbolByName(scope, "Symbol"); // symbol ID, or null
+scopes.getOwnSymbolByName(scope, "Symbol"); // that scope's own binding only
+
 // The eslintUsed protocol lives beside the immutable buffer:
 scopes.markSymbolAsUsed(symbol);
 scopes.isSymbolUsed(symbol); // true
 ```
+
+A read-write such as `x += 1` counts as both a read and a write, so the two
+counts do not sum to `getReferences(symbol).length`.
 
 Scopes, symbols, and references are all stable integer IDs, assigned when the
 buffer is written and never renumbered. A `Variable` rehydrated by
@@ -215,7 +226,10 @@ declaration.
 ### `Variable`
 
 `name`, `scope`, `identifiers` (the nodes that declare it), `defs` (how), and
-`references` (every occurrence that resolved to it). `isTypeVariable` and
+`references` (every occurrence that resolved to it). `readCount` and
+`writeCount` summarize that list, so a rule that only needs to know whether a
+binding is ever read, or written more than once, does not scan it; a
+read-write counts in both. `isTypeVariable` and
 `isValueVariable` report whether the name can be used where a type or a value
 is expected, which is how `interface A {}` fails to satisfy `A;`.
 

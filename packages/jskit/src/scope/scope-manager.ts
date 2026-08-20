@@ -280,7 +280,7 @@ export class ScopeManager<TNode> {
 			const variable = globalScope.set.get(reference.name)!;
 
 			reference.resolved = variable;
-			variable.references.push(reference);
+			variable.addReference(reference);
 
 			return false;
 		});

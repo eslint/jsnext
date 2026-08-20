@@ -44,7 +44,9 @@ import {
 	SF_STRICT,
 	V_DEFINITIONS,
 	V_NAME,
+	V_READ_COUNT,
 	V_REFERENCES,
+	V_WRITE_COUNT,
 	V_SCOPE,
 } from "./scope-buffer.js";
 import type { DefinitionType, ScopeType } from "./kinds.js";
@@ -66,10 +68,11 @@ export class Scopes<TNode = number> {
 	private readonly nodes: NodeSource<TNode>;
 
 	/**
-	 * The global scope's symbols by name, built the first time a name lookup
-	 * happens. Implicit globals are excluded, matching `Scope#set`.
+	 * Each queried scope's own symbols by name, built the first time a name
+	 * lookup reaches that scope and kept for the next one. Implicit globals
+	 * are excluded, matching `Scope#set`.
 	 */
-	private globalNames: Map<string, number> | null = null;
+	private readonly namesByScope = new Map<number, Map<string, number>>();
 
 	/**
 	 * Which symbols a consumer has marked as used — the `eslintUsed`
@@ -289,19 +292,7 @@ export class Scopes<TNode = number> {
 	 *      binding.
 	 */
 	globalSymbol(name: string): number | null {
-		if (this.globalNames === null) {
-			this.globalNames = new Map();
-
-			for (const symbol of this.scopeSymbols(GLOBAL_SCOPE)) {
-				const symbolName = this.symbolName(symbol);
-
-				if (!this.globalNames.has(symbolName)) {
-					this.globalNames.set(symbolName, symbol);
-				}
-			}
-		}
-
-		return this.globalNames.get(name) ?? null;
+		return this.getOwnSymbolByName(GLOBAL_SCOPE, name);
 	}
 
 	/**
@@ -322,6 +313,89 @@ export class Scopes<TNode = number> {
 	//-------------------------------------------------------------------------
 	// Symbols
 	//-------------------------------------------------------------------------
+
+	/**
+	 * One scope's own binding for a name, without climbing the chain.
+	 * @param scope The scope ID.
+	 * @param name The name to look up.
+	 * @returns The symbol ID, or `null` when the scope binds no such name.
+	 */
+	getOwnSymbolByName(scope: number, name: string): number | null {
+		let names = this.namesByScope.get(scope);
+
+		if (names === undefined) {
+			names = new Map();
+
+			for (const symbol of this.scopeSymbols(scope)) {
+				const symbolName = this.symbolName(symbol);
+
+				if (!names.has(symbolName)) {
+					names.set(symbolName, symbol);
+				}
+			}
+
+			this.namesByScope.set(scope, names);
+		}
+
+		return names.get(name) ?? null;
+	}
+
+	/**
+	 * The binding a name resolves to from a scope, climbing outward the way
+	 * a reference does. This is `getVariableByName()`: the second-most-asked
+	 * question in the rule survey, and what the shadowing rules walk.
+	 * @param scope The scope the name is written in.
+	 * @param name The name to resolve.
+	 * @returns The symbol ID, or `null` when nothing in the chain binds it.
+	 */
+	getSymbolByName(scope: number, name: string): number | null {
+		for (
+			let at: number | null = scope;
+			at !== null;
+			at = this.upper(at)
+		) {
+			const symbol = this.getOwnSymbolByName(at, name);
+
+			if (symbol !== null) {
+				return symbol;
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * How many references read a symbol, counted when the buffer was written.
+	 * A read-write such as `x += 1` counts here and as a write, so this and
+	 * `getSymbolWriteCount()` do not sum to the reference count.
+	 * @param symbol The symbol ID.
+	 * @returns The number of reads.
+	 */
+	getSymbolReadCount(symbol: number): number {
+		return this.buffer.symbolField(symbol, V_READ_COUNT);
+	}
+
+	/**
+	 * How many references write a symbol, counted when the buffer was
+	 * written. `prefer-const` is the shape this exists for: a binding written
+	 * more than once is settled without touching its reference list at all.
+	 * @param symbol The symbol ID.
+	 * @returns The number of writes, initializers included.
+	 */
+	getSymbolWriteCount(symbol: number): number {
+		return this.buffer.symbolField(symbol, V_WRITE_COUNT);
+	}
+
+	/**
+	 * How many references resolved to a symbol.
+	 * @param symbol The symbol ID.
+	 * @returns The number of references.
+	 */
+	getSymbolReferenceCount(symbol: number): number {
+		return this.buffer.listCount(
+			this.buffer.symbolField(symbol, V_REFERENCES),
+		);
+	}
 
 	/**
 	 * The symbols a declaration node declares.

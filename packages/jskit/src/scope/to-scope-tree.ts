@@ -61,7 +61,9 @@ import {
 	V_FLAGS,
 	V_IDENTIFIERS,
 	V_NAME,
+	V_READ_COUNT,
 	V_REFERENCES,
+	V_WRITE_COUNT,
 	VF_STACK,
 	VF_TAINTED,
 } from "./scope-buffer.js";
@@ -93,6 +95,8 @@ export interface ScopeTreeVariable {
 	identifiers: ScopeTreeNode[];
 	defs: ScopeTreeDefinition[];
 	references: number[];
+	readCount: number;
+	writeCount: number;
 }
 
 /** One reference, numbered with its stable ID. */
@@ -214,6 +218,8 @@ export function toScopeTree(
 			references: buffer.listItems(
 				buffer.symbolField(symbol, V_REFERENCES),
 			),
+			readCount: buffer.symbolField(symbol, V_READ_COUNT),
+			writeCount: buffer.symbolField(symbol, V_WRITE_COUNT),
 		};
 	}
 

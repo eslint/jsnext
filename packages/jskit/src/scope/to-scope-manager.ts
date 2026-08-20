@@ -368,7 +368,7 @@ function rehydrate<TNode>(
 		for (const ref of buffer.listItems(
 			buffer.symbolField(i, V_REFERENCES),
 		)) {
-			variable.references.push(references[ref]);
+			variable.addReference(references[ref]);
 		}
 	}
 
