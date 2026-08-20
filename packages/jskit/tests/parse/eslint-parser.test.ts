@@ -206,10 +206,121 @@ describe("eslintParser.parse()", () => {
 		).not.toThrow();
 	});
 
+	it("allows top-level return in a commonjs file, as ESLint does", () => {
+		expect(() =>
+			eslintParser.parse("return 1;", { sourceType: "commonjs" }),
+		).not.toThrow();
+	});
+
+	it("allows top-level return under ecmaFeatures.globalReturn", () => {
+		expect(() =>
+			eslintParser.parse("return 1;", {
+				sourceType: "script",
+				ecmaFeatures: { globalReturn: true },
+			}),
+		).not.toThrow();
+		expect(() =>
+			eslintParser.parse("return 1;", { sourceType: "script" }),
+		).toThrow(/outside of function/u);
+	});
+
+	it("ignores ecmaFeatures.globalReturn in a module, as ESLint does", () => {
+		expect(() =>
+			eslintParser.parse("return 1;", {
+				sourceType: "module",
+				ecmaFeatures: { globalReturn: true },
+			}),
+		).toThrow(/outside of function/u);
+	});
+
 	it("honors the source type ESLint passes", () => {
 		expect(() =>
 			eslintParser.parse("import a from 'b';", { sourceType: "script" }),
 		).toThrow(/'import'/u);
+	});
+});
+
+describe("eslintParser.parseForESLint()", () => {
+	it("returns the tree, the scope graph, and the visitor keys", () => {
+		const result = eslintParser.parseForESLint("const a = 1;");
+
+		expect(result.ast.type).toBe("Program");
+		expect(result.scopeManager.scopes[0].type).toBe("global");
+		expect(result.visitorKeys.Program).toEqual(["body"]);
+	});
+
+	it("builds the scope graph over the very nodes it returns", () => {
+		const { ast, scopeManager } = eslintParser.parseForESLint(
+			"let a = 1; a;",
+		);
+		const declarator = (
+			(ast.body as Record<string, Record<string, unknown>[]>[])[0]
+				.declarations as Record<string, unknown>[]
+		)[0];
+		const moduleScope = scopeManager.scopes[1];
+		const variable = moduleScope.set.get("a")!;
+
+		expect(variable.defs[0].name).toBe(declarator.id);
+		expect(variable.references[0].identifier).toBe(declarator.id);
+	});
+
+	it("resolves a reference that only a type position makes", () => {
+		const { scopeManager } = eslintParser.parseForESLint(
+			"interface Thing {}\nlet a: Thing;",
+			{ filePath: "a.ts" },
+		);
+		const variable = scopeManager.scopes[1].set.get("Thing")!;
+
+		expect(variable.references).toHaveLength(1);
+		expect(variable.references[0].isTypeReference).toBe(true);
+	});
+
+	it("wraps the program in a function scope for commonjs", () => {
+		const { scopeManager } = eslintParser.parseForESLint("var a;", {
+			sourceType: "commonjs",
+		});
+
+		expect(scopeManager.scopes[1].type).toBe("function");
+	});
+
+	it("honors ecmaFeatures.globalReturn, as eslint-scope does", () => {
+		const { scopeManager } = eslintParser.parseForESLint("var a;", {
+			sourceType: "script",
+			ecmaFeatures: { globalReturn: true },
+		});
+
+		expect(scopeManager.scopes[1].type).toBe("function");
+	});
+
+	it("honors ecmaFeatures.impliedStrict, as eslint-scope does", () => {
+		const { scopeManager } = eslintParser.parseForESLint("var a;", {
+			sourceType: "script",
+			ecmaFeatures: { impliedStrict: true },
+		});
+
+		expect(scopeManager.scopes[0].isStrict).toBe(true);
+	});
+
+	/*
+	 * ESLint hands `eslint-scope` `ignoreEval: true`, so every rule reading
+	 * the graph is written expecting a direct `eval` to leave the scopes it
+	 * appears in static.
+	 */
+	it("leaves a scope containing a direct eval static, as ESLint asks for", () => {
+		const { scopeManager } = eslintParser.parseForESLint(
+			"function f() { eval('a'); }",
+			{ sourceType: "script" },
+		);
+		const functionScope = scopeManager.scopes[1];
+
+		expect(functionScope.type).toBe("function");
+		expect(functionScope.dynamic).toBe(false);
+	});
+
+	it("throws the way parse() does", () => {
+		expect(() => eslintParser.parseForESLint("const a =\n  ;")).toThrow(
+			ParseError,
+		);
 	});
 });
 
@@ -267,6 +378,31 @@ describe("eslintParser inside ESLint", () => {
 			) as Linter.LintMessage[];
 
 		expect(run(eslintParser)).toEqual(run(espree));
+	});
+
+	it("takes the scope graph from the parser rather than eslint-scope", () => {
+		const messages = lint(
+			"interface Thing {}\nexport const a: Thing = {};",
+			"file.ts",
+			{ "no-unused-vars": "error" },
+		);
+
+		expect(messages).toEqual([]);
+	});
+
+	/*
+	 * Without the visitor keys ESLint never walks into an `Identifier`'s
+	 * `typeAnnotation`, so nothing under one is given a `parent` — and a rule
+	 * reading `reference.identifier.parent` throws rather than misbehaving.
+	 */
+	it("walks into a type annotation, which needs the visitor keys", () => {
+		const messages = lint(
+			"interface Thing { a: string }\nconst x: Thing = { a: 'b' };\nexport { x };",
+			"file.ts",
+			{ "no-unused-vars": "error" },
+		);
+
+		expect(messages).toEqual([]);
 	});
 
 	it("supports scope analysis, which rules depend on", () => {

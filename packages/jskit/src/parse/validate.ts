@@ -404,8 +404,15 @@ class Validator {
 	/** Whether strict mode rules currently apply. */
 	private strict: boolean;
 
-	/** Depth of enclosing functions; `0` means top level. */
-	private functionDepth = 0;
+	/**
+	 * Depth of enclosing functions; `0` means top level.
+	 *
+	 * A CommonJS module starts at `1`: its text is the body of a function the
+	 * host wraps it in, which is what makes `return` at the top level of one
+	 * legal. Nothing else about the program changes, so this is the whole of
+	 * what `"commonjs"` means beyond `"script"` here.
+	 */
+	private functionDepth: number;
 
 	/**
 	 * Whether the walk is inside a JSX element or fragment, so that a
@@ -666,6 +673,7 @@ class Validator {
 		this.jsx = jsx;
 		this.ambient = declaration;
 		this.strict = sourceType === "module";
+		this.functionDepth = sourceType === "commonjs" ? 1 : 0;
 		this.mentionsArguments =
 			reader.source.includes("arguments") ||
 			reader.source.includes("\\u");

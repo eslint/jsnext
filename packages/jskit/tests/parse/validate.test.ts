@@ -325,6 +325,22 @@ describe("declarations", () => {
 		expect(messages("function f() { return 1; }")).toEqual([]);
 	});
 
+	/*
+	 * A CommonJS module is the body of a function the host wraps around it,
+	 * which is the whole of what separates it from a script here.
+	 */
+	it("allows return at the top level of a commonjs module", () => {
+		expect(messages("return 1;", { sourceType: "commonjs" })).toEqual([]);
+	});
+
+	it("still reports return in a static block of a commonjs module", () => {
+		expect(
+			messages("class C { static { return; } }", {
+				sourceType: "commonjs",
+			}),
+		).toEqual(["'return' outside of function."]);
+	});
+
 	it("reports a strict-mode reserved word used as a binding", () => {
 		expect(messages("let interface = 1;")).toEqual([
 			expect.stringMatching(/reserved word/u),

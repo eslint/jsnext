@@ -32,6 +32,9 @@ export * from "./slots.js";
  */
 export { decodeEscapes, decodeNumber } from "./values.js";
 
+/* Which properties of a node hold its children, for anything walking a tree. */
+export { VISITOR_KEYS } from "./visitor-keys.js";
+
 /*
  * The three phases. `buildAst()` is deliberately absent: it is what the ESLint
  * parser object needs and nothing a caller of `toAST()` does.
@@ -46,8 +49,12 @@ export type {
 	ValidationError,
 } from "./api.js";
 
-export { eslintParser } from "./eslint-parser.js";
-export type { EslintParserOptions } from "./eslint-parser.js";
+/*
+ * `eslint-parser.ts` is deliberately absent. It supplies ESLint with a scope
+ * graph as well as a tree, so it imports `../scope/index.js`, and exporting it
+ * from here would make the two directories import each other. The package
+ * index exports it instead.
+ */
 
 /** The property bag the decoder works in, before it is asserted to `Program`. */
 export type { EsNode } from "./to-ast.js";

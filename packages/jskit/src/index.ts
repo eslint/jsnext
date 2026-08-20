@@ -30,3 +30,16 @@
 export * from "./parse/index.js";
 export * from "./scope/index.js";
 export * from "./flow/index.js";
+
+/*
+ * The one thing exported from here rather than from a sub-index. The ESLint
+ * parser object is not part of any of the three analyses: it hands ESLint a
+ * tree from `parse/` and a scope graph from `scope/`, so it sits above both
+ * and `parse/index.js` cannot name it without the two directories importing
+ * each other.
+ */
+export { eslintParser } from "./parse/eslint-parser.js";
+export type {
+	EslintParseResult,
+	EslintParserOptions,
+} from "./parse/eslint-parser.js";

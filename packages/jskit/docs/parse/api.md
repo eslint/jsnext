@@ -172,6 +172,33 @@ export default [
 ];
 ```
 
+ESLint calls `parseForESLint()` on it, which hands back three things rather
+than one:
+
+```js
+const { ast, scopeManager, visitorKeys } = eslintParser.parseForESLint(code, {
+	filePath: "example.ts",
+});
+```
+
+- **`ast`** is what `parse()` returns — the same tree, with the same positions.
+  `parse()` is still there for anything that wants only that.
+- **`scopeManager`** is the scope graph over that very tree, built by
+  `analyzeTree()` and rehydrated by `toScopeManager()`, so a rule asking for
+  the scope of a node gets an answer about the node object it is holding.
+  ESLint takes it in place of running `eslint-scope`, which is what makes scope
+  analysis understand TypeScript: `eslint-scope` walks past a type annotation
+  without seeing the bindings and references inside it.
+- **`visitorKeys`** is [`VISITOR_KEYS`](#visitor_keys), which ESLint needs for
+  the same reason — without it, nothing inside a TypeScript-only property is
+  ever visited, and rules see those nodes with no `parent`.
+
+The options are ESLint's own. `sourceType` comes from
+`languageOptions.sourceType`, and `ecmaFeatures.globalReturn` and
+`ecmaFeatures.impliedStrict` are read where `espree` reads them, so a
+configuration written for `espree` keeps working. `ecmaVersion` is ignored:
+this parser implements the latest ECMAScript and nothing else.
+
 It differs from `toAST()` in five ways, each because ESLint requires it:
 
 - **Nodes, tokens, and comments carry `range` and `loc`.** ESLint refuses an
@@ -209,12 +236,36 @@ resolves for you.
 them, so anything that copies, enumerates, or serializes a node behaves the
 same way.
 
-Note that ESLint's built-in `no-undef` and `no-unused-vars` only understand
-values, so on TypeScript files they report every type name as undefined and
-every type-only import as unused. Turn them off for `**/*.ts`, exactly as
+Note that ESLint's built-in `no-undef` and `no-unused-vars` still misread
+TypeScript, though less than they would with `eslint-scope` underneath them:
+the scope graph resolves type references and counts a type-only import as used,
+but `no-undef` reports every name from TypeScript's standard library, which is
+not loaded (see
+[Deviations](../../../../docs/deviations.md#the-typescript-standard-library)),
+and `no-unused-vars` reports the parameters of a declaration-only signature,
+which have nowhere to be used. Turn them off for `**/*.ts`, exactly as
 `typescript-eslint` does. This repository's own
 [`eslint.config.js`](../../../../eslint.config.js) is a worked example: the toolkit lints its own
 source.
+
+### `VISITOR_KEYS`
+
+Which properties of each node kind hold its children, in the order a walk
+should visit them — the table `parseForESLint()` hands ESLint, and the one to
+hand anything else that walks a tree:
+
+```js
+import { VISITOR_KEYS } from "@eslint/jskit";
+
+VISITOR_KEYS.TSTypeAliasDeclaration; // ["id", "typeParameters", "typeAnnotation"]
+```
+
+It states every kind this parser can produce, and states them the way
+`@typescript-eslint/visitor-keys` does, key for key and in the same order —
+`tests/parse/visitor-keys.test.ts` compares the two entry by entry. The
+JavaScript entries are a superset of `eslint-visitor-keys`: they carry the
+TypeScript properties as well, which a `dialect: "js"` tree simply does not
+have.
 
 ## AST shape
 

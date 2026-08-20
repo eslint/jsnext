@@ -94,6 +94,7 @@ src/
   entities.ts       XHTML named entities for JSX text
   errors.ts         ParseError
   api.ts            parse(), validate(), toAST(), and the token decoder
+  visitor-keys.ts   which properties of each node hold its children
   eslint-parser.ts  the ESLint parser object
   index.ts          the public surface, and nothing but re-exports
 ```

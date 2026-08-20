@@ -370,6 +370,39 @@ implemented at all.
 hundred-odd negative tests reduced to a line each, plus the valid programs that
 this corpus caught the parser rejecting.
 
+### What no comparison of outputs can prove
+
+Every run above compares an output — a tree, a token list, a scope graph. None
+of them says whether a *rule* behaves the same, which is the only thing a user
+of `eslintParser` actually sees.
+
+`npm run conformance:eslint --workspace=@eslint/jskit -- <path-to-eslint>` is
+that check: ESLint's own rule tests, some 33,000 assertions over 293 rules, run
+with `eslintParser` in place of `espree` and `parseForESLint()`'s scope graph in
+place of `eslint-scope`'s. It needs a checkout of the ESLint version this
+repository depends on, with its dependencies installed, and it modifies nothing
+in it — a generated mocha hook swaps the parser before the tests load.
+
+```bash
+git clone --depth 1 --branch v10.8.1 https://github.com/eslint/eslint
+cd eslint && npm install
+npm run conformance:eslint --workspace=@eslint/jskit -- ../eslint
+```
+
+```
+tests=33720 passed=33672 failed=48 rules=13
+baseline unchanged
+```
+
+**Its failures come in two kinds and only one is a defect.** Most are a program
+parsed or resolved differently, and those are listed under [Known
+gaps](./docs/deviations.md#known-gaps). The rest are language versions: the
+suite pins `ecmaVersion` per test, and a handful of files test ES3 and ES5
+semantics that a latest-only parser cannot reproduce and should not try to.
+Telling the two apart is a reading job, which is why this one is graded against
+`scripts/parse/eslint-baseline.json` — a failure count per rule — rather than
+against zero.
+
 The directory is resolved against the working directory, so run these from
 `packages/jskit`:
 

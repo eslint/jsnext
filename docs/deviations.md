@@ -364,7 +364,7 @@ is always there.
 
 Not deviations — bugs that are simply not fixed yet.
 
-All three were found by running TypeScript's own conformance suite (see
+The first three were found by running TypeScript's own conformance suite (see
 [AGENTS.md](../AGENTS.md#conformance-is-the-real-test-suite)) and all three are
 confined to input that is already an error, which is why they have been left.
 
@@ -380,6 +380,31 @@ confined to input that is already an error, which is why they have been left.
   conformance suite differ for that reason alone, all of them negative tests.
   Matching TypeScript's recovery is not a goal — see [the rule that decides
   where code goes](../AGENTS.md#the-rule-that-decides-where-code-goes).
+
+The next five are what `scripts/parse/conformance-eslint.mjs` found by running
+ESLint's own rule tests through `eslintParser`. Unlike the three above, each is
+valid JavaScript that `espree` accepts and this parser reads differently, so
+each one breaks working code:
+
+- **`in` inside a function written in a `for` statement's init.** The `for (a
+  in b)` disambiguation is meant to stop at the first function boundary, and
+  here it does not, so `for (let f = () => a in b; ;);` throws where `espree`
+  parses it. Eleven of ESLint's `arrow-body-style` tests and nine of its
+  `no-extra-parens` autofixes land on it.
+- **A property access on a legacy octal literal.** `0123.a` throws with
+  "Identifier directly after number". The `.` cannot be part of a
+  `LegacyOctalIntegerLiteral`, so it is a member access and `espree` reads it
+  as one. `01['prop']` parses; only the dotted form fails.
+- **A regular expression at the start of a statement after `break`,
+  `continue`, or `debugger`.** After the automatic semicolon, `/` begins a
+  regular expression; the tokenizer reads it as division and throws. `debugger
+  \n /re/` is the shortest case.
+- **`get` or `set` on its own line in a class body.** `class C { static get \n
+  x() {} }` is a getter — a class body has no automatic semicolon there — and
+  this parses it as a field named `get` followed by a method named `x`.
+- **A parenthesized string as a directive.** `("use strict")` is an ordinary
+  expression statement, and `directive` is set on it as though it were a
+  directive, which makes the surrounding function strict when it is not.
 
 ECMAScript's early errors used to be the fourth entry here, and are not any
 more. test262 tests what the parser *rejects* in JavaScript, and both of its

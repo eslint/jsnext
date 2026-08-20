@@ -1,0 +1,15 @@
+{
+	"arrow-body-style": 11,
+	"dot-notation": 2,
+	"getter-return": 1,
+	"grouped-accessor-pairs": 1,
+	"no-eval": 2,
+	"no-extra-parens": 9,
+	"no-invalid-this": 3,
+	"no-unused-expressions": 4,
+	"no-use-before-define": 1,
+	"no-whitespace-before-property": 1,
+	"padding-line-between-statements": 1,
+	"prefer-regex-literals": 3,
+	"strict": 9
+}

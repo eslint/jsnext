@@ -42,9 +42,13 @@ export default [
 ];
 ```
 
-See [`docs/parse/api.md`](./docs/parse/api.md#using-it-with-eslint) for the five
-ways it differs from calling `toAST()` yourself, each because ESLint requires
-it.
+ESLint gets the scope graph from it too, through `parseForESLint()`, so scope
+analysis understands TypeScript rather than walking past every type annotation
+the way `eslint-scope` does.
+
+See [`docs/parse/api.md`](./docs/parse/api.md#using-it-with-eslint) for what it
+returns and for the five ways the tree differs from calling `toAST()` yourself,
+each because ESLint requires it.
 
 ## Parsing
 

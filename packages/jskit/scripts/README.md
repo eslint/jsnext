@@ -1,6 +1,6 @@
 # `@eslint/jskit` scripts
 
-One build script, one generator, and ten checks, split into `parse/` and
+One build script, one generator, and eleven checks, split into `parse/` and
 `scope/` the same way the source is. The checks are the real test suite:
 `npm test` runs a few thousand hand-written cases, while these run every
 `.js`, `.jsx`, `.ts`, and `.tsx` file in `node_modules` through the analyses
@@ -31,6 +31,7 @@ npm run conformance:262 # the test262 run, which needs a checkout
 | `parse/derive-shapes.mjs` | `src/parse/ast-types.ts` | what the decoder's source says |
 | `parse/conformance-262.mjs` | accepted or rejected | what test262 says |
 | `parse/conformance-ts-negative.mjs` | accepted or rejected | `@typescript-eslint/parser` |
+| `parse/conformance-eslint.mjs` | how *rules* behave | ESLint's own rule test suite |
 | `scope/conformance-js.mjs` | the scope graph, both entry points | `eslint-scope` |
 | `scope/conformance-ts.mjs` | the scope graph, both entry points | `@typescript-eslint/scope-manager` |
 
@@ -69,7 +70,7 @@ tree   files=… ok=… mismatch=0 threw=0
 
 ## Two scripts test the rejecting half
 
-The other eight are **differential**: they run a program through two
+The other nine are **differential**: they run a program through two
 implementations and compare what comes back, which means they can only ever
 check a program both implementations accept. Nothing in them tests that an
 error is *reported*, and nothing could — `node_modules` is working code, so it
@@ -153,6 +154,45 @@ Its flags: `--update` rewrites the baseline, `--verbose` prints every failing
 file rather than one per distinct message, and `--features` prints the failure
 counts grouped by the feature each file declares, which is how a whole
 unimplemented proposal is told apart from a scattering of real defects.
+
+## One script tests the rules on top
+
+Everything above compares an output: a tree against `espree`'s, a scope graph
+against `eslint-scope`'s. `parse/conformance-eslint.mjs` asks the question none
+of them can — whether a *rule* behaves the same — by running ESLint's own rule
+tests with `eslintParser` in place of `espree`, and with `parseForESLint()`
+supplying the scope graph in place of `eslint-scope`. Around 33,000 assertions
+over 293 rules, and every failure is a program where a rule sees something
+other than what ESLint's authors saw.
+
+It needs a checkout of the same ESLint version this repository depends on, with
+its own dependencies installed, and it modifies nothing in it: a generated
+mocha hook swaps the parser on the language object before the tests load.
+
+```bash
+git clone --depth 1 --branch v10.8.1 https://github.com/eslint/eslint
+cd eslint && npm install
+cd ../packages/jskit
+npm run conformance:eslint -- ../../eslint
+```
+
+```
+tests=33720 passed=33672 failed=48 rules=13
+baseline unchanged
+```
+
+Read the failures in two piles. Most are **defects** — a program parsed or
+resolved differently. The rest are **language versions**: the suite pins
+`ecmaVersion` per test and a handful of files test ES3 and ES5 semantics, which
+a parser that implements the latest ECMAScript and nothing else cannot
+reproduce and should not try to. Telling the two apart is a reading job, which
+is why the grade is `parse/eslint-baseline.json` — a failure count per rule —
+rather than a zero. What is in it today is listed under
+[Known gaps](../../../docs/deviations.md#known-gaps).
+
+The run pins the dialect to `"js"`. ESLint's rule tests have no file names, so
+`eslintParser`'s extension-based default would read all of them as TypeScript,
+where a legacy octal literal is an error and several hundred tests use one.
 
 ## How they divide the work
 

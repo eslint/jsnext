@@ -27,7 +27,8 @@
 		"bench:chart": "npm run build && node benchmarks/parse/benchmark.js --json=benchmarks/parse/results.json && node benchmarks/parse/chart.js benchmarks/parse/results.json benchmarks/parse/results.svg",
 		"conformance": "npm run build && node scripts/parse/conformance-js.mjs ../../node_modules 5000 && node scripts/parse/conformance-tokens.mjs ../../node_modules 5000 && node scripts/parse/conformance-ts.mjs ../../node_modules 5000 && node scripts/parse/conformance-types.mjs ../../node_modules 5000 && node scripts/parse/derive-shapes.mjs && node scripts/scope/conformance-js.mjs ../../node_modules 5000 && node scripts/scope/conformance-ts.mjs ../../node_modules 5000",
 		"conformance:262": "npm run build && node scripts/parse/conformance-262.mjs",
-		"conformance:ts": "npm run build && node scripts/parse/conformance-ts-negative.mjs"
+		"conformance:ts": "npm run build && node scripts/parse/conformance-ts-negative.mjs",
+		"conformance:eslint": "npm run build && node scripts/parse/conformance-eslint.mjs"
 	},
 	"keywords": [
 		"parser",
