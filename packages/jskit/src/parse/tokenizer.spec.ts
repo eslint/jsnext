@@ -453,6 +453,70 @@ describe("Tokenizer", () => {
 			expect(() => scanAll("0o")).toThrow(/Invalid number/u);
 		});
 
+		/*
+		 * A `LegacyOctalIntegerLiteral` is `0` and octal digits and nothing
+		 * else: no fraction, no exponent, no separator. Everything after the
+		 * digits is a token of its own, which is what makes `0123.a` a
+		 * property access on the number 83.
+		 */
+		it("ends a legacy octal literal at its last octal digit", () => {
+			expect(scanFirst("0123.a")).toMatchObject({
+				kind: T_NUMBER,
+				text: "0123",
+			});
+			expect(scanFirst("0123.5")).toMatchObject({
+				kind: T_NUMBER,
+				text: "0123",
+			});
+			expect(() => scanAll("01e2")).toThrow(
+				/Identifier directly after number/u,
+			);
+		});
+
+		/*
+		 * An `8` or a `9` in the digits makes it a
+		 * `NonOctalDecimalIntegerLiteral`, which is a decimal integer and
+		 * takes a fraction and an exponent like any other.
+		 */
+		it("keeps scanning a leading zero followed by a non-octal digit", () => {
+			expect(scanFirst("08.5")).toMatchObject({
+				kind: T_NUMBER,
+				text: "08.5",
+			});
+			expect(scanFirst("08e2")).toMatchObject({
+				kind: T_NUMBER,
+				text: "08e2",
+			});
+			expect(scanFirst("01238.5")).toMatchObject({
+				kind: T_NUMBER,
+				text: "01238.5",
+			});
+		});
+
+		/*
+		 * Neither leading-zero production admits a separator or a BigInt
+		 * suffix in its digits, so both are the identifier the boundary check
+		 * refuses.
+		 */
+		it("refuses a separator or a BigInt suffix on a leading zero", () => {
+			expect(() => scanAll("08_0")).toThrow(
+				/Identifier directly after number/u,
+			);
+			expect(() => scanAll("08n")).toThrow(
+				/Identifier directly after number/u,
+			);
+			expect(() => scanAll("0123n")).toThrow(
+				/Identifier directly after number/u,
+			);
+		});
+
+		it("still takes a separator inside the fraction", () => {
+			expect(scanFirst("08.5_5")).toMatchObject({
+				kind: T_NUMBER,
+				text: "08.5_5",
+			});
+		});
+
 		it("refuses a number run straight into an identifier", () => {
 			expect(() => scanAll("1n1")).toThrow();
 			expect(() => scanAll("3in")).toThrow();

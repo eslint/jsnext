@@ -412,7 +412,7 @@ confined to input that is already an error, which is why they have been left.
   Matching TypeScript's recovery is not a goal — see [the rule that decides
   where code goes](../AGENTS.md#the-rule-that-decides-where-code-goes).
 
-The next four are what `scripts/parse/conformance-eslint.mjs` found by running
+The next three are what `scripts/parse/conformance-eslint.mjs` found by running
 ESLint's own rule tests through `eslintParser`. Unlike the three above, each is
 valid JavaScript that `espree` accepts and this parser reads differently, so
 each one breaks working code:
@@ -422,10 +422,6 @@ each one breaks working code:
   here it does not, so `for (let f = () => a in b; ;);` throws where `espree`
   parses it. Eleven of ESLint's `arrow-body-style` tests and nine of its
   `no-extra-parens` autofixes land on it.
-- **A property access on a legacy octal literal.** `0123.a` throws with
-  "Identifier directly after number". The `.` cannot be part of a
-  `LegacyOctalIntegerLiteral`, so it is a member access and `espree` reads it
-  as one. `01['prop']` parses; only the dotted form fails.
 - **`get` or `set` on its own line in a class body.** `class C { static get \n
   x() {} }` is a getter — a class body has no automatic semicolon there — and
   this parses it as a field named `get` followed by a method named `x`.

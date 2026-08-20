@@ -2528,6 +2528,42 @@ describe("namespace names", () => {
 	});
 });
 
+describe("leading-zero numeric literals", () => {
+	/*
+	 * `NumericLiteral :: LegacyOctalIntegerLiteral` and
+	 * `DecimalIntegerLiteral :: NonOctalDecimalIntegerLiteral` are both early
+	 * errors in strict code, and the second one still takes a fraction and an
+	 * exponent — so the literal reaching the validator is the whole of `08.5`,
+	 * not just its `08`.
+	 */
+	it("reports a legacy octal literal in strict code", () => {
+		expect(messages("const a = 0123;", { dialect: "js" })).toEqual([
+			expect.stringMatching(/not allowed in strict mode/u),
+		]);
+	});
+
+	it("reports a leading zero followed by a non-octal digit", () => {
+		expect(messages("const a = 08;", { dialect: "js" })).toEqual([
+			expect.stringMatching(/not allowed in strict mode/u),
+		]);
+		expect(messages("const a = 08.5;", { dialect: "js" })).toEqual([
+			expect.stringMatching(/not allowed in strict mode/u),
+		]);
+		expect(messages("const a = 08e2;", { dialect: "js" })).toEqual([
+			expect.stringMatching(/not allowed in strict mode/u),
+		]);
+	});
+
+	it("allows both in sloppy code", () => {
+		expect(
+			messages("var a = 0123, b = 08.5, c = 0123.toString();", {
+				dialect: "js",
+				sourceType: "script",
+			}),
+		).toEqual([]);
+	});
+});
+
 describe("legacy octals in TypeScript", () => {
 	/*
 	 * TypeScript has no sloppy code to carve out for, so it refuses the

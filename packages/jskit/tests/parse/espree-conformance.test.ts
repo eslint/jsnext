@@ -42,6 +42,45 @@ describe("espree conformance", () => {
 	}
 });
 
+/*
+ * Programs that only exist in sloppy code, which the fixture list cannot hold:
+ * every fixture is parsed as a module, and a module is strict. A leading-zero
+ * literal is an early error there, so the one place its *shape* can be checked
+ * against `espree` is here.
+ */
+const sloppySamples = [
+	"0123.a;",
+	"0777.foo;",
+	"0123.toString();",
+	"08.5 + 08e2 + 01238.5;",
+	"01['prop'];",
+	"05 .toExponential();",
+	"with (a) { b; }",
+];
+
+describe("espree conformance in sloppy code", () => {
+	for (const code of sloppySamples) {
+		it(`matches espree for ${JSON.stringify(code)}`, () => {
+			const expected = espree.parse(code, {
+				ecmaVersion: "latest",
+				sourceType: "script",
+				tokens: true,
+				comment: true,
+				range: true,
+			});
+			const actual = toAST(parse(code, { sourceType: "script" }), {
+				sourceType: "script",
+				dialect: "js",
+			}).ast;
+
+			expect(normalize(actual)).toEqual(normalize(expected));
+			expect(normalizeTokens(actual.tokens as never)).toEqual(
+				normalizeTokens(expected.tokens as never),
+			);
+		});
+	}
+});
+
 const jsxSamples: string[] = JSON.parse(
 	readFileSync(new URL("./fixtures/jsx.json", import.meta.url), "utf8"),
 );

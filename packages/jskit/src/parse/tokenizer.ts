@@ -15,6 +15,7 @@ import {
 	ASCII_LIMIT,
 	CHAR_FLAGS,
 	CH_0,
+	CH_7,
 	CH_9,
 	CH_AMP,
 	CH_AT,
@@ -1045,39 +1046,74 @@ export class Tokenizer {
 			}
 
 			/*
-			 * A leading zero followed by more digits is either a legacy octal
-			 * literal or a decimal with a useless leading zero. Both are only
-			 * errors in strict mode, so the fact is recorded and left to the
-			 * validation phase.
+			 * A leading zero followed by more digits is one of two literals,
+			 * and which one decides where the literal ends. Digits that are
+			 * all octal make a `LegacyOctalIntegerLiteral`, which has no
+			 * fraction and no exponent — `0123.a` is a property access on the
+			 * number 83, and `01e2` is a number with an identifier stuck to
+			 * it. An `8` or a `9` anywhere in them makes a
+			 * `NonOctalDecimalIntegerLiteral` instead, which is a
+			 * `DecimalIntegerLiteral` and takes both.
+			 *
+			 * Both are errors only in strict mode, so the fact is recorded
+			 * and left to the validation phase.
+			 *
+			 * Neither production admits a separator or a `BigIntLiteralSuffix`
+			 * anywhere in those digits, which is why the run is consumed here
+			 * rather than by `scanDecimalDigits()`: `08_0` and `08n` are
+			 * errors, and the `_` or the `n` is left for the boundary check to
+			 * report as the identifier it starts.
 			 */
 			if ((CHAR_FLAGS[next] & MASK_DIGIT) !== 0) {
-				let scan = this.pos + 1;
+				let octal = true;
 
-				while ((CHAR_FLAGS[source.charCodeAt(scan)] & MASK_DIGIT) !== 0) {
-					scan++;
+				this.pos++;
+
+				while (
+					(CHAR_FLAGS[source.charCodeAt(this.pos)] & MASK_DIGIT) !==
+					0
+				) {
+					if (source.charCodeAt(this.pos) > CH_7) {
+						octal = false;
+					}
+
+					this.pos++;
 				}
 
-				const after = source.charCodeAt(scan);
+				this.flags |= TF_LEGACY_OCTAL;
 
-				if (after !== CH_DOT && after !== CH_E_LOWER && after !== CH_E_UPPER) {
-					this.pos = scan;
-					this.flags |= TF_LEGACY_OCTAL;
-					this.checkNumberBoundary();
-					return;
+				if (!octal) {
+					this.scanFractionAndExponent(start);
 				}
+
+				this.checkNumberBoundary();
+				return;
 			}
 		}
 
 		this.scanDecimalDigits();
 
-		code = source.charCodeAt(this.pos);
-
-		if (code === CH_N_LOWER) {
+		if (source.charCodeAt(this.pos) === CH_N_LOWER) {
 			this.pos++;
 			this.kind = T_BIGINT;
 			this.checkNumberBoundary();
 			return;
 		}
+
+		this.scanFractionAndExponent(start);
+		this.checkNumberBoundary();
+	}
+
+	/**
+	 * Consumes the fraction and the exponent of a decimal literal, if it has
+	 * either.
+	 * @param start Where the literal begins, for the error position.
+	 * @returns Nothing.
+	 * @throws {ParseError} When an exponent has no digits.
+	 */
+	private scanFractionAndExponent(start: number): void {
+		const source = this.source;
+		let code = source.charCodeAt(this.pos);
 
 		if (code === CH_DOT) {
 			this.pos++;
@@ -1086,23 +1122,23 @@ export class Tokenizer {
 			code = source.charCodeAt(this.pos);
 		}
 
-		if (code === CH_E_LOWER || code === CH_E_UPPER) {
-			this.pos++;
-
-			const sign = source.charCodeAt(this.pos);
-
-			if (sign === CH_PLUS || sign === CH_MINUS) {
-				this.pos++;
-			}
-
-			if ((CHAR_FLAGS[source.charCodeAt(this.pos)] & MASK_DIGIT) === 0) {
-				throw this.error("Invalid number", start);
-			}
-
-			this.scanDecimalDigits();
+		if (code !== CH_E_LOWER && code !== CH_E_UPPER) {
+			return;
 		}
 
-		this.checkNumberBoundary();
+		this.pos++;
+
+		const sign = source.charCodeAt(this.pos);
+
+		if (sign === CH_PLUS || sign === CH_MINUS) {
+			this.pos++;
+		}
+
+		if ((CHAR_FLAGS[source.charCodeAt(this.pos)] & MASK_DIGIT) === 0) {
+			throw this.error("Invalid number", start);
+		}
+
+		this.scanDecimalDigits();
 	}
 
 	/**
