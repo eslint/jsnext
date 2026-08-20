@@ -1906,6 +1906,15 @@ export abstract class ExpressionParser extends TypeParser {
 		 * known to be coming, and the specification has them as
 		 * `ArrowParameters[?Yield, ?Await]`.
 		 */
+		/*
+		 * A default value is an `Initializer[+In]` wherever it is written, so
+		 * a parameter list ends a `for` head's ban on the `in` operator the
+		 * same way a body does: `for (let f = function (a = b in c) {}; ;);`
+		 * is a loop, not a `for`-`in` head.
+		 */
+		const previousAllowIn = this.allowIn;
+
+		this.allowIn = true;
 		this.inAsync = isAsync;
 		this.inGenerator = isGenerator;
 		this.tokenizer.inAsync = isAsync;
@@ -1946,6 +1955,7 @@ export abstract class ExpressionParser extends TypeParser {
 
 		this.expect(T_PAREN_CLOSE);
 
+		this.allowIn = previousAllowIn;
 		this.inAsync = previousAsync;
 		this.inGenerator = previousGenerator;
 		this.tokenizer.inAsync = previousAsync;
@@ -2533,6 +2543,14 @@ export abstract class ExpressionParser extends TypeParser {
 		const mark = this.writer.startList();
 		const previousSuperProperty = this.allowSuperProperty;
 
+		/*
+		 * Nothing inside a class body is parameterized by `[In]` — a field's
+		 * `Initializer[+In]` least of all — so a `for` head's ban on the `in`
+		 * operator ends at the brace, exactly as it does for a function body.
+		 */
+		const previousAllowIn = this.allowIn;
+
+		this.allowIn = true;
 		this.allowSuperProperty = true;
 		this.enterBrace(isStatement);
 
@@ -2545,6 +2563,7 @@ export abstract class ExpressionParser extends TypeParser {
 		}
 
 		this.expect(T_BRACE_CLOSE);
+		this.allowIn = previousAllowIn;
 		this.allowSuperProperty = previousSuperProperty;
 		this.writer.set(node, NODE_A, this.writer.endList(mark));
 

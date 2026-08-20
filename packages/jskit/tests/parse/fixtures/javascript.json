@@ -8,6 +8,8 @@
  "(a, b) => a + b;",
  "async function* g(){ yield* await x; }",
  "for (const [a, b] of pairs) { if (a) continue; else break; }",
+ "for (let f = function(){ return a in b }, g = class { x = c in d }; ;);",
+ "for (let f = function (a = b in c) {}, g = (d = e in f) => {}; ;);",
  "label: for (;;) { break label; }",
  "x?.y?.[z]?.();",
  "a ?? b;",

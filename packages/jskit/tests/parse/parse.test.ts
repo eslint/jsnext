@@ -154,6 +154,53 @@ describe("a line break inside a class body", () => {
 	});
 });
 
+describe("the `in` operator in a `for` head", () => {
+	/*
+	 * A classic `for` head parses its init with `[~In]`, so that `for (a in
+	 * b)` is a `for`-`in` loop rather than a loop over a relational
+	 * expression. The parameter reaches only as far as the grammar carries
+	 * it, and no statement list or class body carries it at all.
+	 */
+	it("allows `in` in a parameter default written in the init", () => {
+		expect(() =>
+			parse("for (let f = function (a = b in c) {}; ;);"),
+		).not.toThrow();
+		expect(() => parse("for (let f = (a = b in c) => {}; ;);")).not.toThrow();
+	});
+
+	it("allows `in` inside a function body written in the init", () => {
+		expect(() =>
+			parse("for (let f = function(){ return a in b }; ;);"),
+		).not.toThrow();
+		expect(() =>
+			parse("for (let f = () => { return a in b }; ;);"),
+		).not.toThrow();
+		expect(() =>
+			parse("for (let f = class { x = a in b }; ;);"),
+		).not.toThrow();
+		expect(() =>
+			parse("for (let f = class { static { a in b } }; ;);"),
+		).not.toThrow();
+	});
+
+	/*
+	 * `ArrowFunction[In] : ArrowParameters => ConciseBody[?In]` is the one
+	 * body that does carry it, which is why this stays an error — and why
+	 * `@babel/parser` reads the same text as a `for`-`in` head whose
+	 * declaration has an initializer. `espree` accepts it; see
+	 * `docs/deviations.md`.
+	 */
+	it("still refuses `in` in an arrow's concise body there", () => {
+		expect(() => parse("for (let f = () => a in b; ;);")).toThrow();
+	});
+
+	it("still reads a bare `in` in the init as a for-in head", () => {
+		const { ast } = toAST(parse("for (a in b);"));
+
+		expect((ast.body as { type: string }[])[0].type).toBe("ForInStatement");
+	});
+});
+
 describe("parse()", () => {
 	it("returns one buffer holding everything the parse produced", () => {
 		const result = parse("var a = 1;");

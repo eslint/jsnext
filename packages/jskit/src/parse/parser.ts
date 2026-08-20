@@ -487,6 +487,18 @@ export class Parser extends JsxParser {
 		const node = this.writer.alloc(N_BlockStatement, this.start);
 		const mark = this.writer.startList();
 
+		/*
+		 * A statement list is never parameterized by `[In]`, so the ban a
+		 * `for` head puts on the `in` operator ends at the brace: the head of
+		 * `for (let f = function () { return a in b }; ;);` cannot be a
+		 * `for`-`in` head, whatever it contains. An arrow's *concise* body is
+		 * the one body that keeps the ban, because `ConciseBody[?In]` passes
+		 * the parameter straight through — and there `a in b` really would be
+		 * ambiguous.
+		 */
+		const previousAllowIn = this.allowIn;
+
+		this.allowIn = true;
 		this.enterBrace(isStatement);
 
 		if (withDirectives) {
@@ -498,6 +510,7 @@ export class Parser extends JsxParser {
 		}
 
 		this.expect(T_BRACE_CLOSE);
+		this.allowIn = previousAllowIn;
 		this.writer.set(node, NODE_A, this.writer.endList(mark));
 
 		return this.writer.finish(node, this.lastEnd);

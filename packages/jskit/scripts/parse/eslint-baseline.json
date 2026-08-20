@@ -1,7 +1,5 @@
 {
-	"arrow-body-style": 11,
 	"no-eval": 1,
-	"no-extra-parens": 8,
 	"no-invalid-this": 3,
 	"no-unused-expressions": 4,
 	"no-use-before-define": 1,

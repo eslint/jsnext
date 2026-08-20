@@ -282,6 +282,36 @@ both parsers agree on.
 
 ---
 
+### `in` in an arrow's concise body in a `for` head
+
+**Reference:** `espree` accepts an `in` operator in the concise body of an
+arrow function written in the init of a classic `for` statement.
+
+```js
+for (let f = () => a in b; ;);
+```
+
+**Here:** it is a syntax error, as it is for `@babel/parser` and for
+`@typescript-eslint/parser`.
+
+**Why:** the init of a `for` statement is parsed with `[~In]`, so that `for (a
+in b)` is a `for`-`in` head rather than a relational expression, and
+`ArrowFunction[In] : ArrowParameters [no LineTerminator here] =>
+ConciseBody[?In]` passes that parameter straight through. Nothing else does: a
+`FunctionBody`, a statement list, and a class body are not parameterized by
+`[In]` at all, which is why `for (let f = () => { return a in b }; ;);` is
+fine. `acorn` clears its own flag for every function body, concise or not.
+
+`@babel/parser` reads the text the way the grammar leaves it — as a `for`-`in`
+head whose declaration has an initializer — and reports that instead, which is
+the same rejection by another route.
+
+**How conformance absorbs it:** the corpus contains no such program.
+`tests/parse/parse.test.ts` pins both halves, and the fixtures cover the braced
+bodies, which every parser agrees on.
+
+---
+
 ### Three places TypeScript is looser than ECMAScript
 
 **Reference:** `@typescript-eslint/parser` accepts all three, and so does
@@ -395,7 +425,7 @@ is always there.
 
 Not deviations — bugs that are simply not fixed yet.
 
-The first three were found by running TypeScript's own conformance suite (see
+All three were found by running TypeScript's own conformance suite (see
 [AGENTS.md](../AGENTS.md#conformance-is-the-real-test-suite)) and all three are
 confined to input that is already an error, which is why they have been left.
 
@@ -411,17 +441,6 @@ confined to input that is already an error, which is why they have been left.
   conformance suite differ for that reason alone, all of them negative tests.
   Matching TypeScript's recovery is not a goal — see [the rule that decides
   where code goes](../AGENTS.md#the-rule-that-decides-where-code-goes).
-
-The last one is what `scripts/parse/conformance-eslint.mjs` found by running
-ESLint's own rule tests through `eslintParser`. Unlike the three above, it is
-valid JavaScript that `espree` accepts and this parser reads differently, so it
-breaks working code:
-
-- **`in` inside a function written in a `for` statement's init.** The `for (a
-  in b)` disambiguation is meant to stop at the first function boundary, and
-  here it does not, so `for (let f = () => a in b; ;);` throws where `espree`
-  parses it. Eleven of ESLint's `arrow-body-style` tests and nine of its
-  `no-extra-parens` autofixes land on it.
 
 ECMAScript's early errors used to be the fourth entry here, and are not any
 more. test262 tests what the parser *rejects* in JavaScript, and both of its
