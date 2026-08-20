@@ -2,11 +2,10 @@
 	"arrow-body-style": 11,
 	"getter-return": 1,
 	"grouped-accessor-pairs": 1,
-	"no-eval": 2,
+	"no-eval": 1,
 	"no-extra-parens": 8,
 	"no-invalid-this": 3,
 	"no-unused-expressions": 4,
 	"no-use-before-define": 1,
-	"padding-line-between-statements": 1,
 	"strict": 9
 }

@@ -412,7 +412,7 @@ confined to input that is already an error, which is why they have been left.
   Matching TypeScript's recovery is not a goal — see [the rule that decides
   where code goes](../AGENTS.md#the-rule-that-decides-where-code-goes).
 
-The next three are what `scripts/parse/conformance-eslint.mjs` found by running
+The next two are what `scripts/parse/conformance-eslint.mjs` found by running
 ESLint's own rule tests through `eslintParser`. Unlike the three above, each is
 valid JavaScript that `espree` accepts and this parser reads differently, so
 each one breaks working code:
@@ -425,9 +425,6 @@ each one breaks working code:
 - **`get` or `set` on its own line in a class body.** `class C { static get \n
   x() {} }` is a getter — a class body has no automatic semicolon there — and
   this parses it as a field named `get` followed by a method named `x`.
-- **A parenthesized string as a directive.** `("use strict")` is an ordinary
-  expression statement, and `directive` is set on it as though it were a
-  directive, which makes the surrounding function strict when it is not.
 
 ECMAScript's early errors used to be the fourth entry here, and are not any
 more. test262 tests what the parser *rejects* in JavaScript, and both of its

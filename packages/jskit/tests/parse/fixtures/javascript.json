@@ -21,6 +21,7 @@
  "new Foo(1, 2); function q(){ new.target; } import.meta;",
  "0x1f + 0b101 + 0o17 + 1_000 + 1e3 + .5 + 10n;",
  "\"use strict\"; let x = \"a\\n\\u0041\";",
+ "(\"use strict\"); (\"another\");",
  "do x(); while (y)",
  "a = b ? c : d, e;",
  "typeof void delete a.b;",

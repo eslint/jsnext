@@ -234,7 +234,21 @@ export class Parser extends JsxParser {
 		 * would report the text between its first and last character as the
 		 * directive it states.
 		 */
-		return this.writer.get(expression, NODE_A) === LIT_STRING;
+		if (this.writer.get(expression, NODE_A) !== LIT_STRING) {
+			return false;
+		}
+
+		/*
+		 * A directive "consists entirely of a StringLiteral token", so
+		 * `("use strict")` is not one: it is a parenthesized expression that
+		 * happens to be a string. Parentheses leave no node behind in an
+		 * ESTree tree, so what gives them away is the literal starting after
+		 * the statement does.
+		 */
+		return (
+			this.writer.get(expression, NODE_START) ===
+			this.writer.get(statement, NODE_START)
+		);
 	}
 
 	//-------------------------------------------------------------------------

@@ -160,6 +160,32 @@ describe("strict mode", () => {
 		).toEqual([]);
 	});
 
+	/*
+	 * A directive "consists entirely of a StringLiteral token", so a
+	 * parenthesized one is an ordinary expression statement and turns nothing
+	 * on.
+	 */
+	it("does not read a parenthesized string as a directive", () => {
+		const script = { sourceType: "script" } as const;
+
+		expect(messages('("use strict"); with (a) { b; }', script)).toEqual([]);
+		expect(
+			messages('function f() { ("use strict"); with (a) { b; } }', script),
+		).toEqual([]);
+	});
+
+	/*
+	 * The text of the directive is its source text, escapes and all, so a
+	 * spelling that produces the same string is not the directive.
+	 */
+	it("does not read an escaped use strict as the directive", () => {
+		expect(
+			messages('"use\\u0020strict"; with (a) { b; }', {
+				sourceType: "script",
+			}),
+		).toEqual([]);
+	});
+
 	it("still validates a regular expression literal", () => {
 		expect(messages("var a = /(?<x>a)(?<x>b)/;")).toEqual([
 			"Duplicate capture group name.",
