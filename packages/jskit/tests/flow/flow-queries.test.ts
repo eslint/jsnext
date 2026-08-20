@@ -6,7 +6,13 @@
 import { analyzeTree, createGraph, toGraphTree } from "../../src/index.js";
 import * as espree from "espree";
 import { describe, expect, it } from "vitest";
-import { graphOf, handleAt, handleOf, writesOf } from "./helpers.js";
+import {
+	graphOf,
+	handleAt,
+	handleOf,
+	nodeTextOf,
+	writesOf,
+} from "./helpers.js";
 
 describe("writes", () => {
 	it("classifies each kind of variable write", () => {
@@ -122,6 +128,90 @@ describe("the node-block index", () => {
 		expect(
 			fixture.reader.blockOfNode(handleOf(fixture, "CallExpression")),
 		).toBeGreaterThanOrEqual(0);
+	});
+
+	it("reads back the other way as each block's nodes", () => {
+		const code = "function foo() {\n  return;\n  hi();\n}";
+		const { tree } = graphOf(code);
+		const graph = tree.graphs[1];
+
+		expect(nodeTextOf(graph.blocks[0], code)).toEqual([
+			'FunctionDeclaration "function foo() {\\n  return;\\n  hi();\\n}"',
+			'BlockStatement "{\\n  return;\\n  hi();\\n}"',
+			'ReturnStatement "return;"',
+		]);
+
+		/*
+		 * The point of the field: this block performs no write, so
+		 * without its nodes it would render exactly like an empty one.
+		 */
+		expect(graph.blocks[1].reachable).toBe(false);
+		expect(graph.blocks[1].writes).toEqual([]);
+		expect(nodeTextOf(graph.blocks[1], code)).toEqual([
+			'ExpressionStatement "hi();"',
+			'CallExpression "hi()"',
+			'Identifier "hi"',
+		]);
+	});
+
+	it("agrees with blockOfNode for every node it lists", () => {
+		const fixture = graphOf(
+			"function f(a) { while (a) { if (a) { continue; } b(); } return c(); }",
+		);
+
+		/*
+		 * `blockOfNode()` answers with one block and the tree lists a node
+		 * under every block that holds it, so the two agree when the block
+		 * it names is one of the blocks listing it. Only function nodes
+		 * are ever listed under two, being both the expression that makes
+		 * the closure and the entry of the graph it starts.
+		 */
+		const listing = new Map<string, number[]>();
+
+		for (const graph of fixture.tree.graphs) {
+			for (const block of graph.blocks) {
+				for (const node of block.nodes) {
+					const key = `${node.type}:${node.start}`;
+
+					listing.set(key, [
+						...(listing.get(key) ?? []),
+						block.blockId,
+					]);
+				}
+			}
+		}
+
+		expect(listing.size).toBeGreaterThan(0);
+
+		for (const [key, blocks] of listing) {
+			const [type, start] = key.split(":");
+
+			expect(blocks).toContain(
+				fixture.reader.blockOfNode(
+					handleAt(fixture, type, Number(start)),
+				),
+			);
+		}
+	});
+
+	it("lists no node twice and none that never executes", () => {
+		const { tree } = graphOf("const x: number = f();", { dialect: "ts" });
+		const seen = new Set<string>();
+
+		for (const graph of tree.graphs) {
+			for (const block of graph.blocks) {
+				for (const node of block.nodes) {
+					const key = `${node.type}:${node.start}:${node.end}`;
+
+					expect(seen.has(key)).toBe(false);
+					seen.add(key);
+				}
+			}
+		}
+
+		expect([...seen].some(key => key.startsWith("TSNumberKeyword"))).toBe(
+			false,
+		);
 	});
 
 	it("maps nested-function nodes to their own graphs' blocks", () => {

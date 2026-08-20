@@ -33,6 +33,9 @@ import {
 	FLOW_H_VERSION,
 	FLOW_H_WRITES_BASE,
 	FLOW_H_WRITE_COUNT,
+	NB_BLOCK,
+	NB_NODE,
+	NODE_BLOCK_WORDS,
 	WRITE_WORDS,
 } from "./flow-buffer.js";
 
@@ -56,6 +59,9 @@ export class FlowBufferReader {
 	/** How many writes the buffer holds. */
 	readonly writeCount: number;
 
+	/** How many entries the node-block index holds. */
+	readonly nodeBlockCount: number;
+
 	/** Word index at which the graph records begin. */
 	readonly #graphsBase: number;
 
@@ -76,9 +82,6 @@ export class FlowBufferReader {
 
 	/** Word index at which the node-block index begins. */
 	readonly #nodeBlockBase: number;
-
-	/** How many pairs the node-block index holds. */
-	readonly #nodeBlockCount: number;
 
 	/**
 	 * Creates a reader over a flow buffer.
@@ -108,7 +111,7 @@ export class FlowBufferReader {
 		this.#writesBase = words[FLOW_H_WRITES_BASE];
 		this.#poolBase = words[FLOW_H_POOL_BASE];
 		this.#nodeBlockBase = words[FLOW_H_NODE_BLOCK_BASE];
-		this.#nodeBlockCount = words[FLOW_H_NODE_BLOCK_COUNT];
+		this.nodeBlockCount = words[FLOW_H_NODE_BLOCK_COUNT];
 	}
 
 	//-------------------------------------------------------------------------
@@ -210,6 +213,23 @@ export class FlowBufferReader {
 	//-------------------------------------------------------------------------
 
 	/**
+	 * Reads one word of a node-block index entry.
+	 *
+	 * Entries are sorted by node handle, which is what `blockOfNode()`
+	 * binary-searches. Reading them in order is the other direction of the
+	 * same index — every node a block holds, without a query per node —
+	 * and is how `toGraphTree()` fills a block's `nodes`.
+	 * @param entry The entry index, below `nodeBlockCount`.
+	 * @param field The word offset within the entry.
+	 * @returns The stored value.
+	 */
+	nodeBlockField(entry: number, field: number): number {
+		return this.words[
+			this.#nodeBlockBase + entry * NODE_BLOCK_WORDS + field
+		];
+	}
+
+	/**
 	 * The block a node executes in.
 	 * @param handle The node's handle.
 	 * @returns The block ID, or `-1` when the walk never visited the node —
@@ -219,23 +239,22 @@ export class FlowBufferReader {
 		const words = this.words;
 		const base = this.#nodeBlockBase;
 		let low = 0;
-		let high = this.#nodeBlockCount;
+		let high = this.nodeBlockCount;
 
 		while (low < high) {
 			const mid = (low + high) >>> 1;
 
-			if (words[base + mid * 2] < handle) {
+			if (words[base + mid * NODE_BLOCK_WORDS + NB_NODE] < handle) {
 				low = mid + 1;
 			} else {
 				high = mid;
 			}
 		}
 
-		if (low < this.#nodeBlockCount && words[base + low * 2] === handle) {
-			return words[base + low * 2 + 1];
-		}
-
-		return -1;
+		return low < this.nodeBlockCount &&
+			words[base + low * NODE_BLOCK_WORDS + NB_NODE] === handle
+			? this.nodeBlockField(low, NB_BLOCK)
+			: -1;
 	}
 
 	/**

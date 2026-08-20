@@ -214,3 +214,9 @@ export const ORIGIN_NAMES: readonly string[] = [
  *   without any consumer-side segment tracking. Nodes that never execute —
  *   type annotations, unvisited declaration scaffolding — have no entry.
  */
+
+/** Words per node-block index entry. Entries are sorted by node handle. */
+export const NODE_BLOCK_WORDS = 2;
+export const NB_NODE = 0; // node handle
+export const NB_BLOCK = 1; // block ID the node executes in
+

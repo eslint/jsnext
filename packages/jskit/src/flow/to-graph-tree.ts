@@ -49,6 +49,8 @@ import {
 	G_RETURNED,
 	G_THROWN,
 	G_UPPER,
+	NB_BLOCK,
+	NB_NODE,
 	ORIGIN_NAMES,
 	WF_COMPOUND,
 	WF_INIT,
@@ -101,6 +103,17 @@ export interface FlowTreeBlock {
 	loopHead: boolean;
 	returns: boolean;
 	throws: boolean;
+
+	/**
+	 * Every node the walk placed in this block, outermost first.
+	 *
+	 * This is the node-block index read the other way round, and it is
+	 * what makes an unreachable block legible: a block whose statements
+	 * assign nothing has no writes to show, so without this it renders
+	 * identically to a block that really is empty.
+	 */
+	nodes: FlowTreeNode[];
+
 	writes: FlowTreeWrite[];
 	successors: FlowTreeEdge[];
 
@@ -161,6 +174,64 @@ export function toGraphTree(
 			start: astReader.start(node),
 			end: astReader.end(node),
 		};
+	}
+
+	/*
+	 * The node-block index, grouped the other way round: every node a
+	 * block holds, rather than the block one node is in. It is one flat
+	 * array over the whole program, so it is grouped once here — scanning
+	 * it again for each block would be quadratic in the program.
+	 */
+	const nodesByBlock = new Map<number, FlowTreeNode[]>();
+
+	/*
+	 * The walk can record one node more than once — a function node lands
+	 * in the block that creates it and again as its own graph's entry, and
+	 * a few kinds are simply visited twice within one block. Entries for a
+	 * handle are contiguous, since the index is sorted by handle, so the
+	 * blocks already seen for the handle in hand are enough to drop the
+	 * repeats without a set over the whole program. A node in two blocks
+	 * stays in both: it really does belong to both.
+	 */
+	const seenBlocks: number[] = [];
+	let seenHandle = 0;
+
+	for (let entry = 0; entry < reader.nodeBlockCount; entry++) {
+		const handle = reader.nodeBlockField(entry, NB_NODE);
+		const block = reader.nodeBlockField(entry, NB_BLOCK);
+
+		if (handle !== seenHandle) {
+			seenHandle = handle;
+			seenBlocks.length = 0;
+		} else if (seenBlocks.includes(block)) {
+			continue;
+		}
+
+		seenBlocks.push(block);
+
+		const node = nodeOf(handle)!;
+		const held = nodesByBlock.get(block);
+
+		if (held === undefined) {
+			nodesByBlock.set(block, [node]);
+		} else {
+			held.push(node);
+		}
+	}
+
+	/*
+	 * The entries arrive in handle order, which is the order the parser
+	 * finished the nodes rather than the order they read: a node is
+	 * written when its children are done, so `hi()` lands after `hi`.
+	 * Sorting by extent restores source order and puts a node ahead of
+	 * everything nested inside it.
+	 */
+	for (const held of nodesByBlock.values()) {
+		held.sort((first, second) =>
+			first.start === second.start
+				? second.end - first.end
+				: first.start - second.start,
+		);
 	}
 
 	/**
@@ -239,6 +310,7 @@ export function toGraphTree(
 			loopHead: (flags & BF_LOOP_HEAD) !== 0,
 			returns: (flags & BF_RETURNS) !== 0,
 			throws: (flags & BF_THROWS) !== 0,
+			nodes: nodesByBlock.get(block) ?? [],
 			writes,
 			successors,
 			predecessors,

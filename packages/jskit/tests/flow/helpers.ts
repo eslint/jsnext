@@ -142,6 +142,19 @@ export function edgesOf(graph: FlowTreeGraph): {
 }
 
 /**
+ * The source text of every node a block holds, in the order the tree lists
+ * them.
+ * @param block The rendered block.
+ * @param code The program the graph was built from.
+ * @returns One `Type "text"` line per node.
+ */
+export function nodeTextOf(block: FlowTreeBlock, code: string): string[] {
+	return block.nodes.map(
+		node => `${node.type} ${JSON.stringify(code.slice(node.start, node.end))}`,
+	);
+}
+
+/**
  * Every write in a rendered graph, flattened in block order.
  * @param graph The rendered graph.
  * @returns The writes with the block each sits in.

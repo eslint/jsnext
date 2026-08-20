@@ -47,7 +47,9 @@ refused, with a `TypeError` that says so.
 - **`createGraph(ast, scope)`** — builds the graph; returns an `ArrayBuffer` in
   the binary flow format.
 - **`toGraphTree(flow, ast, scope)`** — renders that buffer as a plain object
-  tree with no references to anything outside itself.
+  tree with no references to anything outside itself. Each block carries the
+  `nodes` it holds along with the writes it performs, so a block that runs
+  code but assigns nothing is still legible.
 - **`FlowBufferReader`** — the low-level reader every consumer goes through:
   record fields, lists, `blockOfNode()`, `isReachable()`.
 - **`nodeHandle()` / `nodeAtHandle()`** — the arithmetic between node indices

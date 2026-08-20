@@ -23,14 +23,15 @@
 import type {
 	FlowTreeBlock,
 	FlowTreeGraph,
+	FlowTreeNode,
 	FlowTreeWrite,
 } from "@eslint/jskit";
 
 /** How many basic blocks the diagram draws before it declines to. */
 const MAX_BLOCKS = 400;
 
-/** How many writes one block lists before the rest become a count. */
-const MAX_WRITES = 4;
+/** How many lines a block's body runs to before the rest become a count. */
+const MAX_LINES = 4;
 
 /** How long a source excerpt in a block label runs before it is elided. */
 const MAX_EXCERPT = 44;
@@ -108,6 +109,50 @@ function writeLine(write: FlowTreeWrite, source: string): string {
 	const target = excerpt(source, write.target.start, write.target.end);
 
 	return write.update ? `${target} (update)` : `${target} = …`;
+}
+
+/**
+ * The statements a block runs, at the granularity a reader thinks in.
+ *
+ * A block holds every node the walk placed in it, down to each identifier,
+ * which is far more than a box can show. Keeping only statements, dropping
+ * the block containers that would swallow them, and dropping the graph's
+ * own node — the function is not a statement *of* its own entry block —
+ * leaves the lines someone would recognize as the code. The nodes arrive
+ * outermost first, so anything nested inside a statement already kept is
+ * part of it.
+ * @param block The block to read.
+ * @param graph The graph the block belongs to.
+ * @returns The statement nodes, in source order.
+ */
+function statementsOf(
+	block: FlowTreeBlock,
+	graph: FlowTreeGraph,
+): FlowTreeNode[] {
+	const kept: FlowTreeNode[] = [];
+
+	for (const node of block.nodes) {
+		const isStatement =
+			/(?:Statement|Declaration)$/u.test(node.type) &&
+			node.type !== "BlockStatement";
+
+		if (
+			!isStatement ||
+			(node.start === graph.node.start && node.end === graph.node.end)
+		) {
+			continue;
+		}
+
+		const nested = kept.some(
+			outer => node.start >= outer.start && node.end <= outer.end,
+		);
+
+		if (!nested) {
+			kept.push(node);
+		}
+	}
+
+	return kept;
 }
 
 /**
@@ -198,12 +243,24 @@ function labelOf(
 			: `#${block.blockId}`;
 	const lines = [header];
 
-	for (const write of block.writes.slice(0, MAX_WRITES)) {
-		lines.push(writeLine(write, source));
-	}
+	/*
+	 * Writes are what this analysis records about a block, so they are
+	 * what a block shows. But a block that assigns nothing still runs
+	 * code — a bare call, a `return` — and showing nothing for it is what
+	 * made an unreachable `hi();` look like an empty box, so its
+	 * statements stand in when there are no writes to show.
+	 */
+	const body =
+		block.writes.length > 0
+			? block.writes.map(write => writeLine(write, source))
+			: statementsOf(block, graph).map(node =>
+					excerpt(source, node.start, node.end),
+				);
 
-	if (block.writes.length > MAX_WRITES) {
-		lines.push(`… ${block.writes.length - MAX_WRITES} more`);
+	lines.push(...body.slice(0, MAX_LINES));
+
+	if (body.length > MAX_LINES) {
+		lines.push(`… ${body.length - MAX_LINES} more`);
 	}
 
 	const condition = conditionOf(block, source);

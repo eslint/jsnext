@@ -290,7 +290,14 @@ Two views read the buffer, both through `FlowBufferReader`:
   words: record fields, pool lists, `blockOfNode()`, `isReachable()`.
 - **`toGraphTree(flow, ast, scope)`** renders a nested, self-contained JSON
   tree for debugging, with nodes spelled `{type, start, end}` and writes
-  resolved to symbol names through the scope buffer.
+  resolved to symbol names through the scope buffer. A block's `nodes` is
+  the node-block index read the other way round — every node the walk
+  placed in that block — which is what makes an unreachable block legible:
+  a block whose statements assign nothing has no writes to show, so
+  without it a block running dead code renders identically to an empty
+  one. The walk records a function node twice, once in the block that
+  creates the closure and once as its own graph's entry, and the tree
+  lists it under both; repeats within one block are dropped.
 
 ## Deliberate imprecision
 
