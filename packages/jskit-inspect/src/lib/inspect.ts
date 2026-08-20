@@ -11,6 +11,7 @@ import {
 	toAST,
 	toGraphTree,
 	toScopeTree,
+	type FlowTree,
 	type ParseResult,
 	type ValidationError,
 } from "@eslint/jskit";
@@ -29,9 +30,13 @@ export interface InspectionOptions {
 /**
  * One tab's worth of output: the serialized data, or the reason there is
  * none.
+ *
+ * The tree view reads any of these as plain JSON, so most panes leave the
+ * data untyped. The control flow one names its type, because its second
+ * view — the diagram — reads the fields rather than walking them.
  */
-export interface PaneResult {
-	data: unknown;
+export interface PaneResult<T = unknown> {
+	data: T | null;
 	error: string | null;
 }
 
@@ -47,7 +52,7 @@ export interface Inspection {
 
 	ast: PaneResult;
 	scopes: PaneResult;
-	flow: PaneResult;
+	flow: PaneResult<FlowTree>;
 }
 
 /**
@@ -64,7 +69,7 @@ function messageOf(error: unknown): string {
  * @param message Why there is no data.
  * @returns The pane result.
  */
-function failed(message: string): PaneResult {
+function failed(message: string): PaneResult<never> {
 	return { data: null, error: message };
 }
 
@@ -114,7 +119,7 @@ export function inspect(code: string, options: InspectionOptions): Inspection {
 		scopesPane = failed(messageOf(error));
 	}
 
-	let flowPane: PaneResult;
+	let flowPane: PaneResult<FlowTree>;
 
 	if (scopeBuffer === null) {
 		flowPane = failed(
