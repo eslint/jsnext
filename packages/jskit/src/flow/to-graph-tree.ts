@@ -185,31 +185,14 @@ export function toGraphTree(
 	const nodesByBlock = new Map<number, FlowTreeNode[]>();
 
 	/*
-	 * The walk can record one node more than once — a function node lands
-	 * in the block that creates it and again as its own graph's entry, and
-	 * a few kinds are simply visited twice within one block. Entries for a
-	 * handle are contiguous, since the index is sorted by handle, so the
-	 * blocks already seen for the handle in hand are enough to drop the
-	 * repeats without a set over the whole program. A node in two blocks
-	 * stays in both: it really does belong to both.
+	 * Every entry becomes a listing, with no filtering: the index holds no
+	 * pair twice, and a node recorded in two blocks — a function, in the
+	 * one that creates the closure and again in its own graph's entry —
+	 * really does belong to both.
 	 */
-	const seenBlocks: number[] = [];
-	let seenHandle = 0;
-
 	for (let entry = 0; entry < reader.nodeBlockCount; entry++) {
-		const handle = reader.nodeBlockField(entry, NB_NODE);
 		const block = reader.nodeBlockField(entry, NB_BLOCK);
-
-		if (handle !== seenHandle) {
-			seenHandle = handle;
-			seenBlocks.length = 0;
-		} else if (seenBlocks.includes(block)) {
-			continue;
-		}
-
-		seenBlocks.push(block);
-
-		const node = nodeOf(handle)!;
+		const node = nodeOf(reader.nodeBlockField(entry, NB_NODE))!;
 		const held = nodesByBlock.get(block);
 
 		if (held === undefined) {

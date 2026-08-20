@@ -240,6 +240,44 @@ function sortPairs(words: Uint32Array, count: number): void {
 }
 
 /**
+ * Drops repeated pairs from a sorted run, in place.
+ *
+ * The walk records a node once per visit, and a few kinds are visited more
+ * than once within one block — an operand reached on two paths through the
+ * same expression, say. Those repeats say nothing the first entry does not,
+ * and after the total ordering above they sit next to each other, so one
+ * pass over the run removes them. Compacting before the buffer is sized is
+ * what keeps them out of it rather than trailing unread at the end.
+ * @param words The backing store holding the pairs, sorted.
+ * @param count How many pairs there are, starting at word 0.
+ * @returns How many pairs survive, packed from word 0.
+ */
+function compactPairs(words: Uint32Array, count: number): number {
+	if (count === 0) {
+		return 0;
+	}
+
+	let kept = 1;
+
+	for (let i = 1; i < count; i++) {
+		const last = (kept - 1) * 2;
+
+		if (
+			words[i * 2] === words[last] &&
+			words[i * 2 + 1] === words[last + 1]
+		) {
+			continue;
+		}
+
+		words[kept * 2] = words[i * 2];
+		words[kept * 2 + 1] = words[i * 2 + 1];
+		kept++;
+	}
+
+	return kept;
+}
+
+/**
  * Records blocks, edges, writes, and graphs as the walk discovers them, and
  * compacts them into a flow buffer.
  */
@@ -483,8 +521,18 @@ export class FlowBuilder {
 		const blockCount = this.blockCount;
 		const edgeCount = this.#edges.length / EDGE_WORDS;
 		const writeCount = this.#writes.length / BUILD_WRITE_WORDS;
-		const pairCount = this.#nodeBlocks.length / 2;
 		const poolWords = this.#pool.length;
+
+		/*
+		 * The node-block index is put in order and compacted here rather
+		 * than after the copy below, so that the buffer is sized for what
+		 * survives.
+		 */
+		const recorded = this.#nodeBlocks.length / 2;
+
+		sortPairs(this.#nodeBlocks.data, recorded);
+
+		const pairCount = compactPairs(this.#nodeBlocks.data, recorded);
 
 		const graphsBase = FLOW_HEADER_WORDS;
 		const blocksBase = graphsBase + graphCount * GRAPH_WORDS;
@@ -528,12 +576,10 @@ export class FlowBuilder {
 		this.#emitEdges(out, blocksBase, edgesBase, predsBase, blockCount);
 		this.#emitWrites(out, blocksBase, writesBase, blockCount);
 
-		// The node-block index: pairs sorted by handle.
 		out.set(
 			this.#nodeBlocks.data.subarray(0, pairCount * 2),
 			nodeBlockBase,
 		);
-		sortPairs(out.subarray(nodeBlockBase), pairCount);
 
 		return buffer;
 	}

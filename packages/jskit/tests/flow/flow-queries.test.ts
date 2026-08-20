@@ -268,6 +268,31 @@ describe("the node-block index", () => {
 		).toBe(true);
 	});
 
+	it("holds no node and block pair twice", () => {
+		/*
+		 * A shorthand import binds one Identifier as both the imported
+		 * name and the local one, so the walk reaches it twice in the same
+		 * block. The two records say nothing different, and emission drops
+		 * the repeat rather than carrying it in the buffer.
+		 */
+		const fixture = graphOf('import { a } from "m";\nexport { a };\na();');
+		const { reader } = fixture;
+		const seen = new Set<string>();
+
+		for (let entry = 0; entry < reader.nodeBlockCount; entry++) {
+			const key = `${reader.nodeBlockField(entry, NB_NODE)}:${reader.nodeBlockField(entry, NB_BLOCK)}`;
+
+			expect(seen.has(key)).toBe(false);
+			seen.add(key);
+		}
+
+		expect(
+			fixture.tree.graphs[0].blocks[0].nodes.filter(
+				node => node.type === "Identifier" && node.start === 9,
+			),
+		).toHaveLength(1);
+	});
+
 	it("orders the index by handle and then by block", () => {
 		const fixture = graphOf(
 			"function f() { const g = () => 1; class A { m() {} } return g; }",

@@ -267,8 +267,8 @@ recording side just appends.
 
 ### The node-block index
 
-One `(handle, block)` pair per node the walk visited, sorted by handle,
-answered by binary search. This is the piece that retires the
+One `(handle, block)` pair per node the walk visited and the block it
+visited it in, sorted by handle, answered by binary search. This is the piece that retires the
 current-segment set: "which block holds this node" and "is this node
 reachable" — the two questions nearly every code-path rule asks — become
 `blockOfNode()` and `isReachable()` with no consumer-side tracking across
@@ -276,7 +276,11 @@ four visitor events.
 
 The pairs arrive from the walk nearly sorted, so emission sorts with an
 insertion-cutoff quicksort rather than trusting the order or paying a
-comparator-based sort.
+comparator-based sort, then drops repeated pairs in one pass before the
+buffer is sized, so they never reach it. The walk records a node once per
+visit and reaches some nodes twice within one block — a shorthand `import
+{ a }` binds one `Identifier` as both the imported name and the local one
+— and the second record says nothing the first does not.
 
 **The sort breaks ties on the block, and that is what decides ownership.**
 A node that starts a graph is recorded twice: once by the walk that
