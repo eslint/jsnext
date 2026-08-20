@@ -92,7 +92,7 @@ export default function Inspector(): ReactNode {
 		<div className="flex h-full flex-col">
 			<header className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b px-4 py-2">
 				<div className="flex items-baseline gap-3">
-					<h1 className="text-base font-semibold">jsinspect</h1>
+					<h1 className="text-base font-semibold">jskit-inspect</h1>
 					<p className="text-muted-foreground hidden text-sm sm:block">
 						parse · scope · flow
 					</p>

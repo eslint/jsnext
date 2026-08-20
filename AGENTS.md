@@ -7,7 +7,7 @@ JavaScript, TypeScript, and JSX syntax. TypeScript source, bundled with
 | Package | Name | What it does |
 | ------- | ---- | ------------ |
 | `packages/jskit` | `@eslint/jskit` | The toolkit: parser, scope analyzer, and control flow analyzer, in one package with one entry point. |
-| `packages/jsinspect` | `@eslint/jsinspect` | Web app (Astro + React) that runs all three in the browser: code in a left-hand editor, AST/scope/flow trees in tabs on the right. Its `dev`/`build`/`typecheck` scripts build `@eslint/jskit` first. |
+| `packages/jskit-inspect` | `@eslint/jskit-inspect` | Web app (Astro + React) that runs all three in the browser: code in a left-hand editor, AST/scope/flow trees in tabs on the right. Its `dev`/`build`/`typecheck` scripts build `@eslint/jskit` first. |
 
 **The three analyses are directories, not packages.** `parse`, `scope`, and
 `flow` split the source, the tests, the documentation, the scripts, and the

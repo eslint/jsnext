@@ -1,4 +1,4 @@
-# @eslint/jsinspect
+# @eslint/jskit-inspect
 
 A web app for inspecting how `@eslint/jskit` sees a program. Type or paste
 JavaScript or TypeScript on the left; the right shows, in three tabs, what
@@ -23,7 +23,7 @@ editor.
 
 ## Commands
 
-Run from this directory or with `--workspace=@eslint/jsinspect` from the
+Run from this directory or with `--workspace=@eslint/jskit-inspect` from the
 repository root. `dev` and `build` build `@eslint/jskit` first, because the
 app imports its `dist/` bundle.
 

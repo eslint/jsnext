@@ -1,5 +1,5 @@
 {
-	"name": "@eslint/jsinspect",
+	"name": "@eslint/jskit-inspect",
 	"version": "0.0.0",
 	"description": "A web app for inspecting how @eslint/jskit parses, scopes, and graphs a program.",
 	"type": "module",
