@@ -77,6 +77,83 @@ describe("regular expressions after an automatic semicolon", () => {
 	});
 });
 
+describe("a line break inside a class body", () => {
+	/**
+	 * Reports the members of a class, as type, kind, and key.
+	 * @param code The class declaration to parse.
+	 * @returns One entry per member.
+	 */
+	function members(code: string): string[] {
+		const { ast } = toAST(parse(code), { dialect: "js" });
+		const body = (
+			ast.body as { body: { body: Record<string, never>[] } }[]
+		)[0].body.body;
+
+		return body.map(
+			member =>
+				`${member.type}:${member.kind ?? "-"}:${(member.key as { name: string }).name}`,
+		);
+	}
+
+	/*
+	 * `MethodDefinition : get ClassElementName ( ) { FunctionBody }` has no
+	 * `[no LineTerminator here]` in it, and a semicolon is inserted only where
+	 * nothing else parses — so the accessor wins over a field named `get`.
+	 */
+	it("keeps an accessor whose name is on the next line", () => {
+		expect(members("class C { get\nx(){} }")).toEqual([
+			"MethodDefinition:get:x",
+		]);
+		expect(members("class C { set\nx(v){} }")).toEqual([
+			"MethodDefinition:set:x",
+		]);
+		expect(members("class C { static get\nx(){} }")).toEqual([
+			"MethodDefinition:get:x",
+		]);
+	});
+
+	/*
+	 * `AsyncMethod : async [no LineTerminator here] ClassElementName ...`
+	 * does carry the restriction, and so does the `accessor` of the
+	 * auto-accessor proposal.
+	 */
+	it("ends the member at a line break after async or accessor", () => {
+		expect(members("class C { async\nx(){} }")).toEqual([
+			"PropertyDefinition:-:async",
+			"MethodDefinition:method:x",
+		]);
+		expect(members("class C { accessor\nx = 1 }")).toEqual([
+			"PropertyDefinition:-:accessor",
+			"PropertyDefinition:-:x",
+		]);
+	});
+
+	/*
+	 * No accessor is a generator, so a `*` on the next line cannot be the
+	 * accessor's name and the semicolon goes in after all. test262 asserts
+	 * both halves of the result: the field lands on the instance and the
+	 * generator on the prototype.
+	 */
+	it("ends the member at a generator that follows get or set", () => {
+		expect(members("class C { get\n*a(){} }")).toEqual([
+			"PropertyDefinition:-:get",
+			"MethodDefinition:method:a",
+		]);
+		expect(() => parse("class C { get *a(){} }")).toThrow(
+			/Unexpected token/u,
+		);
+	});
+
+	it("still reads a lone get or set as a field name", () => {
+		expect(members("class C { get\n= 5 }")).toEqual([
+			"PropertyDefinition:-:get",
+		]);
+		expect(members("class C { get\n(){} }")).toEqual([
+			"MethodDefinition:method:get",
+		]);
+	});
+});
+
 describe("parse()", () => {
 	it("returns one buffer holding everything the parse produced", () => {
 		const result = parse("var a = 1;");

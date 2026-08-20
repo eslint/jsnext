@@ -412,19 +412,16 @@ confined to input that is already an error, which is why they have been left.
   Matching TypeScript's recovery is not a goal — see [the rule that decides
   where code goes](../AGENTS.md#the-rule-that-decides-where-code-goes).
 
-The next two are what `scripts/parse/conformance-eslint.mjs` found by running
-ESLint's own rule tests through `eslintParser`. Unlike the three above, each is
-valid JavaScript that `espree` accepts and this parser reads differently, so
-each one breaks working code:
+The last one is what `scripts/parse/conformance-eslint.mjs` found by running
+ESLint's own rule tests through `eslintParser`. Unlike the three above, it is
+valid JavaScript that `espree` accepts and this parser reads differently, so it
+breaks working code:
 
 - **`in` inside a function written in a `for` statement's init.** The `for (a
   in b)` disambiguation is meant to stop at the first function boundary, and
   here it does not, so `for (let f = () => a in b; ;);` throws where `espree`
   parses it. Eleven of ESLint's `arrow-body-style` tests and nine of its
   `no-extra-parens` autofixes land on it.
-- **`get` or `set` on its own line in a class body.** `class C { static get \n
-  x() {} }` is a getter — a class body has no automatic semicolon there — and
-  this parses it as a field named `get` followed by a method named `x`.
 
 ECMAScript's early errors used to be the fourth entry here, and are not any
 more. test262 tests what the parser *rejects* in JavaScript, and both of its

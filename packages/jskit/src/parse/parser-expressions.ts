@@ -2693,11 +2693,18 @@ export abstract class ExpressionParser extends TypeParser {
 			isGenerator = true;
 		}
 
+		/*
+		 * `get` and `set` carry no `[no LineTerminator here]`, unlike `async`
+		 * and `accessor`, so a name on the next line is still the accessor's
+		 * name: `get \n x() {}` is a getter rather than a field called `get`.
+		 * An automatic semicolon would only be inserted if nothing else could
+		 * be parsed, and the accessor parses.
+		 */
 		if (
 			!isAsync &&
 			!isGenerator &&
 			(this.at(T_get) || this.at(T_set)) &&
-			this.nextStartsClassElementName()
+			this.nextStartsClassElementName(true, false)
 		) {
 			methodKind = this.at(T_get) ? MKIND_GET : MKIND_SET;
 			this.next();
@@ -2948,11 +2955,20 @@ export abstract class ExpressionParser extends TypeParser {
 
 	/**
 	 * Determines whether a class element name follows the current token.
-	 * @param allowNewline Whether a line break between the two is allowed,
-	 *      which it is only after `static`.
+	 * @param allowNewline Whether a line break between the two is allowed. It
+	 *      is after `static`, `get`, and `set`, and not after `async`,
+	 *      `accessor`, or any of TypeScript's modifiers — each of which ends
+	 *      the member and leaves a field named after itself.
+	 * @param allowGenerator Whether a `*` counts as the start of what follows.
+	 *      It does after `static` and `async`, and never after `get` or `set`:
+	 *      no accessor is a generator, so `get \n *a() {}` is a field named
+	 *      `get` and a generator method beside it.
 	 * @returns `true` when the next token can start a class element name.
 	 */
-	private nextStartsClassElementName(allowNewline = false): boolean {
+	private nextStartsClassElementName(
+		allowNewline = false,
+		allowGenerator = true,
+	): boolean {
 		const state = this.tokenizer.save();
 
 		this.next();
@@ -2964,7 +2980,7 @@ export abstract class ExpressionParser extends TypeParser {
 				kind === T_NUMBER ||
 				kind === T_BRACKET_OPEN ||
 				kind === T_PRIVATE_IDENT ||
-				kind === T_STAR ||
+				(kind === T_STAR && allowGenerator) ||
 				kind === T_BRACE_OPEN) &&
 			(allowNewline || !this.newlineBefore);
 

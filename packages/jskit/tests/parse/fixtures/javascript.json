@@ -3,6 +3,8 @@
  "const {a, b: c = 2, ...rest} = obj;",
  "function f(a, b = 1, ...c) { return a + b; }",
  "class A extends B { #x = 1; static y; get z(){} set z(v){} static { init(); } }",
+ "class C { get\nx(){} set\ny(v){} static get\nz(){} async\nw = 1; get\n= 2; }",
+ "class D { get\n*a(){} static set\n*b(){} }",
  "(a, b) => a + b;",
  "async function* g(){ yield* await x; }",
  "for (const [a, b] of pairs) { if (a) continue; else break; }",

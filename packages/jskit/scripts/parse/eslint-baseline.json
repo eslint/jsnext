@@ -1,7 +1,5 @@
 {
 	"arrow-body-style": 11,
-	"getter-return": 1,
-	"grouped-accessor-pairs": 1,
 	"no-eval": 1,
 	"no-extra-parens": 8,
 	"no-invalid-this": 3,
