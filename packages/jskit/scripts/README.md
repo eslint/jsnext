@@ -177,18 +177,18 @@ npm run conformance:eslint -- ../../eslint
 ```
 
 ```
-tests=33720 passed=33672 failed=48 rules=13
+tests=33720 passed=33702 failed=18 rules=5
 baseline unchanged
 ```
 
-Read the failures in two piles. Most are **defects** — a program parsed or
-resolved differently. The rest are **language versions**: the suite pins
-`ecmaVersion` per test and a handful of files test ES3 and ES5 semantics, which
-a parser that implements the latest ECMAScript and nothing else cannot
-reproduce and should not try to. Telling the two apart is a reading job, which
-is why the grade is `parse/eslint-baseline.json` — a failure count per rule —
-rather than a zero. What is in it today is listed under
-[Known gaps](../../../docs/deviations.md#known-gaps).
+Read the failures in two piles. A **defect** is a program parsed or resolved
+differently; the first run of this script found six, and all six are fixed. The
+rest are **language versions**: the suite pins `ecmaVersion` per test and five
+files test ES3 and ES5 semantics, which a parser that implements the latest
+ECMAScript and nothing else cannot reproduce and should not try to. Telling the
+two apart is a reading job, which is why the grade is
+`parse/eslint-baseline.json` — a failure count per rule — rather than a zero,
+and why a new entry in it is a defect until read and shown otherwise.
 
 The run pins the dialect to `"js"`. ESLint's rule tests have no file names, so
 `eslintParser`'s extension-based default would read all of them as TypeScript,

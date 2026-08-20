@@ -390,18 +390,24 @@ npm run conformance:eslint --workspace=@eslint/jskit -- ../eslint
 ```
 
 ```
-tests=33720 passed=33672 failed=48 rules=13
+tests=33720 passed=33702 failed=18 rules=5
 baseline unchanged
 ```
 
-**Its failures come in two kinds and only one is a defect.** Most are a program
-parsed or resolved differently, and those are listed under [Known
-gaps](./docs/deviations.md#known-gaps). The rest are language versions: the
-suite pins `ecmaVersion` per test, and a handful of files test ES3 and ES5
-semantics that a latest-only parser cannot reproduce and should not try to.
+**Its failures come in two kinds and only one is a defect.** A defect is a
+program parsed or resolved differently, and the run's first pass found six of
+them; all six are fixed, and each is a commit with the rule from the
+specification in its message. What is left is the other kind — language
+versions. The suite pins `ecmaVersion` per test, and five files test ES3 and
+ES5 semantics that a latest-only parser cannot reproduce and should not try
+to: directives that do not apply before ES5, a `"use strict"` a function with
+default parameters could carry before ES2016, block-scoped functions that hoist
+under ES5 scoping.
+
 Telling the two apart is a reading job, which is why this one is graded against
 `scripts/parse/eslint-baseline.json` — a failure count per rule — rather than
-against zero.
+against zero. **A new entry there is a defect until read and shown to be a
+version difference.**
 
 The directory is resolved against the working directory, so run these from
 `packages/jskit`:
