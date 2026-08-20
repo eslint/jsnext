@@ -1351,7 +1351,15 @@ export abstract class TypeParser extends ParserBase {
 
 		this.tokenizer.restore(state);
 
-		return this.parenthesizedIsFollowedByArrow();
+		/*
+		 * A *type* takes its arrow wherever it falls. The
+		 * `[no LineTerminator here]` that `parenthesizedIsFollowedByArrow()`
+		 * enforces belongs to `ArrowFunction`, whose body a semicolon could
+		 * otherwise be inserted in front of; nothing in a type position is
+		 * ended by an automatic semicolon, so `(m: object)` and a `=>` on the
+		 * next line are one function type.
+		 */
+		return this.kindAfterMatchingParen() === T_ARROW;
 	}
 
 	/**

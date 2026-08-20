@@ -16,6 +16,8 @@
  "const e = f!;",
  "const g = <T,>(x: T): T => x;",
  "let h: (a: string, b: number) => void;",
+ "type Wrapped = ((macroExpander: object)\n => string | object);",
+ "let j: (a: string)\n => void;",
  "let i: new () => Foo;",
  "let j: typeof import(\"m\").Foo;",
  "let k: [a: string, b?: number, ...rest: boolean[]];",
