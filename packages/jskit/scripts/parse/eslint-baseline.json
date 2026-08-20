@@ -10,6 +10,5 @@
 	"no-use-before-define": 1,
 	"no-whitespace-before-property": 1,
 	"padding-line-between-statements": 1,
-	"prefer-regex-literals": 3,
 	"strict": 9
 }

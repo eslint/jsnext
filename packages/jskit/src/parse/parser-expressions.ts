@@ -102,6 +102,7 @@ import {
 	KIND_PRECEDENCE,
 	T_ARROW,
 	T_ASSIGN,
+	T_ASSIGN_SLASH,
 	T_AT,
 	T_AMPAMP,
 	T_BIGINT,
@@ -130,6 +131,7 @@ import {
 	T_QUESTION,
 	T_QUESTION_DOT,
 	T_SEMICOLON,
+	T_SLASH,
 	T_STAR,
 	T_STARSTAR,
 	T_STRING,
@@ -1062,6 +1064,23 @@ export abstract class ExpressionParser extends TypeParser {
 
 			case T_PRIVATE_IDENT:
 				return this.parsePrivateIdentifier();
+
+			case T_SLASH:
+			case T_ASSIGN_SLASH: {
+				/*
+				 * A `/` where an expression has to begin is the start of a
+				 * regular expression, whatever the tokenizer decided: the goal
+				 * symbol here is `InputElementRegExp`, which has no division
+				 * punctuator in it at all. The tokenizer chooses between the
+				 * two goals from the token before this one, and the token
+				 * before can be the end of a statement that an automatic
+				 * semicolon closed — `debugger` on one line and `/re/` on the
+				 * next.
+				 */
+				this.tokenizer.reScanAsRegExp();
+
+				return this.parseLiteral();
+			}
 
 			default:
 				if (this.atLiteral()) {

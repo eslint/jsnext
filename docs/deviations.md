@@ -251,6 +251,37 @@ template literal type with one. `tests/parse/validate.test.ts` and
 
 ---
 
+### `/=` where a regular expression must begin
+
+**Reference:** `espree` throws "Unexpected token /=" for a regular expression
+that starts with `=`, when the token before it ended a statement without a
+semicolon.
+
+```js
+debugger
+/=/.test(s);          // a regular expression matching "="
+```
+
+**Here:** it parses, as `@babel/parser` and `@typescript-eslint/parser` both
+parse it.
+
+**Why:** the two lexical goal symbols do not overlap. `InputElementDiv` has the
+`DivPunctuator` — `/` and `/=` — and no `RegularExpressionLiteral`;
+`InputElementRegExp` has the literal and neither punctuator. Which one applies
+is a question the syntactic grammar answers, and where a statement may begin
+the answer is `InputElementRegExp`, so there is no `/=` token to be unexpected.
+`acorn` re-reads a `/` as a regular expression when it reaches one where an
+expression must start, which is the same rescue this parser performs, but it
+does it for `/` alone and leaves `/=` as the assignment operator it had already
+produced.
+
+**How conformance absorbs it:** the corpus contains no such program — the
+construct needs both a missing semicolon and a pattern beginning with `=`.
+`tests/parse/parse.test.ts` pins it, and the fixtures cover the `/` form, which
+both parsers agree on.
+
+---
+
 ### Three places TypeScript is looser than ECMAScript
 
 **Reference:** `@typescript-eslint/parser` accepts all three, and so does
@@ -381,7 +412,7 @@ confined to input that is already an error, which is why they have been left.
   Matching TypeScript's recovery is not a goal — see [the rule that decides
   where code goes](../AGENTS.md#the-rule-that-decides-where-code-goes).
 
-The next five are what `scripts/parse/conformance-eslint.mjs` found by running
+The next four are what `scripts/parse/conformance-eslint.mjs` found by running
 ESLint's own rule tests through `eslintParser`. Unlike the three above, each is
 valid JavaScript that `espree` accepts and this parser reads differently, so
 each one breaks working code:
@@ -395,10 +426,6 @@ each one breaks working code:
   "Identifier directly after number". The `.` cannot be part of a
   `LegacyOctalIntegerLiteral`, so it is a member access and `espree` reads it
   as one. `01['prop']` parses; only the dotted form fails.
-- **A regular expression at the start of a statement after `break`,
-  `continue`, or `debugger`.** After the automatic semicolon, `/` begins a
-  regular expression; the tokenizer reads it as division and throws. `debugger
-  \n /re/` is the shortest case.
 - **`get` or `set` on its own line in a class body.** `class C { static get \n
   x() {} }` is a getter — a class body has no automatic semicolon there — and
   this parses it as a field named `get` followed by a method named `x`.

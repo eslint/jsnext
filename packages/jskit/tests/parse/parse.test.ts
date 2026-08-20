@@ -24,6 +24,59 @@ import {
 	TokenReader,
 } from "../../src/index.js";
 
+describe("regular expressions after an automatic semicolon", () => {
+	/**
+	 * Reports what the tokens of a program are, by type and text.
+	 * @param code The source to tokenize.
+	 * @returns One `type:value` string per token.
+	 */
+	function tokens(code: string): string[] {
+		const { ast } = toAST(parse(code, { sourceType: "script" }));
+
+		return (ast.tokens as { type: string; value: string }[]).map(
+			token => `${token.type}:${token.value}`,
+		);
+	}
+
+	/*
+	 * Which of the two lexical goal symbols applies is decided by the syntactic
+	 * grammar, and where a statement may begin it is `InputElementRegExp` —
+	 * which has no `/` or `/=` punctuator in it at all. The tokenizer chooses
+	 * from the token before, and the token before is the end of a statement
+	 * that no semicolon closed.
+	 */
+	it.each(["debugger", "break", "continue"])(
+		"reads a slash after %s as a regular expression",
+		keyword => {
+			const code = `for (;;) { ${keyword}\n/re/.test(s); }`;
+
+			expect(tokens(code)).toContain("RegularExpression:/re/");
+		},
+	);
+
+	/*
+	 * `/=/` is a regular expression matching `=`. Nothing else is available
+	 * here: the goal symbol that admits a `/=` punctuator is the one that
+	 * admits no regular expression literal.
+	 */
+	it("reads a slash-equals after one as a regular expression too", () => {
+		expect(tokens("debugger\n/=/.test(s);")).toContain(
+			"RegularExpression:/=/",
+		);
+	});
+
+	it("still reads a slash after an expression as division", () => {
+		expect(tokens("a\n/ b / c;")).toEqual([
+			"Identifier:a",
+			"Punctuator:/",
+			"Identifier:b",
+			"Punctuator:/",
+			"Identifier:c",
+			"Punctuator:;",
+		]);
+	});
+});
+
 describe("parse()", () => {
 	it("returns one buffer holding everything the parse produced", () => {
 		const result = parse("var a = 1;");
