@@ -2080,6 +2080,15 @@ export class FlowWalker {
 					value !== 0 &&
 					reader.kind(value) === N_FunctionExpression
 				) {
+					/*
+					 * Evaluating the class creates the method's closure,
+					 * so the function node executes here even though its
+					 * body is a graph of its own. Without this record the
+					 * only one it has is its own entry block, which is
+					 * seeded reachable — and a method of a class in dead
+					 * code would read as reachable.
+					 */
+					this.#record(value);
 					this.#tasks.push({
 						node: value,
 						origin: ORIGIN_FUNCTION,
@@ -2107,6 +2116,8 @@ export class FlowWalker {
 					});
 				}
 			} else if (memberKind === N_StaticBlock) {
+				// A static block runs when the class is evaluated.
+				this.#record(member);
 				this.#tasks.push({
 					node: member,
 					origin: ORIGIN_CLASS_STATIC_BLOCK,

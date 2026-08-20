@@ -231,6 +231,13 @@ export class FlowBufferReader {
 
 	/**
 	 * The block a node executes in.
+	 *
+	 * A node that starts a graph of its own is recorded twice, and this
+	 * answers with the block that evaluates it rather than the graph it
+	 * starts: a function executes where its closure is created, and its
+	 * own entry block is reachable whether or not anything reaches the
+	 * expression that made it. The index is ordered by handle and then by
+	 * block so that the lower-bound search below lands on that one.
 	 * @param handle The node's handle.
 	 * @returns The block ID, or `-1` when the walk never visited the node —
 	 *      a type annotation, or scaffolding that does not execute.

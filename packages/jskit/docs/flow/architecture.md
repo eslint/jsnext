@@ -278,6 +278,33 @@ The pairs arrive from the walk nearly sorted, so emission sorts with an
 insertion-cutoff quicksort rather than trusting the order or paying a
 comparator-based sort.
 
+**The sort breaks ties on the block, and that is what decides ownership.**
+A node that starts a graph is recorded twice: once by the walk that
+evaluates it, and once as the entry of the graph it starts. The quicksort
+is not stable, so ordering by handle alone would leave `blockOfNode()` — a
+lower-bound search — returning whichever of the two the partitioning
+happened to put first. Ordering by block as well makes the lower one win,
+and a nested graph's blocks are all allocated after its enclosing graph's,
+so the lower one is the enclosing block.
+
+That is the right answer, because **a function node executes where its
+closure is created, not where its body begins**. Its own entry block is
+seeded reachable no matter what, so owning the node there would report a
+function in dead code as reachable. The walk therefore records the
+evaluating block for every function it queues, including the ones a class
+body creates:
+
+| Node | Recorded by the evaluating walk | Because |
+| --- | --- | --- |
+| Function declaration, function expression, arrow | yes | the enclosing walk visits it |
+| A method's `FunctionExpression` | yes | evaluating the class creates the closure |
+| A `StaticBlock` | yes | it runs when the class is evaluated |
+| A field initializer's expression | no | it runs at construction, not at class evaluation |
+| `Program` | no | there is nothing enclosing it |
+
+The last two rows own their nodes through their own entry block, which is
+the only truthful answer available: nothing else executes them.
+
 Nodes the walk never visits — type annotations, unexecuted declaration
 scaffolding — have no entry, and the queries answer `-1` and `false` for
 them.

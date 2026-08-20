@@ -3,7 +3,13 @@
  * of reading a flow buffer.
  */
 
-import { analyzeTree, createGraph, toGraphTree } from "../../src/index.js";
+import {
+	analyzeTree,
+	createGraph,
+	toGraphTree,
+	NB_BLOCK,
+	NB_NODE,
+} from "../../src/index.js";
 import * as espree from "espree";
 import { describe, expect, it } from "vitest";
 import {
@@ -212,6 +218,76 @@ describe("the node-block index", () => {
 		expect([...seen].some(key => key.startsWith("TSNumberKeyword"))).toBe(
 			false,
 		);
+	});
+
+	it("puts a function node in the block that evaluates it", () => {
+		const code =
+			"function f() { return; const g = () => 1; class A { m() {} static { s(); } } }";
+		const fixture = graphOf(code);
+		const dead = fixture.reader.blockOfNode(
+			handleAt(fixture, "VariableDeclaration", code.indexOf("const g")),
+		);
+
+		// The block a `return` leaves behind, which nothing branches into.
+		expect(fixture.reader.isReachable(
+			handleAt(fixture, "VariableDeclaration", code.indexOf("const g")),
+		)).toBe(false);
+
+		/*
+		 * Each of these starts a graph of its own, whose entry block is
+		 * seeded reachable, and each is also recorded by the walk that
+		 * evaluates it. The evaluating block is the answer: creating the
+		 * closure is what happens here, and it happens after a `return`.
+		 */
+		for (const [type, at] of [
+			["ArrowFunctionExpression", "() => 1"],
+			["FunctionExpression", "() {}"],
+			["StaticBlock", "static { s(); }"],
+		] as const) {
+			const handle = handleAt(fixture, type, code.indexOf(at));
+
+			expect(fixture.reader.blockOfNode(handle)).toBe(dead);
+			expect(fixture.reader.isReachable(handle)).toBe(false);
+		}
+	});
+
+	it("keeps a function's own body reachable inside its graph", () => {
+		const code = "function f() { return; const g = () => hi(); }";
+		const fixture = graphOf(code);
+
+		// The closure is never created, but its body is its own unit.
+		expect(
+			fixture.reader.isReachable(
+				handleAt(fixture, "ArrowFunctionExpression", code.indexOf("()", 20)),
+			),
+		).toBe(false);
+		expect(
+			fixture.reader.isReachable(
+				handleAt(fixture, "CallExpression", code.indexOf("hi()")),
+			),
+		).toBe(true);
+	});
+
+	it("orders the index by handle and then by block", () => {
+		const fixture = graphOf(
+			"function f() { const g = () => 1; class A { m() {} } return g; }",
+		);
+		const { reader } = fixture;
+		let previousNode = -1;
+		let previousBlock = -1;
+
+		for (let entry = 0; entry < reader.nodeBlockCount; entry++) {
+			const node = reader.nodeBlockField(entry, NB_NODE);
+			const block = reader.nodeBlockField(entry, NB_BLOCK);
+
+			expect(
+				node > previousNode ||
+					(node === previousNode && block >= previousBlock),
+			).toBe(true);
+
+			previousNode = node;
+			previousBlock = block;
+		}
 	});
 
 	it("maps nested-function nodes to their own graphs' blocks", () => {

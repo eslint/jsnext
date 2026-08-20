@@ -127,12 +127,22 @@ class WordList {
 }
 
 /**
- * Sorts interleaved `(key, value)` word pairs by key, in place.
+ * Sorts interleaved `(node handle, block ID)` word pairs, in place, by
+ * handle and then by block.
  *
  * The pairs arrive in walk order, which is nearly sorted already, so an
  * insertion pass would usually do — but a pathological program can invert
  * long runs, so this is a quicksort with an insertion cutoff and a
  * median-of-three pivot, iterative to keep deep recursion off the stack.
+ *
+ * Sorting by block as well as by handle is what decides which block owns a
+ * node recorded more than once. A function node is recorded twice — by the
+ * walk that evaluates it, and again as the entry of the graph it starts —
+ * and a quicksort is not stable, so ordering by handle alone leaves the two
+ * in whichever order the partitioning happened to produce. The tie-break
+ * makes the lower block win, and a nested graph's blocks are all allocated
+ * after its enclosing graph's, so the lower block is the enclosing one: the
+ * block that evaluates the function, which is where it executes.
  * @param words The backing store holding the pairs.
  * @param count How many pairs there are, starting at word 0.
  * @returns Nothing.
@@ -151,7 +161,11 @@ function sortPairs(words: Uint32Array, count: number): void {
 				const value = words[i * 2 + 1];
 				let j = i - 1;
 
-				while (j >= low && words[j * 2] > key) {
+				while (
+					j >= low &&
+					(words[j * 2] > key ||
+						(words[j * 2] === key && words[j * 2 + 1] > value))
+				) {
 					words[j * 2 + 2] = words[j * 2];
 					words[j * 2 + 3] = words[j * 2 + 1];
 					j--;
@@ -164,28 +178,41 @@ function sortPairs(words: Uint32Array, count: number): void {
 			continue;
 		}
 
-		// Median-of-three pivot, moved to the middle position.
+		/*
+		 * Median-of-three pivot. Both of its words are read out before
+		 * partitioning starts, since the element itself moves once the
+		 * swaps begin.
+		 */
 		const mid = (low + high) >>> 1;
 		const a = words[low * 2];
 		const b = words[mid * 2];
 		const c = words[high * 2];
-		let pivot = b;
+		let pivotAt = mid;
 
 		if (a > b === a < c) {
-			pivot = a;
+			pivotAt = low;
 		} else if (c > a === c < b) {
-			pivot = c;
+			pivotAt = high;
 		}
+
+		const pivotKey = words[pivotAt * 2];
+		const pivotValue = words[pivotAt * 2 + 1];
 
 		let i = low;
 		let j = high;
 
 		while (i <= j) {
-			while (words[i * 2] < pivot) {
+			while (
+				words[i * 2] < pivotKey ||
+				(words[i * 2] === pivotKey && words[i * 2 + 1] < pivotValue)
+			) {
 				i++;
 			}
 
-			while (words[j * 2] > pivot) {
+			while (
+				words[j * 2] > pivotKey ||
+				(words[j * 2] === pivotKey && words[j * 2 + 1] > pivotValue)
+			) {
 				j--;
 			}
 
