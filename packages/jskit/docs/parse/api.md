@@ -58,6 +58,7 @@ own.
 | Option        | Default    | Meaning                                                                                     |
 | ------------- | ---------- | ------------------------------------------------------------------------------------------- |
 | `sourceType`  | `"module"` | Whether to read the text as a script, an ES module, or a CommonJS module.                   |
+| `jsx`         | unset      | How a `<` in expression position reads: the `.tsx` way, the `.ts` way, or try both.         |
 | `embedSource` | `false`    | Copy the source text into the buffer, so it can be read in a process that did not parse it. |
 | `parents`     | `false`    | Derive each node's parent, so a tool can climb from a node to its context.                  |
 
@@ -77,6 +78,28 @@ The same goes for Annex B's HTML-like comments: `a <!--b` is `a` followed by a
 comment in a script, and `a < !(--b)` in a module. The choice is recorded in the
 buffer, so `validate()` and `toAST()` read it back and need not be told again —
 and refuse to be told the opposite, since the tree was built the other way.
+
+`jsx` is the other such question. `<T>() => x` is a generic arrow function in
+a `.ts` file and an unclosed JSX element in a `.tsx` file, and no tree stands
+for both, so which way to read a `<` in expression position has to come from
+outside the text:
+
+- **`jsx: true`** reads it the way a `.tsx` file does: JSX directly, with a
+  generic arrow only behind the unambiguous `<T,>` and `<T extends ...>`
+  spellings, and no `<T>expr` type assertions at all.
+- **`jsx: false`** reads it the way a `.ts` file does: a type assertion or a
+  generic arrow, never JSX.
+- **Left unset**, the parser accepts the union: JSX is tried speculatively
+  first and the TypeScript readings are the fallback. This accepts everything
+  either mode accepts — which is what lets `validate()` be the one to say
+  whether JSX was _allowed_ — but the speculation costs a substantial share of
+  the parse on JSX-heavy files. A caller that knows which kind of file it has
+  should say so.
+
+Unlike `sourceType`, the choice is not recorded in the buffer: a JSX node
+either is in the tree or is not, and the later phases read the tree rather
+than re-deciding. `validate()`'s own `jsx` option is unchanged — it still says
+whether the JSX that parsed is _allowed_.
 
 Reading text off a buffer works either way in the process that parsed, because
 the original string is cached against the buffer. Turn `embedSource` on when
@@ -298,20 +321,28 @@ const { ast } = toAST(
 );
 ```
 
-`parse()` reads JSX whether or not the option is on, because which reading a
-`<` deserves is exactly the kind of question the text alone cannot answer.
-Leaving `jsx` off does not change the tree; it makes `validate()` report every
-JSX element and fragment as syntax that is not allowed here, one problem per
-outermost element rather than one per node.
+By default `parse()` reads JSX whether or not the option is on, because which
+reading a `<` deserves is exactly the kind of question the text alone cannot
+answer. Leaving `validate()`'s `jsx` off does not change the tree; it makes
+`validate()` report every JSX element and fragment as syntax that is not
+allowed here, one problem per outermost element rather than one per node.
+
+`parse()` also takes a `jsx` option of its own, which settles the question
+without trying: `true` is the `.tsx` reading and `false` the `.ts` reading.
+See [`parse()`](#parsecode-options) above for what each mode does — telling
+`parse()` up front is considerably faster on JSX-heavy files than letting it
+speculate. The two options are independent: `parse({ jsx: true })` says how
+the text reads, and `validate(..., { jsx: true })` says JSX is allowed.
 
 Two more things are worth knowing.
 
-**A `<` in expression position is read as JSX first.** If that fails, it is
-retried as an old-style `<T>value` type assertion, which is what keeps
-`<any>value` working in code that contains no JSX at all. TypeScript itself
-resolves this ambiguity by file extension, which `parse()` cannot see, so it
-resolves it by trying. The practical effect is that JSX always wins where both
-readings are possible - the same choice a `.tsx` file makes.
+**With `jsx` unset, a `<` in expression position is read as JSX first.** If
+that fails, it is retried as an old-style `<T>value` type assertion, which is
+what keeps `<any>value` working in code that contains no JSX at all.
+TypeScript itself resolves this ambiguity by file extension, which `parse()`
+was not told, so it resolves it by trying. The practical effect is that JSX
+always wins where both readings are possible - the same choice a `.tsx` file
+makes.
 
 One consequence: text that is neither valid JSX nor a valid assertion may be
 reported with whichever diagnostic the second reading produced, which can point

@@ -110,17 +110,32 @@ export abstract class ParserBase {
 	allowSuperCall = false;
 
 	/**
+	 * How a `<` in expression position reads, when the caller said.
+	 *
+	 * `true` reads it the way a `.tsx` file does — JSX directly, with a
+	 * generic arrow only behind the `<T,>` and `<T extends ...>` spellings —
+	 * and `false` the way a `.ts` file does, where it opens a type assertion
+	 * or a generic arrow and JSX is never attempted. `undefined` is the
+	 * union: JSX is tried speculatively first and the TypeScript readings are
+	 * the fallback, which accepts everything either mode accepts but pays for
+	 * the attempt.
+	 */
+	readonly jsx: boolean | undefined;
+
+	/**
 	 * Creates a parser over a source text.
 	 * @param source The source text to parse.
 	 * @param isModule Whether to read the text as an ES module. CommonJS is
 	 *      read as a script: the two differ in what is *allowed*, which is
 	 *      phase two's question, not in what anything means.
+	 * @param jsx How a `<` in expression position reads; see the field.
 	 */
-	constructor(source: string, isModule: boolean) {
+	constructor(source: string, isModule: boolean, jsx?: boolean) {
 		this.source = source;
 		this.tokenizer = new Tokenizer(source, isModule);
 		this.writer = new NodeWriter(source.length);
 		this.inAsync = isModule;
+		this.jsx = jsx;
 		this.tokenizer.inAsync = isModule;
 		this.tokenizer.next();
 	}
@@ -309,17 +324,7 @@ export abstract class ParserBase {
 	 * @returns `true` when the token is an identifier or contextual keyword.
 	 */
 	atBindingName(): boolean {
-		const kind = this.tokenizer.kind;
-
-		if (kind === T_IDENT) {
-			return true;
-		}
-
-		return (
-			kind >= KEYWORD_FIRST &&
-			kind <= KEYWORD_LAST &&
-			(KIND_KEYWORD_FLAGS[kind] & KW_RESERVED) === 0
-		);
+		return isBindingNameKind(this.tokenizer.kind);
 	}
 
 	/**
@@ -608,6 +613,8 @@ export abstract class ParserBase {
 		const state = this.tokenizer.save();
 		const snapshot = this.writer.mark();
 
+		this.tokenizer.backtracking++;
+
 		try {
 			return attempt();
 		} catch {
@@ -615,6 +622,25 @@ export abstract class ParserBase {
 			this.tokenizer.restore(state);
 
 			return 0;
+		} finally {
+			this.tokenizer.backtracking--;
 		}
 	}
+}
+
+/**
+ * Determines whether a token kind can be used as a binding name.
+ * @param kind The token kind to test.
+ * @returns `true` when the kind is an identifier or contextual keyword.
+ */
+export function isBindingNameKind(kind: number): boolean {
+	if (kind === T_IDENT) {
+		return true;
+	}
+
+	return (
+		kind >= KEYWORD_FIRST &&
+		kind <= KEYWORD_LAST &&
+		(KIND_KEYWORD_FLAGS[kind] & KW_RESERVED) === 0
+	);
 }

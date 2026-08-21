@@ -1085,3 +1085,111 @@ describe("decorated class declarations", () => {
 		}
 	});
 });
+
+describe("the jsx option", () => {
+	/**
+	 * Parses a lone initializer and reports its node type.
+	 * @param code The source text, whose first statement declares one value.
+	 * @param jsx The `jsx` mode to parse under, or `undefined` for the union.
+	 * @returns The type of the initializer's node.
+	 */
+	function initializerType(code: string, jsx?: boolean): string {
+		const { ast } = toAST(parse(code, { jsx }), { dialect: "ts" });
+		const declaration = ast.body[0] as {
+			declarations: { init: { type: string } }[];
+		};
+
+		return declaration.declarations[0].init.type;
+	}
+
+	describe("jsx: true, the .tsx reading", () => {
+		it("parses a < in expression position as JSX directly", () => {
+			expect(initializerType("const a = <div>x</div>;", true)).toBe(
+				"JSXElement",
+			);
+		});
+
+		it("still takes a generic arrow behind the trailing comma", () => {
+			expect(initializerType("const f = <T,>(x: T) => x;", true)).toBe(
+				"ArrowFunctionExpression",
+			);
+		});
+
+		it("still takes a generic arrow behind an extends constraint", () => {
+			expect(
+				initializerType(
+					"const f = <T extends object>(x: T) => x;",
+					true,
+				),
+			).toBe("ArrowFunctionExpression");
+		});
+
+		it("still takes a generic arrow behind a const modifier", () => {
+			expect(
+				initializerType("const f = <const T,>(x: T) => x;", true),
+			).toBe("ArrowFunctionExpression");
+		});
+
+		/*
+		 * The plain `<T>` spelling is the ambiguous one, and a `.tsx` file
+		 * resolves it toward JSX — this is an unclosed element there, exactly
+		 * as `tsc` reads it.
+		 */
+		it("reads the ambiguous <T> spelling as an element", () => {
+			expect(() =>
+				parse("const f = <T>(x) => x;", { jsx: true }),
+			).toThrow(/Unterminated JSX/u);
+		});
+
+		it("refuses a type assertion", () => {
+			expect(() => parse("const v = <any>value;", { jsx: true })).toThrow(
+				ParseError,
+			);
+		});
+	});
+
+	describe("jsx: false, the .ts reading", () => {
+		it("parses a < in expression position as a type assertion", () => {
+			expect(initializerType("const v = <any>value;", false)).toBe(
+				"TSTypeAssertion",
+			);
+		});
+
+		it("still takes a generic arrow with the plain spelling", () => {
+			expect(initializerType("const f = <T>(x: T) => x;", false)).toBe(
+				"ArrowFunctionExpression",
+			);
+		});
+
+		it("never parses JSX", () => {
+			expect(() =>
+				parse("const a = <div>x</div>;", { jsx: false }),
+			).toThrow(ParseError);
+		});
+	});
+
+	describe("left unset, the union", () => {
+		it("parses JSX", () => {
+			expect(initializerType("const a = <div>x</div>;")).toBe(
+				"JSXElement",
+			);
+		});
+
+		it("parses a type assertion where JSX does not fit", () => {
+			expect(initializerType("const v = <any>value;")).toBe(
+				"TSTypeAssertion",
+			);
+		});
+
+		/*
+		 * When neither reading works, the diagnostic must be the JSX one with
+		 * its real message and position — not the placeholder the speculative
+		 * attempt threw internally.
+		 */
+		it("reports the JSX problem when neither reading works", () => {
+			expect(() => parse("const a = <div>;")).toThrow(
+				/Unterminated JSX element \(1:17\)/u,
+			);
+		});
+	});
+});

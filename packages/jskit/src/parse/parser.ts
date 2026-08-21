@@ -84,6 +84,7 @@ import {
 	N_WithStatement,
 } from "./node-kinds.js";
 import { JsxParser } from "./parser-jsx.js";
+import { isBindingNameKind } from "./parser-base.js";
 import {
 	T_ASSIGN,
 	T_AT,
@@ -1846,15 +1847,10 @@ export class Parser extends JsxParser {
 	 * @returns `true` when the next token has that kind.
 	 */
 	private nextIs(kind: number, sameLine = false): boolean {
-		const state = this.tokenizer.save();
-
-		this.next();
-
-		const result = this.at(kind) && (!sameLine || !this.newlineBefore);
-
-		this.tokenizer.restore(state);
-
-		return result;
+		return (
+			this.tokenizer.peek() === kind &&
+			(!sameLine || !this.tokenizer.peekNewlineBefore)
+		);
 	}
 
 	/**
@@ -1863,18 +1859,13 @@ export class Parser extends JsxParser {
 	 * @returns `true` when a binding target follows.
 	 */
 	private nextStartsBinding(): boolean {
-		const state = this.tokenizer.save();
+		const kind = this.tokenizer.peek();
 
-		this.next();
-
-		const result =
-			this.atBindingName() ||
-			this.at(T_BRACKET_OPEN) ||
-			this.at(T_BRACE_OPEN);
-
-		this.tokenizer.restore(state);
-
-		return result;
+		return (
+			isBindingNameKind(kind) ||
+			kind === T_BRACKET_OPEN ||
+			kind === T_BRACE_OPEN
+		);
 	}
 
 	/**
@@ -1963,16 +1954,12 @@ export class Parser extends JsxParser {
 	 * @returns `true` when a module name follows.
 	 */
 	private nextStartsModuleName(): boolean {
-		const state = this.tokenizer.save();
+		const kind = this.tokenizer.peek();
 
-		this.next();
-
-		const result =
-			(this.atBindingName() || this.at(T_STRING)) && !this.newlineBefore;
-
-		this.tokenizer.restore(state);
-
-		return result;
+		return (
+			(isBindingNameKind(kind) || kind === T_STRING) &&
+			!this.tokenizer.peekNewlineBefore
+		);
 	}
 
 	/**

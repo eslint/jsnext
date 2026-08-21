@@ -149,8 +149,19 @@ function buildProgram(code: string, options: EslintParserOptions): Program {
 	 * The source type goes to both phases, because it decides how some text
 	 * *reads* as well as what is allowed. ESLint has it before the first
 	 * character is scanned, so there is nothing to defer.
+	 *
+	 * `jsx` goes to phase one only when it is on. `jsx: true` reads a `<` in
+	 * expression position as an element directly, which is both the `.tsx`
+	 * reading and the fast path. When JSX is off, phase one is deliberately
+	 * left in its permissive mode instead of being told `false`: a stray
+	 * element then still parses, and phase two reports it as "JSX is not
+	 * enabled" — a far better diagnostic than the type-assertion parse error
+	 * the strict reading would produce.
 	 */
-	const result = parse(code, { sourceType });
+	const result = parse(
+		code,
+		jsxFor(options) ? { sourceType, jsx: true } : { sourceType },
+	);
 	const lines = new LineIndex(readLineStarts(result));
 	const { ast, problems } = buildAst(
 		result,

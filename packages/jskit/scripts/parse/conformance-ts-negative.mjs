@@ -144,12 +144,25 @@ function rejectionAs(code, sourceType, options) {
 		return `parse: ${error.message}`;
 	}
 
-	const problems = validate(result, {
-		sourceType,
-		dialect: "ts",
-		jsx: options.jsx,
-		declaration: options.declaration,
-	});
+	let problems;
+
+	try {
+		problems = validate(result, {
+			sourceType,
+			dialect: "ts",
+			jsx: options.jsx,
+			declaration: options.declaration,
+		});
+	} catch (error) {
+		/*
+		 * The validator's walk is recursive, so a pathological input — the
+		 * corpus has a binder stress test that is one binary expression
+		 * thousands of operands long — can exhaust the stack there rather
+		 * than in the parser. That is a rejection to record, not a reason to
+		 * abandon the whole run.
+		 */
+		return `validate: ${error.message}`;
+	}
 
 	return problems.length === 0 ? null : `validate: ${problems[0].message}`;
 }

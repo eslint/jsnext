@@ -132,8 +132,10 @@ export interface ToAstResult {
 /**
  * How the buffers `parse()` produces should be built.
  *
- * These describe the *encoding* of the output, never how the text is
- * interpreted — that stays with `validate()`, per the phase split.
+ * Apart from `sourceType` and `jsx` — the two questions where two readings of
+ * the same text can both be valid — these describe the *encoding* of the
+ * output, never how the text is interpreted. Everything that is merely
+ * allowed or disallowed stays with `validate()`, per the phase split.
  */
 export interface ParseOptions {
 	/**
@@ -153,6 +155,30 @@ export interface ParseOptions {
 	 * accepted here rather than collapsing them.
 	 */
 	sourceType?: "script" | "module" | "commonjs";
+
+	/**
+	 * How a `<` in expression position reads. It is the other interpretation
+	 * question two readings of the same text can answer differently:
+	 * `<T>() => x` is a generic arrow function in a `.ts` file and an
+	 * unclosed JSX element in a `.tsx` file, and no tree stands for both.
+	 *
+	 * `true` reads it the way a `.tsx` file does: JSX directly, with a
+	 * generic arrow only behind the unambiguous `<T,>` and `<T extends ...>`
+	 * spellings, and no `<T>expr` type assertions. `false` reads it the way a
+	 * `.ts` file does: a type assertion or a generic arrow, never JSX.
+	 *
+	 * Left unset, the parser accepts the union: JSX is tried speculatively
+	 * first and the TypeScript readings are the fallback. That accepts
+	 * everything either mode accepts — which is what lets `validate()` be the
+	 * one to say whether JSX was *allowed* — but the speculation costs a
+	 * substantial share of the parse on JSX-heavy files, so a caller that
+	 * knows which kind of file it has should say so.
+	 *
+	 * Unlike `sourceType`, the choice is not recorded in the buffer: a JSX
+	 * node either is in the tree or is not, and the later phases read the
+	 * tree rather than re-deciding.
+	 */
+	jsx?: boolean;
 
 	/**
 	 * Whether to copy the source text into the parse buffer, making the buffer
@@ -194,7 +220,7 @@ export interface ParseOptions {
  */
 export function parse(code: string, options: ParseOptions = {}): ParseResult {
 	const sourceType = options.sourceType ?? "module";
-	const parser = new Parser(code, sourceType === "module");
+	const parser = new Parser(code, sourceType === "module", options.jsx);
 	const root = parser.parseProgram();
 	const writer = parser.writer;
 	const tokenizer = parser.tokenizer;

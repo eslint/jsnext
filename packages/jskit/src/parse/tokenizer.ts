@@ -197,6 +197,64 @@ const CTX_TEMPLATE = 5;
 /** Words per token record. */
 const TOKEN_WORDS = 4;
 
+/**
+ * The token kinds `updateContext()` treats specially, indexed by kind. Every
+ * other kind takes its answer straight from `KIND_BEFORE_EXPR`. **A new case
+ * in `updateContext()`'s switch must be added here too.**
+ */
+const CONTEXT_SPECIAL = /* @__PURE__ */ buildContextSpecial();
+
+/**
+ * Builds the table of token kinds `updateContext()` has a case for.
+ * @returns The table, indexed by token kind.
+ */
+function buildContextSpecial(): Uint8Array {
+	const table = new Uint8Array(256);
+
+	for (const kind of [
+		T_PAREN_CLOSE,
+		T_BRACE_CLOSE,
+		T_PLUS_PLUS,
+		T_MINUS_MINUS,
+		T_yield,
+		T_await,
+		T_of,
+	]) {
+		table[kind] = 1;
+	}
+
+	return table;
+}
+
+/**
+ * Token kinds for the punctuators that are one character long no matter what
+ * follows, indexed by character code. Zero means the character needs the full
+ * dispatch: it may pair with the next one, or it moves the context stack the
+ * way `{`, `}`, and `(` do. The characters here are the bones of every
+ * program — `: , ( ) [ ] ;` make up a third of a TypeScript file's tokens —
+ * and one table read replaces a walk through `scanPunctuator`'s cases.
+ */
+const SIMPLE_PUNCTUATORS = /* @__PURE__ */ buildSimplePunctuators();
+
+/**
+ * Builds the single-character punctuator table.
+ * @returns The table, indexed by character code.
+ */
+function buildSimplePunctuators(): Uint8Array {
+	const table = new Uint8Array(128);
+
+	table[CH_PAREN_CLOSE] = T_PAREN_CLOSE;
+	table[CH_BRACKET_OPEN] = T_BRACKET_OPEN;
+	table[CH_BRACKET_CLOSE] = T_BRACKET_CLOSE;
+	table[CH_SEMICOLON] = T_SEMICOLON;
+	table[CH_COMMA] = T_COMMA;
+	table[CH_COLON] = T_COLON;
+	table[CH_AT] = T_AT;
+	table[CH_TILDE] = T_TILDE;
+
+	return table;
+}
+
 /** The largest code point a `\u{...}` escape may name. */
 const MAX_CODE_POINT = 0x10ffff;
 
@@ -313,6 +371,91 @@ export class Tokenizer {
 	private contextDepth = 0;
 
 	/**
+	 * How many speculative parses are in flight.
+	 *
+	 * While it is above zero, every error is about to be caught, rewound, and
+	 * discarded, so `error()` hands back one shared placeholder instead of
+	 * building a real diagnostic. Constructing an `Error` makes V8 capture the
+	 * call stack, which costs more than the speculative parse around it — a
+	 * JSX-heavy file used to spend nearly half its parse time doing it.
+	 */
+	backtracking = 0;
+
+	/**
+	 * The placeholder `error()` returns while backtracking, created the first
+	 * time a speculative parse fails.
+	 */
+	private backtrackError: ParseError | null = null;
+
+	/**
+	 * Whether a line terminator preceded the token `peek()` last scanned.
+	 * Meaningful only directly after a `peek()` call.
+	 */
+	peekNewlineBefore = false;
+
+	/*
+	 * The one-token lookahead cache. A `peek()` scans the next token and
+	 * rolls the scanner back; without a cache the same characters are
+	 * scanned again the moment the parser advances, and the parser peeks
+	 * ahead of thousands of tokens in an ordinary file — after every name
+	 * that might open an arrow function, for one. The cache holds everything
+	 * `next()` would have produced, so advancing becomes a dozen field moves.
+	 *
+	 * Validity is decided at consumption, not by invalidation hooks: the
+	 * cache is used only when every input the scan depended on — `pos`,
+	 * `exprAllowed`, the context stack, `inJsxTag` — still matches what it
+	 * was when the peek ran. Anything that could change what the next token
+	 * *is* — a rescan, a JSX-mode read, a `restore()` to somewhere else —
+	 * either moves `pos` or changes one of those, so a stale cache can never
+	 * pass the guards. `peekPos` of `-1` means no cache.
+	 */
+
+	/** Where the scanner stood when the cached peek ran, or `-1`. */
+	private peekPos = -1;
+
+	/** The value of `exprAllowed` when the cached peek ran. */
+	private peekExprAllowed = false;
+
+	/** The context depth when the cached peek ran. */
+	private peekContextDepth = 0;
+
+	/** The context entry on top of the stack when the cached peek ran. */
+	private peekContextTop = 0;
+
+	/** The value of `inJsxTag` when the cached peek ran. */
+	private peekInJsxTag = false;
+
+	/** The cached token's kind. */
+	private peekKind = T_EOF;
+
+	/** The cached token's start offset. */
+	private peekStart = 0;
+
+	/** The cached token's flags. */
+	private peekFlags = 0;
+
+	/** The cached token's auxiliary data. */
+	private peekExtra = 0;
+
+	/** Where the scanner stood after the cached token. */
+	private peekEndPos = 0;
+
+	/** The line count after the cached token was scanned. */
+	private peekLineCount = 0;
+
+	/** The token record count after the cached token's leading comments. */
+	private peekCount = 0;
+
+	/** The record region length after the cached token's leading comments. */
+	private peekRecordsLength = 0;
+
+	/** The context depth after the cached token was scanned. */
+	private peekContextAfterDepth = 0;
+
+	/** The context entry on top of the stack after the cached token. */
+	private peekContextAfterTop = 0;
+
+	/**
 	 * Creates a tokenizer for a source text and scans the first token.
 	 * @param source The source text to scan.
 	 * @param isModule Whether the text is being read as an ES module, which
@@ -322,10 +465,15 @@ export class Tokenizer {
 		this.source = source;
 		this.isModule = isModule;
 		this.length = source.length;
+		/*
+		 * One token per three characters or so is what real code runs, with
+		 * JSX the densest — sized so the buffer covers that without the
+		 * doubling-and-copying a growth costs on a large file.
+		 */
 		this.records = new WordBuffer(
-			Math.max(1024, (source.length >> 2) * TOKEN_WORDS),
+			Math.max(1024, ((source.length * 3) >> 3) * TOKEN_WORDS),
 		);
-		this.lineStarts = new Uint32Array(Math.max(64, source.length >> 5));
+		this.lineStarts = new Uint32Array(Math.max(64, source.length >> 4));
 		this.lineStarts[0] = 0;
 
 		// A byte order mark is not part of the program text.
@@ -347,6 +495,23 @@ export class Tokenizer {
 	 * @returns The error to throw.
 	 */
 	error(message: string, index: number): ParseError {
+		/*
+		 * A speculative parse only ever throws to be caught and rewound, so
+		 * the message and position would never be read — and building them
+		 * would make V8 capture a call stack, which costs more than the parse
+		 * being abandoned. The one path that surfaces a speculative failure
+		 * to the caller re-parses outside speculation to get the real
+		 * diagnostic; see `parseAngleBracketExpression()`.
+		 */
+		if (this.backtracking > 0) {
+			return (this.backtrackError ??= new ParseError(
+				"Speculative parse failed",
+				0,
+				1,
+				1,
+			));
+		}
+
 		const [line, column] = locate(this.lineStarts, this.lineCount, index);
 
 		return new ParseError(message, index, line, column);
@@ -397,6 +562,126 @@ export class Tokenizer {
 		this.exprAllowed = state.exprAllowed;
 		this.contextDepth = state.contextDepth;
 		this.lineCount = state.lineCount;
+	}
+
+	/**
+	 * Reads the kind of the token after the current one without advancing.
+	 *
+	 * This is `save()`, `next()`, `restore()` collapsed into one scan with no
+	 * state object, no token record left behind, and no context update — the
+	 * scalars the scan moves are put back from locals. The parser peeks at
+	 * the next token for every name that might open an arrow function and
+	 * every type annotation that might be a predicate, so the shortcut is
+	 * paid for thousands of times in an ordinary file.
+	 *
+	 * Whether a line terminator preceded the peeked token lands in
+	 * `peekNewlineBefore`, which is only meaningful directly after a call.
+	 * @returns The kind of the next token.
+	 * @throws {ParseError} When no valid token can be read, exactly as
+	 *      advancing would.
+	 */
+	peek(): number {
+		// A second peek from the same spot reads the cache like next() does.
+		if (this.peekUsable()) {
+			this.peekNewlineBefore = (this.peekFlags & TF_NEWLINE_BEFORE) !== 0;
+
+			return this.peekKind;
+		}
+
+		const pos = this.pos;
+		const count = this.count;
+		const recordsLength = this.records.length;
+		const lineCount = this.lineCount;
+		const kind = this.kind;
+		const start = this.start;
+		const end = this.end;
+		const flags = this.flags;
+		const extra = this.extra;
+		const contextDepth = this.contextDepth;
+
+		this.peekPos = -1;
+
+		const tokenFlags = this.skipTrivia();
+		let peeked = T_EOF;
+
+		if (this.pos < this.length) {
+			this.flags = tokenFlags;
+			this.extra = 0;
+			this.start = this.pos;
+			this.scanToken();
+			peeked = this.kind;
+
+			/*
+			 * Everything `next()` would have produced, captured before the
+			 * rollback. The token's record — and any comments' — are rolled
+			 * back with `records.length` but not erased, and nothing can
+			 * write over them without moving `pos` first, so consuming the
+			 * cache only has to put the length back.
+			 */
+			this.peekPos = pos;
+			this.peekExprAllowed = this.exprAllowed;
+			this.peekContextDepth = contextDepth;
+			this.peekContextTop =
+				contextDepth === 0 ? 0 : this.context[contextDepth - 1];
+			this.peekInJsxTag = this.inJsxTag;
+			this.peekKind = peeked;
+			this.peekStart = this.start;
+			this.peekFlags = this.flags;
+			this.peekExtra = this.extra;
+			this.peekEndPos = this.pos;
+			this.peekLineCount = this.lineCount;
+
+			/*
+			 * Scanning can move the context stack — a template head with a
+			 * substitution pushes the entry its `}` will look for — and the
+			 * rollback below undoes that, so the consumer has to replay it.
+			 * One scan moves the depth by at most one, so the depth and the
+			 * top entry describe the change completely.
+			 */
+			this.peekContextAfterDepth = this.contextDepth;
+			this.peekContextAfterTop =
+				this.contextDepth === 0
+					? 0
+					: this.context[this.contextDepth - 1];
+
+			/*
+			 * Comments between the two tokens were recorded by the trivia
+			 * scan; the token itself is only recorded by `next()`, so the
+			 * consumer restores up to the comments and records the token.
+			 */
+			this.peekCount = this.count;
+			this.peekRecordsLength = this.records.length;
+		}
+
+		this.peekNewlineBefore = (tokenFlags & TF_NEWLINE_BEFORE) !== 0;
+
+		this.pos = pos;
+		this.count = count;
+		this.records.length = recordsLength;
+		this.lineCount = lineCount;
+		this.kind = kind;
+		this.start = start;
+		this.end = end;
+		this.flags = flags;
+		this.extra = extra;
+		this.contextDepth = contextDepth;
+
+		return peeked;
+	}
+
+	/**
+	 * Determines whether the cached peek still describes the next token.
+	 * @returns `true` when every input the cached scan depended on matches.
+	 */
+	private peekUsable(): boolean {
+		return (
+			this.peekPos === this.pos &&
+			this.peekExprAllowed === this.exprAllowed &&
+			this.peekContextDepth === this.contextDepth &&
+			(this.contextDepth === 0 ||
+				this.peekContextTop === this.context[this.contextDepth - 1]) &&
+			this.peekInJsxTag === this.inJsxTag
+		);
 	}
 
 	/**
@@ -716,6 +1001,42 @@ export class Tokenizer {
 		this.prevKind = this.kind;
 		this.prevEnd = this.end;
 
+		/*
+		 * When a `peek()` already scanned this very token — same position,
+		 * same scanner mode — advancing is a matter of moving its result
+		 * into place. See the cache fields for why the guards are complete.
+		 */
+		if (this.peekUsable()) {
+			this.pos = this.peekEndPos;
+			this.count = this.peekCount;
+			this.records.length = this.peekRecordsLength;
+			this.lineCount = this.peekLineCount;
+			this.kind = this.peekKind;
+			this.start = this.peekStart;
+			this.end = this.peekEndPos;
+			this.flags = this.peekFlags;
+			this.extra = this.peekExtra;
+			this.contextDepth = this.peekContextAfterDepth;
+
+			if (this.peekContextAfterDepth > 0) {
+				this.context[this.peekContextAfterDepth - 1] =
+					this.peekContextAfterTop;
+			}
+
+			this.peekPos = -1;
+			this.record(
+				this.kind,
+				this.start,
+				this.end,
+				this.flags,
+				this.extra,
+			);
+			this.updateContext();
+			return;
+		}
+
+		this.peekPos = -1;
+
 		const tokenFlags = this.skipTrivia();
 
 		this.flags = tokenFlags;
@@ -757,6 +1078,14 @@ export class Tokenizer {
 
 			if ((classification & MASK_DIGIT) !== 0) {
 				this.scanNumber();
+				return;
+			}
+
+			const simple = SIMPLE_PUNCTUATORS[code];
+
+			if (simple !== 0) {
+				this.pos++;
+				this.kind = simple;
 				return;
 			}
 		} else if (isNonAsciiIdStart(source.codePointAt(this.pos)!)) {
@@ -2435,6 +2764,17 @@ export class Tokenizer {
 	 */
 	private updateContext(): void {
 		const kind = this.kind;
+
+		/*
+		 * Only seven kinds do anything but read the table, and the switch
+		 * below compiles to a chain of compares, so the ordinary token —
+		 * a name, a number, a comma — answers with one table read instead
+		 * of walking the chain to its default arm.
+		 */
+		if (CONTEXT_SPECIAL[kind] === 0) {
+			this.exprAllowed = KIND_BEFORE_EXPR[kind] !== 0;
+			return;
+		}
 
 		switch (kind) {
 			case T_PAREN_CLOSE: {

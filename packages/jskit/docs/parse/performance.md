@@ -20,7 +20,8 @@ not a property of the parsers worth measuring.
 
 On ~196 KiB generated modules (Node 24, Linux x64). Absolute figures depend on
 how warm the machine is and can move a lot; the ratios within a suite are what
-to read.
+to read. The `jskit` rows are measured with the `jsx` option stated, the way a
+consumer that knows its file type would call them.
 
 ## Syntax tree only
 
@@ -28,41 +29,43 @@ JavaScript:
 
 | Parser                                     | ops/s | Relative |
 | ------------------------------------------ | ----- | -------- |
-| `meriyah`                                  | 85.2  | 1.60x    |
-| `jskit` — `parse()`                        | 53.2  | 1.00x    |
-| `jskit` — `parse()` + `validate()`         | 32.8  | 0.62x    |
-| `acorn`                                    | 28.0  | 0.53x    |
-| `@babel/parser`                            | 27.8  | 0.52x    |
-| `jskit` — `parse()` + `toAST()`            | 24.9  | 0.47x    |
-| `espree`                                   | 20.4  | 0.38x    |
-| `@typescript-eslint/parser` + TypeScript 6 | 2.7   | 0.05x    |
+| `meriyah`                                  | 83.6  | 1.24x    |
+| `jskit` — `parse()`                        | 67.3  | 1.00x    |
+| `jskit` — `parse()` + `validate()`         | 41.2  | 0.61x    |
+| `jskit` — `parse()` + `toAST()`            | 34.5  | 0.51x    |
+| `@babel/parser`                            | 27.9  | 0.41x    |
+| `acorn`                                    | 27.1  | 0.40x    |
+| `espree`                                   | 19.7  | 0.29x    |
+| `@typescript-eslint/parser` + TypeScript 6 | 2.6   | 0.04x    |
 
 TypeScript (`espree`, `acorn`, and `meriyah` have nothing to say about it):
 
 | Parser                                     | ops/s | Relative |
 | ------------------------------------------ | ----- | -------- |
-| `jskit` — `parse()`                        | 57.6  | 1.00x    |
-| `jskit` — `parse()` + `validate()`         | 37.6  | 0.65x    |
-| `@babel/parser`                            | 23.2  | 0.40x    |
-| `jskit` — `parse()` + `toAST()`            | 22.6  | 0.39x    |
-| `@typescript-eslint/parser` + TypeScript 6 | 2.2   | 0.04x    |
+| `jskit` — `parse()`                        | 67.9  | 1.00x    |
+| `jskit` — `parse()` + `validate()`         | 47.8  | 0.70x    |
+| `jskit` — `parse()` + `toAST()`            | 24.6  | 0.36x    |
+| `@babel/parser`                            | 23.6  | 0.35x    |
+| `@typescript-eslint/parser` + TypeScript 6 | 2.1   | 0.03x    |
 
 JSX (`acorn` has no JSX of its own, so it appears with `acorn-jsx`):
 
 | Parser                                     | ops/s | Relative |
 | ------------------------------------------ | ----- | -------- |
-| `meriyah`                                  | 72.5  | 2.57x    |
-| `acorn` + `acorn-jsx`                      | 31.8  | 1.13x    |
-| `jskit` — `parse()`                        | 28.2  | 1.00x    |
-| `@babel/parser`                            | 26.5  | 0.94x    |
-| `espree`                                   | 22.2  | 0.79x    |
-| `jskit` — `parse()` + `validate()`         | 22.1  | 0.78x    |
-| `jskit` — `parse()` + `toAST()`            | 16.8  | 0.60x    |
-| `@typescript-eslint/parser` + TypeScript 6 | 2.5   | 0.09x    |
+| `jskit` — `parse()`                        | 74.2  | 1.00x    |
+| `meriyah`                                  | 70.5  | 0.95x    |
+| `jskit` — `parse()` + `validate()`         | 48.1  | 0.65x    |
+| `jskit` — `parse()` + `toAST()`            | 32.1  | 0.43x    |
+| `acorn` + `acorn-jsx`                      | 31.8  | 0.43x    |
+| `@babel/parser`                            | 26.5  | 0.36x    |
+| `espree`                                   | 21.6  | 0.29x    |
+| `@typescript-eslint/parser` + TypeScript 6 | 2.4   | 0.03x    |
 
-JSX is the slowest of the three dialects here because a `<` in expression
-position is parsed speculatively, and because the fixture is dense in small
-nodes.
+The JSX rows assume the caller passes `jsx: true` to `parse()`. Without it the
+parser accepts the union of the `.ts` and `.tsx` readings by speculating at
+every `<` in expression position, which costs about fifteen percent on this
+fixture — and used to cost half the parse before exceptions left the
+speculation path.
 
 `@babel/parser` returns Babel's own AST rather than ESTree, so its row is
 ahead of where a consumer of an ESTree tree would land — that conversion cost
@@ -76,43 +79,43 @@ JavaScript:
 
 | Parser                                     | ops/s | Relative |
 | ------------------------------------------ | ----- | -------- |
-| `meriyah`                                  | 22.5  | 1.54x    |
-| `jskit` — `eslintParser.parse()`           | 14.6  | 1.00x    |
-| `espree`                                   | 11.5  | 0.79x    |
-| `@babel/eslint-parser`                     | 4.2   | 0.29x    |
-| `@typescript-eslint/parser` + TypeScript 5 | 2.5   | 0.17x    |
+| `meriyah`                                  | 22.2  | 1.28x    |
+| `jskit` — `eslintParser.parse()`           | 17.3  | 1.00x    |
+| `espree`                                   | 11.1  | 0.64x    |
+| `@babel/eslint-parser`                     | 4.2   | 0.24x    |
+| `@typescript-eslint/parser` + TypeScript 5 | 2.5   | 0.14x    |
 
 TypeScript:
 
 | Parser                                     | ops/s | Relative |
 | ------------------------------------------ | ----- | -------- |
-| `jskit` — `eslintParser.parse()`           | 16.2  | 1.00x    |
-| `@babel/eslint-parser`                     | 3.7   | 0.23x    |
-| `@typescript-eslint/parser` + TypeScript 5 | 2.2   | 0.14x    |
+| `jskit` — `eslintParser.parse()`           | 15.5  | 1.00x    |
+| `@babel/eslint-parser`                     | 3.7   | 0.24x    |
+| `@typescript-eslint/parser` + TypeScript 5 | 2.1   | 0.14x    |
 
 JSX:
 
 | Parser                                     | ops/s | Relative |
 | ------------------------------------------ | ----- | -------- |
-| `meriyah`                                  | 19.2  | 1.68x    |
-| `jskit` — `eslintParser.parse()`           | 11.4  | 1.00x    |
-| `espree`                                   | 10.1  | 0.89x    |
-| `@babel/eslint-parser`                     | 3.7   | 0.32x    |
-| `@typescript-eslint/parser` + TypeScript 5 | 2.4   | 0.21x    |
+| `meriyah`                                  | 17.4  | 1.13x    |
+| `jskit` — `eslintParser.parse()`           | 15.4  | 1.00x    |
+| `espree`                                   | 9.9   | 0.64x    |
+| `@babel/eslint-parser`                     | 3.3   | 0.21x    |
+| `@typescript-eslint/parser` + TypeScript 5 | 2.4   | 0.16x    |
 
 Locations are not free for anyone: the ESTree shape wants a fresh
 `{ line, column }` pair for each end of every node and token, and building
-roughly 400,000 small objects costs this parser about half of what `parse()`
-alone achieves and `espree` about two fifths. Finding which line an offset
-falls on is the cheap half — `LineIndex` remembers the line it matched last,
-and source-order traversal hits it nearly every time. Allocation is the
-expensive half, and no parser avoids it while producing the shape ESLint
-expects.
+roughly 400,000 small objects is the largest single cost in this tier for
+every contender. Finding which line an offset falls on is the cheap half —
+`LineIndex` remembers the line it matched last, and source-order traversal
+hits it nearly every time. Allocation is the expensive half, and no parser
+avoids it while producing the shape ESLint expects.
 
 ## Reading the `meriyah` rows
 
-`meriyah` is the fastest contender in both tiers on both dialects it supports,
-and by a wide margin. Three things belong beside that number before it is
+`meriyah` still tops the JavaScript tables and the two ESLint-tier tables it
+appears in; `parse()` passes it on JSX and runs about a quarter behind on
+plain JavaScript. Three things belong beside its numbers before they are
 quoted anywhere:
 
 - **It parses JavaScript and JSX only.** There is no TypeScript row for it, and

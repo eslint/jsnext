@@ -187,17 +187,13 @@ export class WordBuffer {
 	reserve(count: number): number {
 		const needed = this.length + count;
 
+		/*
+		 * Growth lives in its own method so that this one stays small enough
+		 * for V8 to inline into the parser's allocation sites, which call it
+		 * for every node, token, and list entry.
+		 */
 		if (needed > this.words.length) {
-			let capacity = this.words.length * 2;
-
-			while (capacity < needed) {
-				capacity *= 2;
-			}
-
-			const grown = new Uint32Array(capacity);
-
-			grown.set(this.words);
-			this.words = grown;
+			this.grow(needed);
 		}
 
 		const start = this.length;
@@ -205,6 +201,24 @@ export class WordBuffer {
 		this.length = needed;
 
 		return start;
+	}
+
+	/**
+	 * Replaces the backing storage with one at least `needed` words long.
+	 * @param needed The total number of words that must fit.
+	 * @returns Nothing.
+	 */
+	private grow(needed: number): void {
+		let capacity = this.words.length * 2;
+
+		while (capacity < needed) {
+			capacity *= 2;
+		}
+
+		const grown = new Uint32Array(capacity);
+
+		grown.set(this.words);
+		this.words = grown;
 	}
 
 	/**

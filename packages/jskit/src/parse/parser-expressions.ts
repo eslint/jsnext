@@ -3,7 +3,7 @@
  */
 
 import { TF_HAS_ESCAPE } from "./binary.js";
-import { AFTER_JSX_EXPRESSION } from "./parser-base.js";
+import { AFTER_JSX_EXPRESSION, isBindingNameKind } from "./parser-base.js";
 import { decodeEscapes } from "./values.js";
 import { TypeParser } from "./parser-types.js";
 import {
@@ -146,6 +146,7 @@ import {
 	T_async,
 	T_await,
 	T_class,
+	T_const,
 	T_declare,
 	T_delete,
 	T_extends,
@@ -514,28 +515,46 @@ export abstract class ExpressionParser extends TypeParser {
 	/**
 	 * Parses whatever a `<` in expression position turns out to introduce.
 	 *
-	 * It is either JSX or an old-style `<T>expr` type assertion, and nothing
-	 * short of parsing tells them apart. JSX is tried first, which is how a
-	 * `.tsx` file reads it; the assertion is the fallback, which is what keeps
-	 * `<any>value` working in code that has no JSX in it.
+	 * It is either JSX or an old-style `<T>expr` type assertion, and only the
+	 * `jsx` option settles it without parsing: `true` reads it the way a
+	 * `.tsx` file does, where the assertion spelling does not exist, and
+	 * `false` reads it the way a `.ts` file does, where JSX does not. When
+	 * the option was not given, JSX is tried first and the assertion is the
+	 * fallback, which is what keeps `<any>value` working in code that has no
+	 * JSX in it.
 	 * @returns The index of the expression node.
-	 * @throws {ParseError} When neither reading works.
+	 * @throws {ParseError} When no permitted reading works.
 	 */
 	private parseAngleBracketExpression(): number {
+		if (this.jsx === true) {
+			return this.parseCallOrMemberExpression(
+				false,
+				this.parseJsxRoot(AFTER_JSX_EXPRESSION),
+			);
+		}
+
+		if (this.jsx === false) {
+			return this.parseTypeAssertion();
+		}
+
 		const state = this.tokenizer.save();
 		const snapshot = this.writer.mark();
 		let element = 0;
-		let jsxError: unknown;
+		let failed = false;
+
+		this.tokenizer.backtracking++;
 
 		try {
 			element = this.parseJsxRoot(AFTER_JSX_EXPRESSION);
-		} catch (error) {
-			jsxError = error;
+		} catch {
+			failed = true;
 			this.writer.rewind(snapshot);
 			this.tokenizer.restore(state);
+		} finally {
+			this.tokenizer.backtracking--;
 		}
 
-		if (element !== 0) {
+		if (!failed) {
 			return this.parseCallOrMemberExpression(false, element);
 		}
 
@@ -545,9 +564,21 @@ export abstract class ExpressionParser extends TypeParser {
 			/*
 			 * Neither reading worked. The JSX diagnostic is reported because a
 			 * `<` in expression position is far more often a broken element
-			 * than a broken type assertion.
+			 * than a broken type assertion — and the attempt above threw the
+			 * shared backtracking placeholder, so the parse is run once more,
+			 * outside speculation, to fail with the real message. It cannot
+			 * succeed this time: nothing has moved since it failed.
 			 */
-			throw jsxError;
+			this.writer.rewind(snapshot);
+			this.tokenizer.restore(state);
+
+			this.parseJsxRoot(AFTER_JSX_EXPRESSION);
+
+			/*
+			 * Unreachable in practice; if the re-parse somehow got further,
+			 * refuse rather than return a half-built reading.
+			 */
+			throw this.error("Invalid expression");
 		}
 	}
 
@@ -927,6 +958,8 @@ export abstract class ExpressionParser extends TypeParser {
 		const state = this.tokenizer.save();
 		const snapshot = this.writer.mark();
 
+		this.tokenizer.backtracking++;
+
 		try {
 			const typeArguments = this.parseTypeArguments();
 			const following = this.kind;
@@ -954,6 +987,8 @@ export abstract class ExpressionParser extends TypeParser {
 			}
 		} catch {
 			// Fall through and treat the `<` as a comparison operator.
+		} finally {
+			this.tokenizer.backtracking--;
 		}
 
 		this.writer.rewind(snapshot);
@@ -1141,15 +1176,10 @@ export abstract class ExpressionParser extends TypeParser {
 	 * @returns `true` when the next token is `=>`.
 	 */
 	private peekIsArrow(): boolean {
-		const state = this.tokenizer.save();
-
-		this.next();
-
-		const result = this.at(T_ARROW) && !this.newlineBefore;
-
-		this.tokenizer.restore(state);
-
-		return result;
+		return (
+			this.tokenizer.peek() === T_ARROW &&
+			!this.tokenizer.peekNewlineBefore
+		);
 	}
 
 	/**
@@ -1674,10 +1704,62 @@ export abstract class ExpressionParser extends TypeParser {
 		}
 
 		if (kind === T_LT) {
+			/*
+			 * In JSX mode a `<` is an element unless it is spelled the one
+			 * way an element cannot be, which is how a `.tsx` file keeps
+			 * generic arrows: `<T,>() => x` and `<T extends U>() => x` are
+			 * arrows, and `<T>() => x` is an unclosed element. Two tokens of
+			 * lookahead read the spelling, so the elements that make up the
+			 * bulk of a JSX file skip the arrow attempt entirely.
+			 */
+			if (this.jsx === true && !this.atTsxGenericArrow()) {
+				return 0;
+			}
+
 			return this.speculateArrowFunction(start, false);
 		}
 
 		return 0;
+	}
+
+	/**
+	 * Determines whether a `<` begins a generic arrow under JSX rules, where
+	 * only the unambiguous `<T,>` and `<T extends ...>` spellings do.
+	 * @returns `true` when the type parameter list cannot be an element.
+	 */
+	private atTsxGenericArrow(): boolean {
+		const state = this.tokenizer.save();
+		let result = false;
+
+		this.tokenizer.backtracking++;
+
+		try {
+			this.next();
+
+			// TypeScript 5's `const` modifier may precede the name.
+			if (this.at(T_const)) {
+				this.next();
+			}
+
+			if (this.atBindingName()) {
+				this.next();
+				result = this.at(T_COMMA) || this.at(T_extends);
+			}
+		} catch {
+			/*
+			 * The lookahead scans with the ordinary tokenizer, and what
+			 * follows a `<` in a JSX file does not have to scan as
+			 * JavaScript. Whatever it was, it was not `<T,` or `<T extends`,
+			 * so the element parse decides what to say about it.
+			 */
+			result = false;
+		} finally {
+			this.tokenizer.backtracking--;
+		}
+
+		this.tokenizer.restore(state);
+
+		return result;
 	}
 
 	/**
@@ -1686,23 +1768,17 @@ export abstract class ExpressionParser extends TypeParser {
 	 * @returns `true` when an arrow function is still possible.
 	 */
 	private nextCanStartParameterList(): boolean {
-		const state = this.tokenizer.save();
+		const kind = this.tokenizer.peek();
 
-		this.next();
-
-		const kind = this.kind;
-		const result =
-			this.atBindingName() ||
+		return (
+			isBindingNameKind(kind) ||
 			kind === T_PAREN_CLOSE ||
 			kind === T_BRACE_OPEN ||
 			kind === T_BRACKET_OPEN ||
 			kind === T_ELLIPSIS ||
 			kind === T_this ||
-			kind === T_AT;
-
-		this.tokenizer.restore(state);
-
-		return result;
+			kind === T_AT
+		);
 	}
 
 	/**
@@ -2031,13 +2107,10 @@ export abstract class ExpressionParser extends TypeParser {
 	 * @returns `true` when the next token can start a binding element.
 	 */
 	private nextStartsBindingElement(): boolean {
-		const state = this.tokenizer.save();
+		const kind = this.tokenizer.peek();
 
-		this.next();
-
-		const kind = this.kind;
-		const result =
-			this.atBindingName() ||
+		return (
+			isBindingNameKind(kind) ||
 			kind === T_BRACE_OPEN ||
 			kind === T_BRACKET_OPEN ||
 			kind === T_ELLIPSIS ||
@@ -2046,11 +2119,8 @@ export abstract class ExpressionParser extends TypeParser {
 			kind === T_private ||
 			kind === T_protected ||
 			kind === T_readonly ||
-			kind === T_override;
-
-		this.tokenizer.restore(state);
-
-		return result;
+			kind === T_override
+		);
 	}
 
 	/**
@@ -2978,12 +3048,9 @@ export abstract class ExpressionParser extends TypeParser {
 		allowNewline = false,
 		allowGenerator = true,
 	): boolean {
-		const state = this.tokenizer.save();
+		const kind = this.tokenizer.peek();
 
-		this.next();
-
-		const kind = this.kind;
-		const result =
+		return (
 			(isIdentifierNameKind(kind) ||
 				kind === T_STRING ||
 				kind === T_NUMBER ||
@@ -2991,11 +3058,8 @@ export abstract class ExpressionParser extends TypeParser {
 				kind === T_PRIVATE_IDENT ||
 				(kind === T_STAR && allowGenerator) ||
 				kind === T_BRACE_OPEN) &&
-			(allowNewline || !this.newlineBefore);
-
-		this.tokenizer.restore(state);
-
-		return result;
+			(allowNewline || !this.tokenizer.peekNewlineBefore)
+		);
 	}
 
 	//-------------------------------------------------------------------------

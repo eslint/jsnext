@@ -276,39 +276,49 @@ answer depends on context the text alone does not supply**.
   syntax under `dialect: "js"`, JSX without `jsx: true`, a mismatched JSX
   closing tag.
 
-So `dialect`, `jsx`, and `declaration` are options of phase 2, never phase 1.
-When adding a new diagnostic, decide which side of that line it falls on first.
-A check that needs to know the dialect, whether JSX is enabled, or whether the
+So `dialect` and `declaration` are options of phase 2, never phase 1. When
+adding a new diagnostic, decide which side of that line it falls on first. A
+check that needs to know the dialect, whether JSX is enabled, or whether the
 file is a `.d.ts`, belongs in `validate.ts`, even if a reference parser throws
 for it.
 
-**`sourceType` is the exception, and it is the only one.** It is an option of
-_both_ phases, because it is the only thing that makes two readings of the same
+**`sourceType` and `jsx` are the exceptions, and they are the only two.** Each
+is an option of _both_ phases, because each makes two readings of the same
 text both valid and different:
 
-|           | script              | module         |
-| --------- | ------------------- | -------------- |
-| `await.x` | a member expression | a syntax error |
-| `a <!--b` | `a`, then a comment | `a < !(--b)`   |
+|              | one reading                     | the other                       |
+| ------------ | ------------------------------- | ------------------------------- |
+| `await.x`    | script: a member expression     | module: a syntax error          |
+| `a <!--b`    | script: `a`, then a comment     | module: `a < !(--b)`            |
+| `<T>() => x` | `.ts`: a generic arrow function | `.tsx`: an unclosed JSX element |
+| `<T>value`   | `.ts`: a type assertion         | `.tsx`: a JSX element opening   |
 
 No single tree stands for both, so phase 1 has to choose, and it cannot choose
-without being told. `dialect`, `jsx`, and `declaration` never pose that
-question — TypeScript syntax, JSX, and `export const x: number;` either parse
-or do not, and where they parse, every setting agrees on the tree. That is the
-test for whether something belongs in `ParseOptions`: **not** "does it need
-outside context" — everything here does — but "would two answers both be
-valid?"
+without being told. `dialect` and `declaration` never pose that question —
+TypeScript syntax and `export const x: number;` either parse or do not, and
+where they parse, every setting agrees on the tree. That is the test for
+whether something belongs in `ParseOptions`: **not** "does it need outside
+context" — everything here does — but "would two answers both be valid?"
 
-`declaration` is the newest of the three and the clearest case of context the
-text cannot supply: a declaration file is one by its _name_, which is why
-TypeScript decides it that way too, and why the ESLint parser object reads it
-off the path along with `dialect` and `jsx`.
+The two exceptions differ in one way. `sourceType` has no permissive middle:
+phase 1 must pick a side, so `parse()` records the choice in the buffer, and
+`validate()` and `toAST()` read it back rather than being told again — naming
+the opposite side of the module line throws, while narrowing `script` to
+`commonjs` is allowed, because those two parse identically and differ only in
+what phase 2 permits. `jsx` does have a middle, and it is the default: left
+unset, `parse()` accepts the union of both readings by trying JSX first and
+falling back to the assertion, so code that never hits the ambiguity parses
+the same under every setting. The explicit `true` and `false` pick the `.tsx`
+and `.ts` readings directly, which also skips the speculation — the reason
+JSX-heavy files parse much faster when the caller says which kind of file it
+has. The choice is deliberately not recorded in the buffer: a JSX node either
+is in the tree or is not, and phases 2 and 3 read the tree. `validate()`'s
+`jsx` option is still the one that says whether JSX is _allowed_.
 
-`parse()` records the source type in the buffer, so `validate()` and `toAST()`
-read it back rather than being told again. Naming the opposite side of the
-module line throws, since the tree was built the other way; narrowing `script`
-to `commonjs` is allowed, because those two parse identically and differ only
-in what phase 2 permits.
+`declaration` is the clearest case of phase-2 context the text cannot supply:
+a declaration file is one by its _name_, which is why TypeScript decides it
+that way too, and why the ESLint parser object reads it off the path along
+with `dialect` and `jsx`.
 
 Scope analysis sits alongside phases 2 and 3 rather than after them: it reads
 the same buffers `parse()` produced and needs neither the validation problems

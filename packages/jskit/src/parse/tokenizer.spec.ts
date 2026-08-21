@@ -41,6 +41,10 @@ import {
 	T_REGEXP,
 	T_STRING,
 	T_TEMPLATE_FULL,
+	T_TEMPLATE_HEAD,
+	T_TEMPLATE_TAIL,
+	T_ARROW,
+	T_PAREN_OPEN,
 } from "./token-kinds.js";
 import { Tokenizer } from "./tokenizer.js";
 
@@ -732,6 +736,107 @@ describe("Tokenizer", () => {
 			expect(error).toBeInstanceOf(ParseError);
 			expect(error.index).toBe(2);
 			expect(error.message).toMatch(/bad/u);
+		});
+	});
+
+	describe("peek()", () => {
+		it("reports the next token without advancing", () => {
+			const tokenizer = new Tokenizer("a => b");
+
+			tokenizer.next();
+
+			expect(tokenizer.peek()).toBe(T_ARROW);
+			expect(tokenizer.kind).toBe(T_IDENT);
+			expect(tokenizer.start).toBe(0);
+		});
+
+		it("reports whether a line terminator came first", () => {
+			const tokenizer = new Tokenizer("a\n=> b");
+
+			tokenizer.next();
+
+			expect(tokenizer.peek()).toBe(T_ARROW);
+			expect(tokenizer.peekNewlineBefore).toBe(true);
+		});
+
+		it("hands the peeked token to the next advance unchanged", () => {
+			const withPeek = new Tokenizer("a /b/ c");
+			const without = new Tokenizer("a /b/ c");
+
+			withPeek.next();
+			without.next();
+			withPeek.peek();
+			withPeek.next();
+			without.next();
+
+			expect(withPeek.kind).toBe(without.kind);
+			expect(withPeek.start).toBe(without.start);
+			expect(withPeek.end).toBe(without.end);
+			expect(withPeek.count).toBe(without.count);
+		});
+
+		it("records comments between the tokens exactly once", () => {
+			const tokenizer = new Tokenizer("a /* x */ b");
+
+			tokenizer.next();
+			tokenizer.peek();
+			tokenizer.peek();
+			tokenizer.next();
+
+			// `a`, the comment, and `b`.
+			expect(tokenizer.count).toBe(3);
+		});
+
+		/*
+		 * A template head pushes the context entry its closing `}` looks
+		 * for. The push happens during the peeked scan and is rolled back,
+		 * so consuming the cached token has to replay it — this is the
+		 * regression the conformance suites caught.
+		 */
+		it("replays the context a peeked template head pushed", () => {
+			const tokenizer = new Tokenizer("tag`x${y}`;");
+
+			tokenizer.next();
+
+			expect(tokenizer.peek()).toBe(T_TEMPLATE_HEAD);
+
+			tokenizer.next();
+			tokenizer.next();
+
+			expect(tokenizer.kind).toBe(T_IDENT);
+
+			tokenizer.next();
+
+			// With the replayed context, `}` continues the template.
+			expect(tokenizer.kind).toBe(T_TEMPLATE_TAIL);
+		});
+
+		it("is not fooled by a rescan moving the position back", () => {
+			const tokenizer = new Tokenizer("a ( b");
+
+			tokenizer.next();
+
+			expect(tokenizer.peek()).toBe(T_PAREN_OPEN);
+
+			tokenizer.next();
+
+			expect(tokenizer.kind).toBe(T_PAREN_OPEN);
+
+			tokenizer.next();
+
+			expect(tokenizer.kind).toBe(T_IDENT);
+		});
+
+		it("scans at the end of the text without caching", () => {
+			const tokenizer = new Tokenizer("a");
+
+			tokenizer.next();
+
+			expect(tokenizer.peek()).toBe(T_EOF);
+
+			tokenizer.next();
+
+			expect(tokenizer.kind).toBe(T_EOF);
 		});
 	});
 });

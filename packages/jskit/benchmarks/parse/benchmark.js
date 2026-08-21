@@ -298,10 +298,13 @@ async function contenders(dialect) {
 	);
 
 	/*
-	 * `dialect: "jsx"` is not a thing the parser is told about. JSX is JavaScript
-	 * with an extra syntax flag, so the dialect stays `"js"` and `jsx` is what
-	 * turns it on.
+	 * `dialect: "jsx"` is not a thing the parser is told about. JSX is
+	 * JavaScript with an extra syntax flag, so the dialect stays `"js"` and
+	 * `jsx` is what turns it on. `parse()` takes the flag too — it decides
+	 * how a `<` in expression position reads, and telling it up front is
+	 * what every other contender gets through its own JSX switch.
 	 */
+	const jskitParseOptions = { jsx: dialect === "jsx" };
 	const jskitOptions = {
 		sourceType: "module",
 		dialect: dialect === "ts" ? "ts" : "js",
@@ -314,20 +317,25 @@ async function contenders(dialect) {
 			name: "jskit: parse()",
 			note: "binary AST and token buffers, no ESTree",
 			tier: AST,
-			run: code => jskit.parse(code),
+			run: code => jskit.parse(code, jskitParseOptions),
 		},
 		{
 			key: "jskit-validate",
 			name: "jskit: parse() + validate()",
 			note: "buffers plus every context-dependent diagnostic",
 			tier: AST,
-			run: code => jskit.validate(jskit.parse(code), jskitOptions),
+			run: code =>
+				jskit.validate(
+					jskit.parse(code, jskitParseOptions),
+					jskitOptions,
+				),
 		},
 		{
 			key: "jskit-to-ast",
 			name: "jskit: parse() + toAST()",
 			tier: AST,
-			run: code => jskit.toAST(jskit.parse(code), jskitOptions),
+			run: code =>
+				jskit.toAST(jskit.parse(code, jskitParseOptions), jskitOptions),
 		},
 		{
 			key: "jskit-eslint",

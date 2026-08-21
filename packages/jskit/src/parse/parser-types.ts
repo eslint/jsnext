@@ -1289,15 +1289,9 @@ export abstract class TypeParser extends ParserBase {
 	 * @returns `true` when the next token has that kind and is on this line.
 	 */
 	private peekIsOnSameLine(kind: number): boolean {
-		const state = this.tokenizer.save();
-
-		this.next();
-
-		const result = this.at(kind) && !this.newlineBefore;
-
-		this.tokenizer.restore(state);
-
-		return result;
+		return (
+			this.tokenizer.peek() === kind && !this.tokenizer.peekNewlineBefore
+		);
 	}
 
 	/**
@@ -1392,6 +1386,8 @@ export abstract class TypeParser extends ParserBase {
 		const state = this.tokenizer.save();
 		let result: number;
 
+		this.tokenizer.backtracking++;
+
 		try {
 			let depth = 0;
 
@@ -1436,6 +1432,7 @@ export abstract class TypeParser extends ParserBase {
 			result = T_EOF;
 			this.newlineAfterMatchingParen = false;
 		} finally {
+			this.tokenizer.backtracking--;
 			this.tokenizer.restore(state);
 		}
 

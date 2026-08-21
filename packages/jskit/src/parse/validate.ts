@@ -131,6 +131,7 @@ import {
 	N_UnaryExpression,
 	N_UpdateExpression,
 	N_WithStatement,
+	NODE_KIND_COUNT,
 } from "./node-kinds.js";
 import { AstReader } from "./reader.js";
 import { RegExpValidator } from "./regexp.js";
@@ -218,6 +219,146 @@ const CH_t = 0x74;
 const RESERVED_INITIALS = /* @__PURE__ */ buildReservedInitials();
 
 /**
+ * Which node kinds `check()` has a case for, indexed by kind.
+ *
+ * The walk consults this before calling `check()` at all. Most nodes in a
+ * real program — blocks, declarators, expressions with no rule of their own,
+ * and every type node — have nothing to check, and the call and its fifty-arm
+ * dispatch are a measurable share of a validation when they are paid on every
+ * node. A kind missing from `buildCheckedKinds()` skips `check()` entirely
+ * except under `dialect: "js"`, where every TypeScript kind still reaches the
+ * report at the top; **a new `case` in `check()` must be added there too.**
+ */
+const CHECKED_KINDS = /* @__PURE__ */ buildCheckedKinds();
+
+/**
+ * Which node kinds `visit()` has a case of its own for, indexed by kind.
+ *
+ * Only twenty-nine kinds change the walk's state — functions, classes,
+ * scopes, loops, labels, JSX — and everything else just descends into its
+ * children. The dispatch below the table is a sparse switch, which compiles
+ * to a chain of compares rather than a jump table, so the majority of nodes
+ * skip it entirely via one table read. **A new `case` in `visit()`'s switch
+ * must be added here too**; miss it and the case is silently never taken,
+ * which the conformance suites catch.
+ */
+const VISIT_CASES = /* @__PURE__ */ buildVisitCases();
+
+/**
+ * Builds the table of node kinds `visit()` has a case for.
+ * @returns The table, indexed by node kind.
+ */
+function buildVisitCases(): Uint8Array {
+	const table = new Uint8Array(NODE_KIND_COUNT);
+
+	for (const kind of [
+		N_LabeledStatement,
+		N_BlockStatement,
+		N_StaticBlock,
+		N_TSModuleBlock,
+		N_SwitchStatement,
+		N_ForStatement,
+		N_ForInStatement,
+		N_ForOfStatement,
+		N_WhileStatement,
+		N_DoWhileStatement,
+		N_CatchClause,
+		N_FunctionDeclaration,
+		N_FunctionExpression,
+		N_TSDeclareFunction,
+		N_TSEmptyBodyFunctionExpression,
+		N_ArrowFunctionExpression,
+		N_MethodDefinition,
+		N_TSAbstractMethodDefinition,
+		N_Property,
+		N_PropertyDefinition,
+		N_TSAbstractPropertyDefinition,
+		N_AccessorProperty,
+		N_ClassDeclaration,
+		N_ClassExpression,
+		N_TSModuleDeclaration,
+		N_TSLiteralType,
+		N_TaggedTemplateExpression,
+		N_JSXElement,
+		N_JSXFragment,
+	]) {
+		table[kind] = 1;
+	}
+
+	return table;
+}
+
+/**
+ * Builds the table of node kinds `check()` has a case for.
+ *
+ * One entry per `case` label in `check()`, in the order they appear there,
+ * except the three listed beside `default` to say they are deliberate no-ops.
+ * @returns The table, indexed by node kind.
+ */
+function buildCheckedKinds(): Uint8Array {
+	const table = new Uint8Array(NODE_KIND_COUNT);
+
+	for (const kind of [
+		N_PropertyDefinition,
+		N_AccessorProperty,
+		N_TSAbstractPropertyDefinition,
+		N_TSAbstractAccessorProperty,
+		N_MethodDefinition,
+		N_TSParameterProperty,
+		N_TSIndexSignature,
+		N_TSTypeParameterDeclaration,
+		N_TSTypeParameterInstantiation,
+		N_TSEnumMember,
+		N_TSModuleDeclaration,
+		N_ClassDeclaration,
+		N_ClassExpression,
+		N_TSInterfaceDeclaration,
+		N_TSTypeAliasDeclaration,
+		N_TSAbstractMethodDefinition,
+		N_ImportDeclaration,
+		N_ExportNamedDeclaration,
+		N_ExportDefaultDeclaration,
+		N_ExportAllDeclaration,
+		N_BreakStatement,
+		N_ContinueStatement,
+		N_PrivateIdentifier,
+		N_TemplateLiteral,
+		N_WithStatement,
+		N_IfStatement,
+		N_LabeledStatement,
+		N_WhileStatement,
+		N_DoWhileStatement,
+		N_ForStatement,
+		N_MemberExpression,
+		N_CallExpression,
+		N_Super,
+		N_BinaryExpression,
+		N_UnaryExpression,
+		N_AssignmentExpression,
+		N_UpdateExpression,
+		N_ForInStatement,
+		N_ForOfStatement,
+		N_Literal,
+		N_Identifier,
+		N_YieldExpression,
+		N_AwaitExpression,
+		N_Property,
+		N_ObjectExpression,
+		N_ChainExpression,
+		N_MetaProperty,
+		N_ImportSpecifier,
+		N_ExportSpecifier,
+		N_JSXElement,
+		N_JSXFragment,
+		N_ReturnStatement,
+	]) {
+		table[kind] = 1;
+	}
+
+	return table;
+}
+
+/**
  * Determines whether a node kind is an iteration statement.
  *
  * These are the four `for` forms plus `while` and `do-while` — the statements
@@ -302,16 +443,24 @@ function buildReservedInitials(): Uint8Array {
  * One lexical scope's bindings.
  */
 interface Scope {
-	/** Names bound where they are written, mapped to how they were introduced. */
-	names: Map<string, number>;
+	/**
+	 * Names bound where they are written, mapped to how they were introduced.
+	 *
+	 * `null` until the first binding: most scopes in a real program — block
+	 * statements, loop bodies, the braces of an `if` — declare nothing, and
+	 * a `Map` allocated for each of them is measurable churn.
+	 */
+	names: Map<string, number> | null;
 
 	/**
 	 * Names `var`-declared in this scope or in any scope below it that a
 	 * `var` climbs out of. A lexical declaration collides with one of these
 	 * however the two are ordered, which is what makes `{ var a; let a; }`
 	 * and `{ let a; var a; }` alike.
+	 *
+	 * `null` until the first one, for the same reason as `names`.
 	 */
-	varNames: Set<string>;
+	varNames: Set<string> | null;
 
 	/** Whether `var` declarations stop climbing here. */
 	isFunctionScope: boolean;
@@ -680,8 +829,8 @@ class Validator {
 		// A module reserves `await` everywhere in it, function or no function.
 		this.awaitReserved = sourceType === "module";
 		this.scope = {
-			names: new Map(),
-			varNames: new Set(),
+			names: null,
+			varNames: null,
 			isFunctionScope: true,
 			functionsAreLexical: sourceType === "module",
 			parent: null,
@@ -764,7 +913,19 @@ class Validator {
 		const reader = this.reader;
 		const kind = reader.kind(node);
 
-		this.check(node, kind);
+		/*
+		 * Most kinds have no case in `check()`, and the call plus its
+		 * dispatch cost real time when paid on every node. The one thing
+		 * `check()` does for a kind outside the table is the TypeScript
+		 * report under `dialect: "js"`, which is why that half of the test
+		 * still sends every TypeScript kind through.
+		 */
+		if (
+			CHECKED_KINDS[kind] !== 0 ||
+			(kind >= TS_FIRST && this.dialect === "js")
+		) {
+			this.check(node, kind);
+		}
 
 		/*
 		 * `check()` has had its look at this node, so anything below it is
@@ -776,6 +937,12 @@ class Validator {
 
 		this.moduleItemsAllowed = false;
 		this.inStatementList = false;
+
+		// Most kinds only descend; see `VISIT_CASES`.
+		if (VISIT_CASES[kind] === 0) {
+			this.visitChildren(node, kind);
+			return;
+		}
 
 		switch (kind) {
 			/*
@@ -1608,8 +1775,8 @@ class Validator {
 	 */
 	private enterScope(isFunctionScope: boolean): void {
 		this.scope = {
-			names: new Map(),
-			varNames: new Set(),
+			names: null,
+			varNames: null,
 			isFunctionScope,
 			functionsAreLexical: !isFunctionScope,
 			parent: this.scope,
@@ -2483,7 +2650,10 @@ class Validator {
 							continue;
 						}
 
-						if (scope.names.has(name) || scope.varNames.has(name)) {
+						if (
+							scope.names?.has(name) === true ||
+							scope.varNames?.has(name) === true
+						) {
 							continue;
 						}
 
@@ -2911,12 +3081,13 @@ class Validator {
 		}
 
 		const scope = this.scope;
-		const existing = scope.names.get(name);
+		const existing = scope.names?.get(name);
 
 		if (
 			existing !== undefined
 				? this.conflicts(existing, binding)
-				: scope.varNames.has(name) && !this.tolerantOfVar(binding)
+				: scope.varNames?.has(name) === true &&
+					!this.tolerantOfVar(binding)
 		) {
 			this.report(
 				`Identifier '${name}' has already been declared.`,
@@ -2939,7 +3110,7 @@ class Validator {
 			return;
 		}
 
-		scope.names.set(name, binding);
+		(scope.names ??= new Map()).set(name, binding);
 	}
 
 	/**
@@ -2954,7 +3125,7 @@ class Validator {
 		let scope = this.scope;
 
 		for (;;) {
-			const existing = scope.names.get(name);
+			const existing = scope.names?.get(name);
 
 			if (existing !== undefined && !this.tolerantOfVar(existing)) {
 				this.report(
@@ -2965,7 +3136,7 @@ class Validator {
 				return;
 			}
 
-			scope.varNames.add(name);
+			(scope.varNames ??= new Set()).add(name);
 
 			if (scope.isFunctionScope || scope.parent === null) {
 				return;

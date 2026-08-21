@@ -43,10 +43,18 @@ export class NodeWriter {
 	 * @param sourceLength The length of the source text being parsed.
 	 */
 	constructor(sourceLength: number) {
+		/*
+		 * Sized so that ordinary code fits without growing: growth doubles
+		 * the buffer and copies everything written so far, and on a 200 KiB
+		 * file those copies are a visible slice of the parse. Real code runs
+		 * about one node per four and a half characters, so an eighth was
+		 * always one doubling short; a quarter covers even JSX, the densest
+		 * of the fixtures, with a little room.
+		 */
 		this.nodes = new WordBuffer(
-			Math.max(NODE_WORDS * 64, (sourceLength >> 3) * NODE_WORDS),
+			Math.max(NODE_WORDS * 64, (sourceLength >> 2) * NODE_WORDS),
 		);
-		this.lists = new WordBuffer(Math.max(256, sourceLength >> 4));
+		this.lists = new WordBuffer(Math.max(256, sourceLength >> 3));
 		this.scratch = new Uint32Array(1024);
 
 		// Reserve node 0 as the "no node" sentinel.
