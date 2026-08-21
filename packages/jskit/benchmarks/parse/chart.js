@@ -43,11 +43,13 @@ const ROWS = {
 		["jskit-to-ast", "jskit — parse() + toAST()"],
 		["babel", "@babel/parser"],
 		["acorn", "acorn"],
+		["meriyah", "meriyah"],
 		["espree", "espree"],
 		["typescript-eslint", "@typescript-eslint/parser"],
 	],
 	eslint: [
 		["jskit-eslint", "jskit — eslintParser.parse()"],
+		["meriyah", "meriyah"],
 		["espree", "espree"],
 		["babel-eslint", "@babel/eslint-parser"],
 		["typescript-eslint", "@typescript-eslint/parser"],

@@ -151,19 +151,19 @@ quietly break.
 
 ## Documentation
 
-| Document                                                           | Covers                                                                                                        |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
-| [`docs/parse/api.md`](./docs/parse/api.md)                         | The three parse phases, their options, errors, JSX, ESLint integration, and reading the buffer.               |
-| [`docs/parse/performance.md`](./docs/parse/performance.md)         | How the parser compares to `espree`, `acorn`, and `@typescript-eslint/parser`, and how to read the benchmark. |
-| [`docs/parse/architecture.md`](./docs/parse/architecture.md)       | The tokenizer, the parser, and both binary formats field by field.                                            |
-| [`docs/parse/embedded-source.md`](./docs/parse/embedded-source.md) | The `embedSource` option and why the buffer does not carry the text by default.                               |
-| [`docs/parse/types.md`](./docs/parse/types.md)                     | The hand-written ESTree declarations `toAST()` returns.                                                       |
-| [`docs/scope/api.md`](./docs/scope/api.md)                         | Both entry points, the three consumers, options, and the scope graph.                                         |
-| [`docs/scope/performance.md`](./docs/scope/performance.md)         | How the analyzer compares to `eslint-scope` and `@typescript-eslint/scope-manager`.                           |
-| [`docs/scope/architecture.md`](./docs/scope/architecture.md)       | The walk, resolution, and the rule for reconciling the two analyzers it reproduces.                           |
-| [`docs/flow/api.md`](./docs/flow/api.md)                           | `createGraph()`, the reader, and the JSON view.                                                               |
-| [`docs/flow/architecture.md`](./docs/flow/architecture.md)         | The flow format and the four places it trades precision for simplicity.                                       |
-| [`../../docs/deviations.md`](../../docs/deviations.md)             | Every place the output deliberately differs from a reference implementation.                                  |
+| Document                                                           | Covers                                                                                                                          |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| [`docs/parse/api.md`](./docs/parse/api.md)                         | The three parse phases, their options, errors, JSX, ESLint integration, and reading the buffer.                                 |
+| [`docs/parse/performance.md`](./docs/parse/performance.md)         | How the parser compares to `espree`, `acorn`, `meriyah`, Babel, and `@typescript-eslint/parser`, and how to read the benchmark. |
+| [`docs/parse/architecture.md`](./docs/parse/architecture.md)       | The tokenizer, the parser, and both binary formats field by field.                                                              |
+| [`docs/parse/embedded-source.md`](./docs/parse/embedded-source.md) | The `embedSource` option and why the buffer does not carry the text by default.                                                 |
+| [`docs/parse/types.md`](./docs/parse/types.md)                     | The hand-written ESTree declarations `toAST()` returns.                                                                         |
+| [`docs/scope/api.md`](./docs/scope/api.md)                         | Both entry points, the three consumers, options, and the scope graph.                                                           |
+| [`docs/scope/performance.md`](./docs/scope/performance.md)         | How the analyzer compares to `eslint-scope` and `@typescript-eslint/scope-manager`.                                             |
+| [`docs/scope/architecture.md`](./docs/scope/architecture.md)       | The walk, resolution, and the rule for reconciling the two analyzers it reproduces.                                             |
+| [`docs/flow/api.md`](./docs/flow/api.md)                           | `createGraph()`, the reader, and the JSON view.                                                                                 |
+| [`docs/flow/architecture.md`](./docs/flow/architecture.md)         | The flow format and the four places it trades precision for simplicity.                                                         |
+| [`../../docs/deviations.md`](../../docs/deviations.md)             | Every place the output deliberately differs from a reference implementation.                                                    |
 
 Each analysis also has a `requirements.md` beside its architecture document,
 recording what it was built to do.

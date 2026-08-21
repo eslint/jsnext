@@ -31,6 +31,15 @@
  *   than `parseForESLint()`, because the latter also runs a full scope
  *   analysis. No other contender is asked to do that, and ESLint runs its own
  *   analyzer for the parsers that do not supply one.
+ * - `meriyah` is asked for `raw` on literals and for `start` and `end` on
+ *   nodes, both of which it omits by default and every other contender in the
+ *   tier produces whether or not they are wanted. It is left on its own
+ *   defaults otherwise: no `next`, so it accepts the same language `espree`'s
+ *   `ecmaVersion: "latest"` does, and no `lexical`, so it does no more
+ *   early-error checking than `acorn`. Its ESLint-tier row is annotated
+ *   because one part of that job it has no option for: its tokens carry the
+ *   type and both positions but not the text, and there is no way to ask for
+ *   it.
  * - `@babel/parser` returns Babel's own AST, not ESTree. The conversion cost
  *   that a consumer of an ESTree tree would pay lands on `@babel/eslint-parser`
  *   instead, so the two Babel rows bracket it.
@@ -364,6 +373,55 @@ async function contenders(dialect) {
 						tokens: true,
 						range: true,
 						loc: true,
+					}),
+			},
+		);
+
+		/*
+		 * `meriyah` has no TypeScript, but it does have JSX of its own, so it
+		 * enters both of the dialects that are left. It is the one contender
+		 * that leaves `raw` and node positions off by default, and both are
+		 * asked for: every other parser in the tier produces them whether or
+		 * not they are wanted, and a tree without them is a smaller job than
+		 * the one the rest are doing. `range` is left off in the AST tier,
+		 * because `acorn` and `espree` do not produce it there either.
+		 */
+		const meriyah = await import("meriyah");
+
+		list.push(
+			{
+				key: "meriyah",
+				name: "meriyah",
+				tier: AST,
+				run: code =>
+					meriyah.parse(code, {
+						sourceType: "module",
+						raw: true,
+						jsx: dialect === "jsx",
+						ranges: { start: true, end: true },
+					}),
+			},
+			{
+				key: "meriyah",
+				name: "meriyah",
+				note: "its tokens carry no value",
+				tier: ESLINT,
+
+				/*
+				 * `onToken` and `onComment` accept an array to push into, and
+				 * it has to be a fresh one per parse — a shared array would
+				 * grow for the length of the measurement and turn the run into
+				 * a memory benchmark.
+				 */
+				run: code =>
+					meriyah.parse(code, {
+						sourceType: "module",
+						raw: true,
+						jsx: dialect === "jsx",
+						ranges: true,
+						loc: true,
+						onToken: [],
+						onComment: [],
 					}),
 			},
 		);
