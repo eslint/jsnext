@@ -171,9 +171,9 @@ import {
  *      `SLOT_COUNT` entries per kind, indexed the same way `SLOT_TABLE` is.
  */
 function buildSlotNames(): (string | null)[] {
-	const names = new Array<string | null>(
-		NODE_KIND_COUNT * SLOT_COUNT,
-	).fill(null);
+	const names = new Array<string | null>(NODE_KIND_COUNT * SLOT_COUNT).fill(
+		null,
+	);
 
 	/**
 	 * Records what the slots of one or more node kinds are called.
@@ -198,66 +198,56 @@ function buildSlotNames(): (string | null)[] {
 	define([N_TaggedTemplateExpression], ["tag", "quasi", "typeArguments"]);
 	define([N_ExpressionStatement], ["expression"]);
 
-	define(
-		[
-			N_BlockStatement,
-			N_StaticBlock,
-			N_ClassBody,
-			N_TSModuleBlock,
-			N_TSInterfaceBody,
-		],
-		["body"],
-	);
+	define([
+		N_BlockStatement,
+		N_StaticBlock,
+		N_ClassBody,
+		N_TSModuleBlock,
+		N_TSInterfaceBody,
+	], ["body"]);
 	define([N_TSEnumBody], ["members"]);
 	define([N_SequenceExpression], ["expressions"]);
 	define([N_TSTupleType], ["elementTypes"]);
 	define([N_TSUnionType, N_TSIntersectionType], ["types"]);
 	define([N_TSTypeLiteral], ["members"]);
-	define(
-		[N_TSTypeParameterDeclaration, N_TSTypeParameterInstantiation],
-		["params"],
-	);
+	define([N_TSTypeParameterDeclaration, N_TSTypeParameterInstantiation], [
+		"params",
+	]);
 	define([N_VariableDeclaration], ["declarations"]);
 
 	define([N_WithStatement], ["object", "body"]);
 	define([N_LabeledStatement], ["label", "body"]);
 
-	define(
-		[
-			N_ReturnStatement,
-			N_ThrowStatement,
-			N_AwaitExpression,
-			N_SpreadElement,
-			N_YieldExpression,
-		],
-		["argument"],
-	);
-	define(
-		[
-			N_ChainExpression,
-			N_Decorator,
-			N_TSExportAssignment,
-			N_TSExternalModuleReference,
-			N_TSNonNullExpression,
-		],
-		["expression"],
-	);
+	define([
+		N_ReturnStatement,
+		N_ThrowStatement,
+		N_AwaitExpression,
+		N_SpreadElement,
+		N_YieldExpression,
+	], ["argument"]);
+	define([
+		N_ChainExpression,
+		N_Decorator,
+		N_TSExportAssignment,
+		N_TSExternalModuleReference,
+		N_TSNonNullExpression,
+	], ["expression"]);
 	define([N_BreakStatement, N_ContinueStatement], ["label"]);
 	define([N_TSNamespaceExportDeclaration], ["id"]);
 	define([N_ExportDefaultDeclaration], ["declaration"]);
-	define(
-		[N_TSTypeAnnotation, N_TSRestType, N_TSOptionalType],
-		["typeAnnotation"],
-	);
+	define([N_TSTypeAnnotation, N_TSRestType, N_TSOptionalType], [
+		"typeAnnotation",
+	]);
 	define([N_TSArrayType], ["elementType"]);
 	define([N_TSInferType], ["typeParameter"]);
 	define([N_TSLiteralType], ["literal"]);
 	define([N_ImportDefaultSpecifier, N_ImportNamespaceSpecifier], ["local"]);
 
-	define(
-		[N_IfStatement, N_ConditionalExpression],
-		["test", "consequent", "alternate"],
-	);
+	define([N_IfStatement, N_ConditionalExpression], [
+		"test",
+		"consequent",
+		"alternate",
+	]);
 	define([N_TryStatement], ["block", "handler", "finalizer"]);
 	define([N_SwitchStatement], ["discriminant", "cases"]);
 	define([N_SwitchCase], ["test", "consequent"]);
@@ -269,52 +259,38 @@ function buildSlotNames(): (string | null)[] {
 	define([N_VariableDeclarator], ["id", "init"]);
 	define([N_AssignmentPattern], ["left", "right", "decorators"]);
 
-	define(
-		[
-			N_FunctionDeclaration,
-			N_FunctionExpression,
-			N_TSDeclareFunction,
-			N_TSEmptyBodyFunctionExpression,
-			N_ArrowFunctionExpression,
-		],
-		["id", "params", "body", "typeParameters", "returnType"],
-	);
-	define(
-		[N_ClassDeclaration, N_ClassExpression],
-		[
-			"id",
-			"superClass",
-			"body",
-			"typeParameters",
-			"superTypeArguments",
-			"implements",
-			"decorators",
-		],
-	);
-	define(
-		[N_MethodDefinition, N_TSAbstractMethodDefinition],
-		["key", "value", "decorators"],
-	);
-	define(
-		[
-			N_PropertyDefinition,
-			N_TSAbstractPropertyDefinition,
-			N_AccessorProperty,
-			N_TSAbstractAccessorProperty,
-		],
-		["key", "value", "decorators", "typeAnnotation"],
-	);
+	define([
+		N_FunctionDeclaration,
+		N_FunctionExpression,
+		N_TSDeclareFunction,
+		N_TSEmptyBodyFunctionExpression,
+		N_ArrowFunctionExpression,
+	], ["id", "params", "body", "typeParameters", "returnType"]);
+	define([N_ClassDeclaration, N_ClassExpression], [
+		"id",
+		"superClass",
+		"body",
+		"typeParameters",
+		"superTypeArguments",
+		"implements",
+		"decorators",
+	]);
+	define([N_MethodDefinition, N_TSAbstractMethodDefinition], [
+		"key",
+		"value",
+		"decorators",
+	]);
+	define([
+		N_PropertyDefinition,
+		N_TSAbstractPropertyDefinition,
+		N_AccessorProperty,
+		N_TSAbstractAccessorProperty,
+	], ["key", "value", "decorators", "typeAnnotation"]);
 
 	define([N_ArrayExpression], ["elements", "typeAnnotation"]);
-	define(
-		[N_ArrayPattern],
-		["elements", "typeAnnotation", "decorators"],
-	);
+	define([N_ArrayPattern], ["elements", "typeAnnotation", "decorators"]);
 	define([N_ObjectExpression], ["properties", "typeAnnotation"]);
-	define(
-		[N_ObjectPattern],
-		["properties", "typeAnnotation", "decorators"],
-	);
+	define([N_ObjectPattern], ["properties", "typeAnnotation", "decorators"]);
 
 	define([N_Property], ["key", "value"]);
 	define([N_MemberExpression], ["object", "property"]);
@@ -328,17 +304,17 @@ function buildSlotNames(): (string | null)[] {
 	define([N_TSTypeReference], ["typeName", "typeArguments"]);
 	define([N_TSQualifiedName], ["left", "right"]);
 	define([N_TSTypeQuery], ["exprName", "typeArguments"]);
-	define(
-		[N_TSInterfaceHeritage, N_TSClassImplements],
-		["expression", "typeArguments"],
-	);
+	define([N_TSInterfaceHeritage, N_TSClassImplements], [
+		"expression",
+		"typeArguments",
+	]);
 	define([N_TSPropertySignature], ["key", "typeAnnotation"]);
 	define([N_TSEnumMember], ["id", "initializer"]);
 	define([N_TSModuleDeclaration, N_TSEnumDeclaration], ["id", "body"]);
-	define(
-		[N_TSAsExpression, N_TSSatisfiesExpression],
-		["expression", "typeAnnotation"],
-	);
+	define([N_TSAsExpression, N_TSSatisfiesExpression], [
+		"expression",
+		"typeAnnotation",
+	]);
 	define([N_TSTypeAssertion], ["typeAnnotation", "expression"]);
 	define([N_TSInstantiationExpression], ["expression", "typeArguments"]);
 	define([N_TSImportEqualsDeclaration], ["id", "moduleReference"]);
@@ -346,61 +322,72 @@ function buildSlotNames(): (string | null)[] {
 
 	define([N_UnaryExpression, N_UpdateExpression], ["argument"]);
 	define([N_TSTypeOperator], ["typeAnnotation"]);
-	define(
-		[N_BinaryExpression, N_LogicalExpression, N_AssignmentExpression],
-		["left", "right"],
-	);
-	define([N_CallExpression, N_NewExpression], ["callee", "arguments", "typeArguments"]);
+	define([N_BinaryExpression, N_LogicalExpression, N_AssignmentExpression], [
+		"left",
+		"right",
+	]);
+	define([N_CallExpression, N_NewExpression], [
+		"callee",
+		"arguments",
+		"typeArguments",
+	]);
 	define([N_RestElement], ["argument", "typeAnnotation", "decorators"]);
 	define([N_ImportDeclaration], ["specifiers", "source", "attributes"]);
-	define(
-		[N_ExportNamedDeclaration],
-		["declaration", "specifiers", "source", "attributes"],
-	);
+	define([N_ExportNamedDeclaration], [
+		"declaration",
+		"specifiers",
+		"source",
+		"attributes",
+	]);
 	define([N_ExportAllDeclaration], ["exported", "source", "attributes"]);
 	define([N_TSTypeParameter], ["name", "constraint", "default"]);
-	define(
-		[N_TSConditionalType],
-		["checkType", "extendsType", "trueType", "falseType"],
-	);
+	define([N_TSConditionalType], [
+		"checkType",
+		"extendsType",
+		"trueType",
+		"falseType",
+	]);
 	define([N_TSMappedType], [null, null, "nameType", "typeAnnotation"]);
 	define([N_TSTypePredicate], ["parameterName", "typeAnnotation"]);
-	define(
-		[
-			N_TSFunctionType,
-			N_TSConstructorType,
-			N_TSCallSignatureDeclaration,
-			N_TSConstructSignatureDeclaration,
-		],
-		["params", "returnType", "typeParameters"],
-	);
-	define(
-		[N_TSImportType],
-		["source", "qualifier", "typeArguments", "options"],
-	);
-	define(
-		[N_TSMethodSignature],
-		["key", "params", "returnType", "typeParameters"],
-	);
-	define(
-		[N_TSInterfaceDeclaration],
-		["id", "body", "typeParameters", "extends"],
-	);
-	define(
-		[N_TSTypeAliasDeclaration],
-		["id", "typeAnnotation", "typeParameters"],
-	);
+	define([
+		N_TSFunctionType,
+		N_TSConstructorType,
+		N_TSCallSignatureDeclaration,
+		N_TSConstructSignatureDeclaration,
+	], ["params", "returnType", "typeParameters"]);
+	define([N_TSImportType], [
+		"source",
+		"qualifier",
+		"typeArguments",
+		"options",
+	]);
+	define([N_TSMethodSignature], [
+		"key",
+		"params",
+		"returnType",
+		"typeParameters",
+	]);
+	define([N_TSInterfaceDeclaration], [
+		"id",
+		"body",
+		"typeParameters",
+		"extends",
+	]);
+	define([N_TSTypeAliasDeclaration], [
+		"id",
+		"typeAnnotation",
+		"typeParameters",
+	]);
 	define([N_TSParameterProperty], ["parameter", "decorators"]);
 
-	define(
-		[N_JSXElement],
-		["openingElement", "closingElement", "children"],
-	);
-	define(
-		[N_JSXFragment],
-		["openingFragment", "closingFragment", "children"],
-	);
-	define([N_JSXOpeningElement], ["name", "attributes", null, "typeArguments"]);
+	define([N_JSXElement], ["openingElement", "closingElement", "children"]);
+	define([N_JSXFragment], ["openingFragment", "closingFragment", "children"]);
+	define([N_JSXOpeningElement], [
+		"name",
+		"attributes",
+		null,
+		"typeArguments",
+	]);
 	define([N_JSXClosingElement], ["name"]);
 	define([N_JSXAttribute], ["name", "value"]);
 	define([N_JSXNamespacedName], ["namespace", "name"]);

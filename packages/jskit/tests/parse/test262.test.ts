@@ -158,7 +158,10 @@ const valid: [string, "script" | "module"][] = [
 	["class C { m(o) { return #x in o; } #x; }", "script"],
 	["class C { #x; static { C.#x; } }", "script"],
 	["class D { #a; m() { class E { n(o) { return o.#a; } } } }", "script"],
-	["class C extends (class { #y; }) { #x; m() { return this.#x; } }", "script"],
+	[
+		"class C extends (class { #y; }) { #x; m() { return this.#x; } }",
+		"script",
+	],
 
 	// One getter/setter pair may share a name, on either side of `static`.
 	["class C { get #x(){} set #x(v){} }", "script"],
@@ -219,7 +222,7 @@ const valid: [string, "script" | "module"][] = [
 	["({ \\u0063lass() {} });", "script"],
 	["class C { \\u0073uper() {} }", "script"],
 	["let { \\u0073uper: x } = o;", "script"],
-	["import { \\u0073uper as x } from \"m\";", "module"],
+	['import { \\u0073uper as x } from "m";', "module"],
 	["var x; export { x as \\u0073uper };", "module"],
 
 	/*
@@ -287,7 +290,10 @@ const valid: [string, "script" | "module"][] = [
 	 * property name and a member access both are, in any context at all.
 	 */
 	["function* g() { o.yield; ({ yield: 1 }); }", "script"],
-	["async function f() { o.await; ({ await: 1 }); ({ await() {} }); }", "script"],
+	[
+		"async function f() { o.await; ({ await: 1 }); ({ await() {} }); }",
+		"script",
+	],
 	["o.await; o.yield;", "module"],
 	["({ await: 1, yield: 2 });", "module"],
 	["class C { await() {} yield() {} }", "module"],
@@ -480,7 +486,10 @@ const valid: [string, "script" | "module"][] = [
 	 * sloppy block, and forgives nothing else about it.
 	 */
 	["{ function f() {} function f() {} }", "script"],
-	["switch (0) { case 1: function f() {} default: function f() {} }", "script"],
+	[
+		"switch (0) { case 1: function f() {} default: function f() {} }",
+		"script",
+	],
 	["function g() { function* f() {} function* f() {} }", "script"],
 	["{ function* f() {} } { function* f() {} }", "script"],
 
@@ -488,10 +497,10 @@ const valid: [string, "script" | "module"][] = [
 	 * A tag receives the raw text along with the cooked value, so an escape
 	 * that has no cooked value is only a problem without one.
 	 */
-	['tag`\\u1`;', "script"],
-	['tag`\\01`;', "script"],
-	['tag`a${1}\\xZ`;', "script"],
-	['tag`a`.b`\\u1`;', "script"],
+	["tag`\\u1`;", "script"],
+	["tag`\\01`;", "script"],
+	["tag`a${1}\\xZ`;", "script"],
+	["tag`a`.b`\\u1`;", "script"],
 	['"\\u{0000000041}";', "script"],
 	['"\\u{10FFFF}";', "script"],
 

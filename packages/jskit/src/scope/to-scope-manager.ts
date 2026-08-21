@@ -332,7 +332,8 @@ function rehydrate<TNode>(
 			implicitGlobal,
 			(flags & RF_PARTIAL) !== 0,
 			(flags & RF_INIT) !== 0,
-			(flags & RF_VALUE ? REF_VALUE : 0) | (flags & RF_TYPE ? REF_TYPE : 0),
+			(flags & RF_VALUE ? REF_VALUE : 0) |
+				(flags & RF_TYPE ? REF_TYPE : 0),
 		);
 
 		const resolved = buffer.referenceField(i, R_RESOLVED);
@@ -350,7 +351,9 @@ function rehydrate<TNode>(
 	for (let i = 0; i < buffer.scopeCount; i++) {
 		const scope = scopes[i];
 
-		for (const ref of buffer.listItems(buffer.scopeField(i, S_REFERENCES))) {
+		for (const ref of buffer.listItems(
+			buffer.scopeField(i, S_REFERENCES),
+		)) {
 			scope.references.push(references[ref]);
 		}
 
@@ -435,5 +438,7 @@ export function toScopeManager<TSource extends ScopeSource>(
  * The node representation a source rehydrates to: the tree's own objects when
  * the source is a `Program` node, node indexes otherwise.
  */
-export type RehydratedNode<TSource extends ScopeSource> =
-	TSource extends ParseResult | AstReader ? number : EsTreeNode;
+export type RehydratedNode<TSource extends ScopeSource> = TSource extends
+	ParseResult | AstReader
+	? number
+	: EsTreeNode;

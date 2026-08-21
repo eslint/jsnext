@@ -81,5 +81,10 @@ export function CodeEditor({
 		}
 	}, [value]);
 
-	return <div ref={containerRef} className="h-full min-h-0 overflow-hidden text-sm" />;
+	return (
+		<div
+			ref={containerRef}
+			className="h-full min-h-0 overflow-hidden text-sm"
+		/>
+	);
 }

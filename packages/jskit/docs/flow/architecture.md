@@ -14,18 +14,18 @@ machinery behind it. The requirements the package answers to are in
 - [What shaped the format](#what-shaped-the-format)
 - [Source layout](#source-layout)
 - [The walk](#the-walk)
-  - [Graphs are built one at a time](#graphs-are-built-one-at-a-time)
-  - [Blocks, edges, and reachability](#blocks-edges-and-reachability)
-  - [Conditions distribute](#conditions-distribute)
-  - [Writes come from the scope buffer](#writes-come-from-the-scope-buffer)
-  - [Exceptions and finally](#exceptions-and-finally)
-  - [Jumps](#jumps)
-  - [TypeScript and JSX](#typescript-and-jsx)
+    - [Graphs are built one at a time](#graphs-are-built-one-at-a-time)
+    - [Blocks, edges, and reachability](#blocks-edges-and-reachability)
+    - [Conditions distribute](#conditions-distribute)
+    - [Writes come from the scope buffer](#writes-come-from-the-scope-buffer)
+    - [Exceptions and finally](#exceptions-and-finally)
+    - [Jumps](#jumps)
+    - [TypeScript and JSX](#typescript-and-jsx)
 - [The binary flow format](#the-binary-flow-format)
-  - [Handles](#handles)
-  - [Layout](#layout)
-  - [The node-block index](#the-node-block-index)
-  - [The consumers](#the-consumers)
+    - [Handles](#handles)
+    - [Layout](#layout)
+    - [The node-block index](#the-node-block-index)
+    - [The consumers](#the-consumers)
 - [Deliberate imprecision](#deliberate-imprecision)
 - [Invariants](#invariants)
 
@@ -56,12 +56,12 @@ Every ESLint core rule that consumes code path analysis was surveyed before
 this format was designed, and the fifteen consumers divide into four jobs.
 The format gives each one a direct answer:
 
-| What rules actually do | How often | What the format provides |
-| ---------------------- | --------- | ------------------------ |
-| Ask "is this point reachable?" | 7 of 15 rules | `BF_REACHABLE` is precomputed per block, and the node-block index turns any visited node into its block with one binary search. The current-segment set that eleven rules hand-maintain disappears. |
-| Use code paths as a correct function stack | 4 of 15 | Graphs are their own record section with an `origin` code readable without touching a block, spelled the way `codePath.origin` spells it. |
-| Split "on every path" from "on some path" at exit | 2 of 15 | Each graph lists its returned blocks, its thrown blocks, and its implicit-exit block; loop back edges carry `EF_BACK` for fact propagation. |
-| Carry variable state along edges | 2 of 15 | Blocks carry ordered writes tied to scope references; predecessor and successor edges are both grouped ranges, so state merges without inverting anything. |
+| What rules actually do                            | How often     | What the format provides                                                                                                                                                                            |
+| ------------------------------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ask "is this point reachable?"                    | 7 of 15 rules | `BF_REACHABLE` is precomputed per block, and the node-block index turns any visited node into its block with one binary search. The current-segment set that eleven rules hand-maintain disappears. |
+| Use code paths as a correct function stack        | 4 of 15       | Graphs are their own record section with an `origin` code readable without touching a block, spelled the way `codePath.origin` spells it.                                                           |
+| Split "on every path" from "on some path" at exit | 2 of 15       | Each graph lists its returned blocks, its thrown blocks, and its implicit-exit block; loop back edges carry `EF_BACK` for fact propagation.                                                         |
+| Carry variable state along edges                  | 2 of 15       | Blocks carry ordered writes tied to scope references; predecessor and successor edges are both grouped ranges, so state merges without inverting anything.                                          |
 
 `thrownSegments`, `finalSegments`, `initialSegment`, and `childCodePaths`
 have zero consumers in ESLint core; their information is either kept cheaply
@@ -298,13 +298,13 @@ function in dead code as reachable. The walk therefore records the
 evaluating block for every function it queues, including the ones a class
 body creates:
 
-| Node | Recorded by the evaluating walk | Because |
-| --- | --- | --- |
-| Function declaration, function expression, arrow | yes | the enclosing walk visits it |
-| A method's `FunctionExpression` | yes | evaluating the class creates the closure |
-| A `StaticBlock` | yes | it runs when the class is evaluated |
-| A field initializer's expression | no | it runs at construction, not at class evaluation |
-| `Program` | no | there is nothing enclosing it |
+| Node                                             | Recorded by the evaluating walk | Because                                          |
+| ------------------------------------------------ | ------------------------------- | ------------------------------------------------ |
+| Function declaration, function expression, arrow | yes                             | the enclosing walk visits it                     |
+| A method's `FunctionExpression`                  | yes                             | evaluating the class creates the closure         |
+| A `StaticBlock`                                  | yes                             | it runs when the class is evaluated              |
+| A field initializer's expression                 | no                              | it runs at construction, not at class evaluation |
+| `Program`                                        | no                              | there is nothing enclosing it                    |
 
 The last two rows own their nodes through their own entry block, which is
 the only truthful answer available: nothing else executes them.

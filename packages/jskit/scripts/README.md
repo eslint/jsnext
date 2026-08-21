@@ -21,25 +21,25 @@ npm run conformance:262 # the test262 run, which needs a checkout
 
 ## What each script checks
 
-| Script | Compares | Against |
-| ------ | -------- | ------- |
-| `build.js` | — | bundles `src/index.ts` with esbuild |
-| `parse/conformance-js.mjs` | the JavaScript AST | `espree` |
-| `parse/conformance-tokens.mjs` | tokens and comments | `espree` |
-| `parse/conformance-ts.mjs` | the TypeScript AST | `@typescript-eslint/parser` |
-| `parse/conformance-types.mjs` | `src/parse/ast-types.ts` | what the decoder emits |
-| `parse/derive-shapes.mjs` | `src/parse/ast-types.ts` | what the decoder's source says |
-| `parse/conformance-262.mjs` | accepted or rejected | what test262 says |
-| `parse/conformance-ts-negative.mjs` | accepted or rejected | `@typescript-eslint/parser` |
-| `parse/conformance-eslint.mjs` | how *rules* behave | ESLint's own rule test suite |
-| `scope/conformance-js.mjs` | the scope graph, both entry points | `eslint-scope` |
-| `scope/conformance-ts.mjs` | the scope graph, both entry points | `@typescript-eslint/scope-manager` |
+| Script                              | Compares                           | Against                             |
+| ----------------------------------- | ---------------------------------- | ----------------------------------- |
+| `build.js`                          | —                                  | bundles `src/index.ts` with esbuild |
+| `parse/conformance-js.mjs`          | the JavaScript AST                 | `espree`                            |
+| `parse/conformance-tokens.mjs`      | tokens and comments                | `espree`                            |
+| `parse/conformance-ts.mjs`          | the TypeScript AST                 | `@typescript-eslint/parser`         |
+| `parse/conformance-types.mjs`       | `src/parse/ast-types.ts`           | what the decoder emits              |
+| `parse/derive-shapes.mjs`           | `src/parse/ast-types.ts`           | what the decoder's source says      |
+| `parse/conformance-262.mjs`         | accepted or rejected               | what test262 says                   |
+| `parse/conformance-ts-negative.mjs` | accepted or rejected               | `@typescript-eslint/parser`         |
+| `parse/conformance-eslint.mjs`      | how _rules_ behave                 | ESLint's own rule test suite        |
+| `scope/conformance-js.mjs`          | the scope graph, both entry points | `eslint-scope`                      |
+| `scope/conformance-ts.mjs`          | the scope graph, both entry points | `@typescript-eslint/scope-manager`  |
 
 Zero mismatches is the standard. Anything else is a regression.
 
 The two scope checks run each file twice, once through `analyze()` over the
 binary buffers and once through `analyzeTree()` over the very tree the
-reference analyzer was handed, and both go *through the buffer*: the result is
+reference analyzer was handed, and both go _through the buffer_: the result is
 serialized, rehydrated with `toScopeManager()`, and diffed against the
 reference, so a field the format dropped or reordered cannot pass.
 `scope/serialize.mjs` is the shared reduction both of them — and the
@@ -73,7 +73,7 @@ tree   files=… ok=… mismatch=0 threw=0
 The other nine are **differential**: they run a program through two
 implementations and compare what comes back, which means they can only ever
 check a program both implementations accept. Nothing in them tests that an
-error is *reported*, and nothing could — `node_modules` is working code, so it
+error is _reported_, and nothing could — `node_modules` is working code, so it
 contains no syntax errors at all.
 
 test262 is not differential. Every file carries its own verdict in its
@@ -108,7 +108,7 @@ npm run conformance:ts -- ./TypeScript
 Read its two counts differently. **missed** is a program the reference rejects
 and this parser accepts, and every one is a TypeScript grammar rule that is not
 implemented yet — that is the count to drive to zero. **overzealous** is the
-reverse, and most of them are *correct*: `@typescript-eslint/parser` enforces a
+reverse, and most of them are _correct_: `@typescript-eslint/parser` enforces a
 small subset of the grammar rules `tsc` does and almost no ECMAScript early
 errors at all, so `continue` outside a loop passes through it untouched. Read a
 new one before fixing it.
@@ -159,7 +159,7 @@ unimplemented proposal is told apart from a scattering of real defects.
 
 Everything above compares an output: a tree against `espree`'s, a scope graph
 against `eslint-scope`'s. `parse/conformance-eslint.mjs` asks the question none
-of them can — whether a *rule* behaves the same — by running ESLint's own rule
+of them can — whether a _rule_ behaves the same — by running ESLint's own rule
 tests with `eslintParser` in place of `espree`, and with `parseForESLint()`
 supplying the scope graph in place of `eslint-scope`. Around 33,000 assertions
 over 293 rules, and every failure is a program where a rule sees something

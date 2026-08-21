@@ -129,7 +129,9 @@ export class Reference<TNode> {
 	 * @returns `true` when nothing dynamic can redirect it.
 	 */
 	isStatic(): boolean {
-		return !this.tainted && !!this.resolved && this.resolved.scope.isStatic();
+		return (
+			!this.tainted && !!this.resolved && this.resolved.scope.isStatic()
+		);
 	}
 
 	/**

@@ -854,9 +854,7 @@ export class RegExpValidator {
 
 				if (this.#eat(CH_BRACE_CLOSE)) {
 					if (max !== -1 && max < min && !silent) {
-						this.#raise(
-							"Numbers out of order in {} quantifier.",
-						);
+						this.#raise("Numbers out of order in {} quantifier.");
 					}
 
 					return true;
@@ -1334,7 +1332,10 @@ export class RegExpValidator {
 		 * Without `u` there is no property escape: `\p` is the letter `p`, and
 		 * making it an error would reject patterns that predate the syntax.
 		 */
-		if (!this.#unicode || (code !== 0x70 /* p */ && code !== 0x50 /* P */)) {
+		if (
+			!this.#unicode ||
+			(code !== 0x70 /* p */ && code !== 0x50) /* P */
+		) {
 			return SET_NONE;
 		}
 
@@ -1396,10 +1397,7 @@ export class RegExpValidator {
 
 		const name = this.#lastName;
 
-		if (
-			BINARY_PROPERTIES.has(name) ||
-			GENERAL_CATEGORY_VALUES.has(name)
-		) {
+		if (BINARY_PROPERTIES.has(name) || GENERAL_CATEGORY_VALUES.has(name)) {
 			return SET_CHARS;
 		}
 
@@ -1572,7 +1570,9 @@ export class RegExpValidator {
 
 					if (trail >= 0xdc00 && trail <= 0xdfff) {
 						this.#lastValue =
-							(lead - 0xd800) * 0x400 + (trail - 0xdc00) + 0x10000;
+							(lead - 0xd800) * 0x400 +
+							(trail - 0xdc00) +
+							0x10000;
 						return true;
 					}
 				}
@@ -1926,7 +1926,11 @@ export class RegExpValidator {
 			const left = this.#lastValue;
 
 			if (this.#eat(CH_MINUS) && this.#eatClassSetCharacter()) {
-				if (left !== -1 && this.#lastValue !== -1 && left > this.#lastValue) {
+				if (
+					left !== -1 &&
+					this.#lastValue !== -1 &&
+					left > this.#lastValue
+				) {
 					this.#raise("Range out of order in character class.");
 				}
 

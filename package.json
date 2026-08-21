@@ -1,61 +1,83 @@
 {
-	"name": "jskit-monorepo",
-	"version": "0.0.0",
-	"description": "A fast, ESLint-compatible parser, scope analyzer, and control flow analyzer for JavaScript and TypeScript.",
-	"type": "module",
-	"private": true,
-	"workspaces": [
-		"packages/*"
-	],
-	"scripts": {
-		"build": "npm run build --workspaces --if-present",
-		"test": "npm run test --workspaces --if-present",
-		"typecheck": "npm run typecheck --workspaces --if-present",
-		"lint": "npm run build && eslint .",
-		"bench": "npm run bench --workspaces --if-present",
-		"conformance": "npm run conformance --workspaces --if-present",
-		"test:coverage": "npm run test:coverage --workspaces --if-present"
-	},
-	"keywords": [
-		"parser",
-		"scope",
-		"control-flow",
-		"javascript",
-		"typescript",
-		"eslint",
-		"estree",
-		"ast"
-	],
-	"author": "",
-	"license": "Apache-2.0",
-	"devDependencies": {
-		"@babel/eslint-parser": "^7.29.7",
-		"@babel/plugin-syntax-jsx": "^7.29.7",
-		"@babel/preset-typescript": "^7.29.7",
-		"@eslint/js": "^10.0.1",
-		"@types/node": "^26.2.0",
-		"@typescript-eslint/parser": "^8.0.0",
-		"@typescript-eslint/scope-manager": "^8.0.0",
-		"@typescript-eslint/types": "^8.0.0",
-		"@typescript-eslint/visitor-keys": "^8.0.0",
-		"@vitest/coverage-v8": "^2.1.9",
-		"acorn": "^8.12.0",
-		"esbuild": "^0.24.0",
-		"eslint": "^10.8.1",
-		"eslint-scope": "^9.0.0",
-		"eslint-visitor-keys": "^5.0.1",
-		"espree": "^10.0.0",
-		"globals": "^17.9.0",
-		"typescript": "^5.6.0",
-		"typescript-6": "npm:typescript@^6.0.3",
-		"typescript-7": "npm:typescript@^7.0.2",
-		"vitest": "^2.0.0"
-	},
-	"allowScripts": {
-		"esbuild@0.24.2": true,
-		"esbuild@0.21.5": true,
-		"esbuild@0.25.12": true,
-		"esbuild@0.27.7": true,
-		"sharp@0.34.5": true
-	}
+  "name": "jskit-monorepo",
+  "version": "0.0.0",
+  "description": "A fast, ESLint-compatible parser, scope analyzer, and control flow analyzer for JavaScript and TypeScript.",
+  "type": "module",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "prepare": "npm run build --workspace=@eslint/jskit",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:affected": "npm run test:affected --workspace=@eslint/jskit --",
+    "test:coverage": "npm run test:coverage --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run build && eslint .",
+    "lint:fix": "npm run build && eslint . --fix",
+    "fmt": "prettier --write .",
+    "fmt:check": "prettier --check .",
+    "bench": "npm run bench --workspaces --if-present",
+    "conformance": "npm run conformance --workspaces --if-present"
+  },
+  "gitHooks": {
+    "pre-commit": "lint-staged"
+  },
+  "lint-staged": {
+    "*.{js,mjs,ts}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "!(*.{js,mjs,ts})": "prettier --write --ignore-unknown"
+  },
+  "keywords": [
+    "parser",
+    "scope",
+    "control-flow",
+    "javascript",
+    "typescript",
+    "eslint",
+    "estree",
+    "ast"
+  ],
+  "author": "",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": "^22.13.0 || >=24"
+  },
+  "devDependencies": {
+    "@babel/eslint-parser": "^7.29.7",
+    "@babel/plugin-syntax-jsx": "^7.29.7",
+    "@babel/preset-typescript": "^7.29.7",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.2.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "@typescript-eslint/scope-manager": "^8.0.0",
+    "@typescript-eslint/types": "^8.0.0",
+    "@typescript-eslint/visitor-keys": "^8.0.0",
+    "@vitest/coverage-v8": "^2.1.9",
+    "acorn": "^8.12.0",
+    "esbuild": "^0.24.0",
+    "eslint": "^10.8.1",
+    "eslint-scope": "^9.0.0",
+    "eslint-visitor-keys": "^5.0.1",
+    "espree": "^10.0.0",
+    "globals": "^17.9.0",
+    "lint-staged": "^16.0.0",
+    "prettier": "3.9.6",
+    "typescript": "^5.6.0",
+    "typescript-6": "npm:typescript@^6.0.3",
+    "typescript-7": "npm:typescript@^7.0.2",
+    "vitest": "^2.0.0",
+    "yorkie": "^2.0.0"
+  },
+  "allowScripts": {
+    "esbuild@0.24.2": true,
+    "esbuild@0.21.5": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.27.7": true,
+    "sharp@0.34.5": true,
+    "yorkie@2.0.0": true
+  }
 }

@@ -34,8 +34,10 @@ function firstExpression(code: string): Record<string, unknown> {
 		jsx: true,
 	});
 
-	return (ast.body as Record<string, unknown>[])[0]
-		.expression as Record<string, unknown>;
+	return (ast.body as Record<string, unknown>[])[0].expression as Record<
+		string,
+		unknown
+	>;
 }
 
 describe("JSX scanning", () => {
@@ -70,27 +72,26 @@ describe("JSX scanning", () => {
 	});
 
 	it("resolves entity references in text and attribute values", () => {
-		const element = firstExpression("<div a=\"&amp;\">&#65;&#x42;</div>;");
+		const element = firstExpression('<div a="&amp;">&#65;&#x42;</div>;');
 		const attribute = (
 			(element.openingElement as Record<string, unknown>)
 				.attributes as Record<string, unknown>[]
 		)[0];
 
 		expect(
-			((attribute.value as Record<string, unknown>).value as string),
+			(attribute.value as Record<string, unknown>).value as string,
 		).toBe("&");
 		expect(
-			((element.children as Record<string, unknown>[])[0]
-				.value as string),
+			(element.children as Record<string, unknown>[])[0].value as string,
 		).toBe("AB");
 	});
 
 	it("leaves an incomplete entity reference alone", () => {
 		const element = firstExpression("<div>&notreal; x</div>;");
 
-		expect(
-			(element.children as Record<string, unknown>[])[0].value,
-		).toBe("&notreal; x");
+		expect((element.children as Record<string, unknown>[])[0].value).toBe(
+			"&notreal; x",
+		);
 	});
 
 	it("does not read a closing tag's slash as a regular expression", () => {
@@ -146,9 +147,9 @@ describe("JSX parsing", () => {
 		const container = (element.children as Record<string, unknown>[])[0];
 
 		expect(container.type).toBe("JSXExpressionContainer");
-		expect(
-			(container.expression as Record<string, unknown>).type,
-		).toBe("JSXEmptyExpression");
+		expect((container.expression as Record<string, unknown>).type).toBe(
+			"JSXEmptyExpression",
+		);
 	});
 
 	it("parses nested elements inside a container", () => {
@@ -200,9 +201,7 @@ describe("JSX parsing", () => {
 		 */
 		const result = parse("<div>text");
 
-		expect(
-			toAST(result, { dialect: "ts" }).ast.body,
-		).toMatchObject([
+		expect(toAST(result, { dialect: "ts" }).ast.body).toMatchObject([
 			{ expression: { type: "TSTypeAssertion" } },
 		]);
 		expect(validate(result, { dialect: "js" })).not.toHaveLength(0);

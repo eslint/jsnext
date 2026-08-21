@@ -5,10 +5,10 @@ JSX syntax.
 
 This repository is an npm workspace holding two packages:
 
-| Package | What it does |
-| ------- | ------------ |
-| [`packages/jskit`](./packages/jskit) (`@eslint/jskit`) | The toolkit: a parser, a scope analyzer, and a control flow analyzer that share one binary representation of a program. |
-| [`packages/jskit-inspect`](./packages/jskit-inspect) (`@eslint/jskit-inspect`) | A web app that runs all three in the browser: code on the left, AST, scopes, and flow graph in tabs on the right. |
+| Package                                                                        | What it does                                                                                                            |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| [`packages/jskit`](./packages/jskit) (`@eslint/jskit`)                         | The toolkit: a parser, a scope analyzer, and a control flow analyzer that share one binary representation of a program. |
+| [`packages/jskit-inspect`](./packages/jskit-inspect) (`@eslint/jskit-inspect`) | A web app that runs all three in the browser: code on the left, AST, scopes, and flow graph in tabs on the right.       |
 
 The reason the three analyses are one package is the buffer between them.
 `parse()` hands back an `ArrayBuffer` rather than an object tree, and both

@@ -225,7 +225,13 @@ export class Scope<TNode> {
 		name: string,
 		definition: Definition<TNode> | null,
 	): void {
-		this.defineVariable(name, this.set, this.variables, identifier, definition);
+		this.defineVariable(
+			name,
+			this.set,
+			this.variables,
+			identifier,
+			definition,
+		);
 	}
 
 	/**

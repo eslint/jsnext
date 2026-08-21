@@ -25,7 +25,17 @@ const scope = { type: "module" } as unknown as Scope<number>;
  * @returns The reference.
  */
 function reference(flag: number): Reference<number> {
-	return new Reference(1, "a", scope, flag, null, null, false, false, REF_VALUE);
+	return new Reference(
+		1,
+		"a",
+		scope,
+		flag,
+		null,
+		null,
+		false,
+		false,
+		REF_VALUE,
+	);
 }
 
 describe("Variable", () => {

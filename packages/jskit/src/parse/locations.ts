@@ -121,4 +121,3 @@ export class LineIndex {
 		return { start: this.position(start), end: this.position(end) };
 	}
 }
-

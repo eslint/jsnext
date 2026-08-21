@@ -172,7 +172,9 @@ describe("EstreeAst", () => {
 			const ast = new EstreeAst();
 
 			expect(ast.name(node("Identifier", { name: "x" }))).toBe("x");
-			expect(ast.literalString(node("Literal", { value: "a" }))).toBe("a");
+			expect(ast.literalString(node("Literal", { value: "a" }))).toBe(
+				"a",
+			);
 		});
 
 		it("reports a directive only when it is a string", () => {
@@ -192,7 +194,9 @@ describe("EstreeAst", () => {
 		it("reads `computed` strictly", () => {
 			const ast = new EstreeAst();
 
-			expect(ast.computed(node("Property", { computed: true }))).toBe(true);
+			expect(ast.computed(node("Property", { computed: true }))).toBe(
+				true,
+			);
 			expect(ast.computed(node("Property", { computed: false }))).toBe(
 				false,
 			);
@@ -206,10 +210,14 @@ describe("EstreeAst", () => {
 				ast.typeOnly(node("ImportDeclaration", { importKind: "type" })),
 			).toBe(true);
 			expect(
-				ast.typeOnly(node("ExportNamedDeclaration", { exportKind: "type" })),
+				ast.typeOnly(
+					node("ExportNamedDeclaration", { exportKind: "type" }),
+				),
 			).toBe(true);
 			expect(
-				ast.typeOnly(node("ImportDeclaration", { importKind: "value" })),
+				ast.typeOnly(
+					node("ImportDeclaration", { importKind: "value" }),
+				),
 			).toBe(false);
 		});
 
@@ -217,10 +225,14 @@ describe("EstreeAst", () => {
 			const ast = new EstreeAst();
 
 			expect(
-				ast.declarationKind(node("VariableDeclaration", { kind: "const" })),
+				ast.declarationKind(
+					node("VariableDeclaration", { kind: "const" }),
+				),
 			).toBe("const");
 			expect(
-				ast.isGlobalModule(node("TSModuleDeclaration", { kind: "global" })),
+				ast.isGlobalModule(
+					node("TSModuleDeclaration", { kind: "global" }),
+				),
 			).toBe(true);
 			expect(
 				ast.isGlobalModule(

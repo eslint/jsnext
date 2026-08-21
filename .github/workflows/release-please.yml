@@ -1,0 +1,66 @@
+name: release-please
+
+on:
+    push:
+        branches:
+            - main
+
+permissions:
+    contents: read
+
+jobs:
+    release-please:
+        runs-on: ubuntu-latest
+        permissions:
+            # release-please opens and updates the release pull request, and
+            # tags the release when that pull request merges.
+            contents: write
+            pull-requests: write
+            # npm provenance is signed with a GitHub OIDC token, which is also
+            # what npm trusted publishing authenticates with.
+            id-token: write
+        steps:
+            - uses: googleapis/release-please-action@v4
+              id: release
+              with:
+                  # A personal access token so that the release pull request is
+                  # authored by a real account and therefore runs CI. Pushes
+                  # made with the built-in `GITHUB_TOKEN` deliberately do not
+                  # trigger other workflows, so with the fallback the release
+                  # pull request will sit unchecked.
+                  token: ${{ secrets.WORKFLOW_PUSH_BOT_TOKEN || github.token }}
+                  target-branch: ${{ github.ref_name }}
+
+            - name: Output Release Info
+              run: |
+                  echo "releases_created: ${{ steps.release.outputs.releases_created }}"
+                  echo "packages/jskit--release_created: ${{ steps.release.outputs['packages/jskit--release_created'] }}"
+
+            # Everything below runs only on the push that merged the release
+            # pull request, which is the push release-please turns into a tag.
+            - uses: actions/checkout@v7
+              if: ${{ steps.release.outputs.releases_created == 'true' }}
+
+            - uses: actions/setup-node@v7
+              if: ${{ steps.release.outputs.releases_created == 'true' }}
+              with:
+                  node-version: lts/*
+                  registry-url: "https://registry.npmjs.org"
+
+            # Trusted publishing needs npm 11.5.1 or later, which is newer than
+            # what the Node runner ships.
+            - name: Update npm
+              if: ${{ steps.release.outputs.releases_created == 'true' }}
+              run: npm install -g npm@latest
+
+            # This also runs the root `prepare`, which builds the toolkit.
+            - name: Install Packages
+              if: ${{ steps.release.outputs.releases_created == 'true' }}
+              run: npm ci
+
+            # No `NODE_AUTH_TOKEN`: the package is published through npm trusted
+            # publishing, which authenticates with the OIDC token granted by the
+            # `id-token: write` permission above and requires no stored secret.
+            - name: Publish @eslint/jskit
+              if: ${{ steps.release.outputs['packages/jskit--release_created'] == 'true' }}
+              run: npm publish --provenance --workspace=@eslint/jskit

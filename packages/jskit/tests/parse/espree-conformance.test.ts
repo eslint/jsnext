@@ -9,7 +9,10 @@ import { parse, toAST } from "../../src/index.js";
 import { normalize, normalizeTokens } from "./helpers.js";
 
 const samples: string[] = JSON.parse(
-	readFileSync(new URL("./fixtures/javascript.json", import.meta.url), "utf8"),
+	readFileSync(
+		new URL("./fixtures/javascript.json", import.meta.url),
+		"utf8",
+	),
 );
 
 describe("espree conformance", () => {
@@ -128,9 +131,9 @@ describe("espree token types", () => {
 	}
 
 	it("reports let, static, and yield as keywords", () => {
-		expect(types("let a; class C { static m(){} } function* g(){yield 1}")).toContain(
-			"Keyword:let",
-		);
+		expect(
+			types("let a; class C { static m(){} } function* g(){yield 1}"),
+		).toContain("Keyword:let");
 		expect(types("class C { static m(){} }")).toContain("Keyword:static");
 		expect(types("function* g(){ yield 1; }")).toContain("Keyword:yield");
 	});

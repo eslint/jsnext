@@ -236,8 +236,7 @@ export function toGraphTree(
 			let symbolId: number | null = null;
 
 			if (ref !== 0) {
-				const refId =
-					(ref / 4 - referencesBase) / REFERENCE_WORDS;
+				const refId = (ref / 4 - referencesBase) / REFERENCE_WORDS;
 				const resolved = scopeReader.referenceField(refId, R_RESOLVED);
 
 				if (resolved !== 0) {

@@ -325,9 +325,7 @@ export class Tokenizer {
 		this.records = new WordBuffer(
 			Math.max(1024, (source.length >> 2) * TOKEN_WORDS),
 		);
-		this.lineStarts = new Uint32Array(
-			Math.max(64, source.length >> 5),
-		);
+		this.lineStarts = new Uint32Array(Math.max(64, source.length >> 5));
 		this.lineStarts[0] = 0;
 
 		// A byte order mark is not part of the program text.
@@ -608,10 +606,7 @@ export class Tokenizer {
 				break;
 			}
 
-			if (
-				code === CH_LINE_SEPARATOR ||
-				code === CH_PARAGRAPH_SEPARATOR
-			) {
+			if (code === CH_LINE_SEPARATOR || code === CH_PARAGRAPH_SEPARATOR) {
 				this.pos++;
 				this.addLine(this.pos);
 				tokenFlags |= TF_NEWLINE_BEFORE;
@@ -678,7 +673,10 @@ export class Tokenizer {
 
 			const code = source.charCodeAt(this.pos);
 
-			if (code === CH_STAR && source.charCodeAt(this.pos + 1) === CH_SLASH) {
+			if (
+				code === CH_STAR &&
+				source.charCodeAt(this.pos + 1) === CH_SLASH
+			) {
 				this.pos += 2;
 				break;
 			}
@@ -895,7 +893,10 @@ export class Tokenizer {
 		const escapeStart = this.pos;
 
 		if (source.charCodeAt(this.pos + 1) !== CH_U_LOWER) {
-			throw this.error("Invalid escape sequence in identifier", escapeStart);
+			throw this.error(
+				"Invalid escape sequence in identifier",
+				escapeStart,
+			);
 		}
 
 		this.pos += 2;
@@ -1263,10 +1264,7 @@ export class Tokenizer {
 				: isNonAsciiIdStart(this.source.codePointAt(this.pos)!);
 
 		if (isIdentifierChar) {
-			throw this.error(
-				"Identifier directly after number",
-				this.pos,
-			);
+			throw this.error("Identifier directly after number", this.pos);
 		}
 	}
 
@@ -1375,10 +1373,7 @@ export class Tokenizer {
 			(code === CH_X_LOWER || code === CH_U_LOWER) &&
 			!this.scanCharacterEscape(code)
 		) {
-			throw this.error(
-				"Invalid escape sequence in string",
-				escapeStart,
-			);
+			throw this.error("Invalid escape sequence in string", escapeStart);
 		}
 	}
 
@@ -1557,7 +1552,10 @@ export class Tokenizer {
 				if (code >= CH_0 && code <= CH_9) {
 					const next = source.charCodeAt(this.pos);
 
-					if (code !== CH_0 || (CHAR_FLAGS[next] & MASK_DIGIT) !== 0) {
+					if (
+						code !== CH_0 ||
+						(CHAR_FLAGS[next] & MASK_DIGIT) !== 0
+					) {
 						this.flags |= TF_INVALID_ESCAPE;
 					}
 				}
@@ -1998,10 +1996,7 @@ export class Tokenizer {
 
 		for (;;) {
 			if (this.pos >= this.length) {
-				throw this.error(
-					"Unterminated regular expression",
-					start,
-				);
+				throw this.error("Unterminated regular expression", start);
 			}
 
 			const code = source.charCodeAt(this.pos);
@@ -2030,10 +2025,7 @@ export class Tokenizer {
 					next === CH_LINE_SEPARATOR ||
 					next === CH_PARAGRAPH_SEPARATOR
 				) {
-					throw this.error(
-						"Unterminated regular expression",
-						start,
-					);
+					throw this.error("Unterminated regular expression", start);
 				}
 
 				this.pos += 2;
@@ -2489,8 +2481,7 @@ export class Tokenizer {
 				return;
 
 			case T_of:
-				this.exprAllowed =
-					!this.exprAllowed && this.prevKind !== T_DOT;
+				this.exprAllowed = !this.exprAllowed && this.prevKind !== T_DOT;
 				return;
 
 			default:

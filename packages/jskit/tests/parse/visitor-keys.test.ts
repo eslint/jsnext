@@ -14,16 +14,23 @@
 import { visitorKeys as referenceKeys } from "@typescript-eslint/visitor-keys";
 import { KEYS as javascriptKeys } from "eslint-visitor-keys";
 import { describe, expect, it } from "vitest";
-import { NODE_KIND_COUNT, NODE_KIND_NAMES, VISITOR_KEYS } from "../../src/index.js";
+import {
+	NODE_KIND_COUNT,
+	NODE_KIND_NAMES,
+	VISITOR_KEYS,
+} from "../../src/index.js";
 
 /** Every node type the parser can produce, in kind order. */
-const NODE_TYPES = Array.from({ length: NODE_KIND_COUNT }, (_, kind) =>
-	NODE_KIND_NAMES[kind],
+const NODE_TYPES = Array.from(
+	{ length: NODE_KIND_COUNT },
+	(_, kind) => NODE_KIND_NAMES[kind],
 ).filter(name => name !== "");
 
 describe("VISITOR_KEYS", () => {
 	it("covers every node kind the parser can emit", () => {
-		expect(Object.keys(VISITOR_KEYS).sort()).toEqual([...NODE_TYPES].sort());
+		expect(Object.keys(VISITOR_KEYS).sort()).toEqual(
+			[...NODE_TYPES].sort(),
+		);
 	});
 
 	describe("matches @typescript-eslint/visitor-keys", () => {
@@ -42,7 +49,8 @@ describe("VISITOR_KEYS", () => {
 	 */
 	it("keeps every JavaScript key eslint-visitor-keys names, in order", () => {
 		for (const type of NODE_TYPES) {
-			const expected = javascriptKeys[type as keyof typeof javascriptKeys];
+			const expected =
+				javascriptKeys[type as keyof typeof javascriptKeys];
 
 			if (!expected) {
 				continue;

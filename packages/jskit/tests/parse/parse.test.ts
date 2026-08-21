@@ -165,7 +165,9 @@ describe("the `in` operator in a `for` head", () => {
 		expect(() =>
 			parse("for (let f = function (a = b in c) {}; ;);"),
 		).not.toThrow();
-		expect(() => parse("for (let f = (a = b in c) => {}; ;);")).not.toThrow();
+		expect(() =>
+			parse("for (let f = (a = b in c) => {}; ;);"),
+		).not.toThrow();
 	});
 
 	it("allows `in` inside a function body written in the init", () => {
@@ -272,8 +274,7 @@ describe("parent lookup", () => {
 		const nodeCount = new AstReader(parse(code)).nodeCount;
 
 		expect(
-			parse(code, { parents: true }).byteLength -
-				parse(code).byteLength,
+			parse(code, { parents: true }).byteLength - parse(code).byteLength,
 		).toBe(nodeCount * 4);
 	});
 
@@ -377,9 +378,11 @@ describe("parent lookup", () => {
 		 * record whose slots could still name children that now belong to
 		 * something else. It is discarded for exactly that reason.
 		 */
-		const reader = new AstReader(parse("new Map<string, number>();", {
-			parents: true,
-		}));
+		const reader = new AstReader(
+			parse("new Map<string, number>();", {
+				parents: true,
+			}),
+		);
 
 		for (let node = 1; node < reader.nodeCount; node++) {
 			if (reader.kind(node) !== N_NewExpression) {
@@ -401,7 +404,10 @@ describe("parent lookup", () => {
 	});
 
 	it("survives a transfer, since the table is in the buffer", () => {
-		const transferred = parse(PROGRAM, { embedSource: true, parents: true }).slice(0);
+		const transferred = parse(PROGRAM, {
+			embedSource: true,
+			parents: true,
+		}).slice(0);
 		const reader = new AstReader(transferred);
 		const first = reader.listItem(reader.field(reader.root, NODE_A), 0);
 
@@ -877,7 +883,7 @@ describe("program extent", () => {
 
 describe("embedSource", () => {
 	/** A program with a name and a string worth reading back. */
-	const CODE = "const answer = \"forty-two\";";
+	const CODE = 'const answer = "forty-two";';
 
 	/**
 	 * Copies a buffer's bytes into a fresh `ArrayBuffer`, which is what a
@@ -901,7 +907,10 @@ describe("embedSource", () => {
 	});
 
 	it("reads text off either buffer in the parsing process", () => {
-		for (const result of [parse(CODE), parse(CODE, { embedSource: true })]) {
+		for (const result of [
+			parse(CODE),
+			parse(CODE, { embedSource: true }),
+		]) {
 			const reader = new AstReader(result);
 
 			expect(reader.source).toBe(CODE);

@@ -570,7 +570,10 @@ const derived = new Map();
 
 for (const name of ["fill", "fillTypeNode"]) {
 	readSwitch(
-		find(method(toAstTree, name), node => node.type === "SwitchStatement")[0],
+		find(
+			method(toAstTree, name),
+			node => node.type === "SwitchStatement",
+		)[0],
 		toAstSource,
 		derived,
 	);

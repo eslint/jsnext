@@ -60,8 +60,9 @@ describe("sourceType", () => {
 	});
 
 	it("allows await as a name in a script", () => {
-		expect(messages("var await = 1; await.x;", { sourceType: "script" }))
-			.toEqual([]);
+		expect(
+			messages("var await = 1; await.x;", { sourceType: "script" }),
+		).toEqual([]);
 	});
 
 	it("reports the position of the problem", () => {
@@ -118,9 +119,7 @@ describe("strict mode", () => {
 
 	it("rejects a legacy escape in a strict string", () => {
 		for (const code of ['"\\1";', '"\\052";', '"\\8";', '"\\9";']) {
-			expect(messages(code)).toEqual([
-				expect.stringMatching(/Octal/u),
-			]);
+			expect(messages(code)).toEqual([expect.stringMatching(/Octal/u)]);
 			expect(
 				messages(code, { dialect: "js", sourceType: "script" }),
 			).toEqual([]);
@@ -170,7 +169,10 @@ describe("strict mode", () => {
 
 		expect(messages('("use strict"); with (a) { b; }', script)).toEqual([]);
 		expect(
-			messages('function f() { ("use strict"); with (a) { b; } }', script),
+			messages(
+				'function f() { ("use strict"); with (a) { b; } }',
+				script,
+			),
 		).toEqual([]);
 	});
 
@@ -298,9 +300,9 @@ describe("declarations", () => {
 	});
 
 	it("reports a repeated declarator in one annotated statement", () => {
-		expect(
-			messages("const a: string = '', a: number = 1;"),
-		).toHaveLength(1);
+		expect(messages("const a: string = '', a: number = 1;")).toHaveLength(
+			1,
+		);
 	});
 
 	it("reports a repeated annotated parameter", () => {
@@ -322,9 +324,9 @@ describe("declarations", () => {
 	 * rather than about this file, so the reading that accepts wins.
 	 */
 	it("allows a value to take the name of a type-only import", () => {
-		expect(
-			messages("import type { A } from 'm'; let A: number;"),
-		).toEqual([]);
+		expect(messages("import type { A } from 'm'; let A: number;")).toEqual(
+			[],
+		);
 	});
 
 	it("allows a value to take the name of an inline type import", () => {
@@ -386,7 +388,9 @@ describe("declarations", () => {
 	});
 
 	it("reports a lexical redeclaration across switch cases", () => {
-		expect(messages("switch (q) { case 1: let a; case 2: let a; }")).toHaveLength(1);
+		expect(
+			messages("switch (q) { case 1: let a; case 2: let a; }"),
+		).toHaveLength(1);
 	});
 
 	it("allows the same name in separate blocks of one switch case", () => {
@@ -432,9 +436,9 @@ describe("function declarations", () => {
 	});
 
 	it("allows repeated functions in a function scope, even in strict mode", () => {
-		expect(messages("function g(){ function a(){} function a(){} }")).toEqual(
-			[],
-		);
+		expect(
+			messages("function g(){ function a(){} function a(){} }"),
+		).toEqual([]);
 	});
 
 	it("reports repeated functions at the top level of a module", () => {
@@ -503,9 +507,9 @@ describe("function declarations", () => {
 
 	// A static block is a variable scope. See docs/deviations.md.
 	it("treats a static block as a variable scope", () => {
-		expect(messages("class C { static { var a; function a(){} } }")).toEqual(
-			[],
-		);
+		expect(
+			messages("class C { static { var a; function a(){} } }"),
+		).toEqual([]);
 		expect(
 			messages("class C { static { function a(){} function a(){} } }"),
 		).toEqual([]);
@@ -584,9 +588,7 @@ describe("eval and arguments", () => {
 
 	it("allows arguments as an overload signature's parameter", () => {
 		expect(
-			messages(
-				"declare function f(...arguments: unknown[]): void;",
-			),
+			messages("declare function f(...arguments: unknown[]): void;"),
 		).toEqual([]);
 	});
 
@@ -623,9 +625,11 @@ describe("break and continue", () => {
 	});
 
 	it("reports a continue naming a label that is not on a loop", () => {
-		expect(messages("L: { continue L; }", { sourceType: "script" })).toEqual(
-			["Label 'L' is not on a loop, so 'continue' cannot name it."],
-		);
+		expect(
+			messages("L: { continue L; }", { sourceType: "script" }),
+		).toEqual([
+			"Label 'L' is not on a loop, so 'continue' cannot name it.",
+		]);
 	});
 
 	it("follows a chain of labels to what it ends at", () => {
@@ -725,9 +729,9 @@ describe("let as a bound name", () => {
 		expect(messages("function let() {}", { sourceType: "script" })).toEqual(
 			[],
 		);
-		expect(messages("function f(let) {}", { sourceType: "script" })).toEqual(
-			[],
-		);
+		expect(
+			messages("function f(let) {}", { sourceType: "script" }),
+		).toEqual([]);
 	});
 });
 
@@ -786,9 +790,9 @@ describe("for statement heads", () => {
 	 * lexical.
 	 */
 	it("reports async as a for-of target", () => {
-		expect(messages("for (async of []);", { sourceType: "script" })).toEqual(
-			["'async' may not be the target of a for-of loop."],
-		);
+		expect(
+			messages("for (async of []);", { sourceType: "script" }),
+		).toEqual(["'async' may not be the target of a for-of loop."]);
 	});
 
 	it("allows it in parentheses", () => {
@@ -867,7 +871,9 @@ describe("class element names", () => {
 
 	it("counts each class separately", () => {
 		expect(
-			messages("class C { constructor() { class D { constructor() {} } } }"),
+			messages(
+				"class C { constructor() { class D { constructor() {} } } }",
+			),
 		).toEqual([]);
 	});
 
@@ -886,7 +892,9 @@ describe("class element names", () => {
 
 	it("allows an ambient class to declare only signatures", () => {
 		expect(
-			messages("declare class C { constructor(a: string); constructor(a: number); }"),
+			messages(
+				"declare class C { constructor(a: string); constructor(a: number); }",
+			),
 		).toEqual([]);
 	});
 
@@ -950,9 +958,9 @@ describe("single-statement contexts", () => {
 	});
 
 	it("allows a labelled function in sloppy code", () => {
-		expect(messages("l: function f() {}", { sourceType: "script" })).toEqual(
-			[],
-		);
+		expect(
+			messages("l: function f() {}", { sourceType: "script" }),
+		).toEqual([]);
 	});
 
 	it("treats a chain of labels as one position", () => {
@@ -1038,7 +1046,9 @@ describe("module item placement", () => {
 	});
 
 	it("keeps the neighbours of a nested one clean", () => {
-		expect(messages("import a from 'm';\n{ import b from 'm'; }\nexport {};")).toHaveLength(1);
+		expect(
+			messages("import a from 'm';\n{ import b from 'm'; }\nexport {};"),
+		).toHaveLength(1);
 	});
 
 	it("allows an import in an ambient module body", () => {
@@ -1066,9 +1076,9 @@ describe("rest elements", () => {
 	 * `declarePattern()` for a binding.
 	 */
 	it("reports one that is not last in an array binding", () => {
-		expect(messages("var [...a, b] = x;", { sourceType: "script" })).toEqual([
-			"A rest element must be the last element.",
-		]);
+		expect(
+			messages("var [...a, b] = x;", { sourceType: "script" }),
+		).toEqual(["A rest element must be the last element."]);
 	});
 
 	it("reports one that is not last in an array target", () => {
@@ -1078,9 +1088,9 @@ describe("rest elements", () => {
 	});
 
 	it("reports one that is not last in an object binding", () => {
-		expect(messages("var {...a, b} = x;", { sourceType: "script" })).toEqual(
-			["A rest element must be the last element."],
-		);
+		expect(
+			messages("var {...a, b} = x;", { sourceType: "script" }),
+		).toEqual(["A rest element must be the last element."]);
 	});
 
 	it("reaches a pattern nested inside another", () => {
@@ -1134,9 +1144,9 @@ describe("rest elements", () => {
 	 * binding, and so takes any target.
 	 */
 	it("reports a pattern as an object binding's rest", () => {
-		expect(messages("var {...{a}} = x;", { sourceType: "script" })).toEqual([
-			"A rest element in an object pattern must be an identifier.",
-		]);
+		expect(messages("var {...{a}} = x;", { sourceType: "script" })).toEqual(
+			["A rest element in an object pattern must be an identifier."],
+		);
 	});
 
 	it("allows a member access as an object target's rest", () => {
@@ -1182,9 +1192,9 @@ describe("switch statements", () => {
 	});
 
 	it("allows one default among any number of cases", () => {
-		expect(messages("switch (q) { case 1: ; default: ; case 2: ; }")).toEqual(
-			[],
-		);
+		expect(
+			messages("switch (q) { case 1: ; default: ; case 2: ; }"),
+		).toEqual([]);
 		expect(messages("switch (q) {}")).toEqual([]);
 	});
 });
@@ -1253,9 +1263,9 @@ describe("new.target and import.meta", () => {
 	 * nothing at all.
 	 */
 	it("refuses an escape in either name", () => {
-		expect(
-			messages("function f() { new.t\\u0061rget; }", script),
-		).toEqual(["'new.target' may not be written with an escape."]);
+		expect(messages("function f() { new.t\\u0061rget; }", script)).toEqual([
+			"'new.target' may not be written with an escape.",
+		]);
 		expect(messages("import.m\\u0065ta;")).toEqual([
 			"'import.meta' may not be written with an escape.",
 		]);
@@ -1277,9 +1287,9 @@ describe("new.target and import.meta", () => {
 	it("takes new.target in every body that has one", () => {
 		expect(messages("function f() { new.target; }", script)).toEqual([]);
 		expect(messages("class C { m() { new.target; } }", script)).toEqual([]);
-		expect(
-			messages("function f() { () => new.target; }", script),
-		).toEqual([]);
+		expect(messages("function f() { () => new.target; }", script)).toEqual(
+			[],
+		);
 		expect(messages("class C { static { new.target; } }", script)).toEqual(
 			[],
 		);
@@ -1315,10 +1325,7 @@ describe("class static blocks", () => {
 			"An await expression may not appear in a class static block.",
 		]);
 		expect(
-			messages(
-				"function* g() { class C { static { yield; } } }",
-				script,
-			),
+			messages("function* g() { class C { static { yield; } } }", script),
 		).toEqual([
 			"A yield expression may not appear in a class static block.",
 		]);
@@ -1354,18 +1361,16 @@ describe("module exports", () => {
 		expect(
 			messages("var x; export { x as z }; export * as z from 'm';"),
 		).toHaveLength(1);
-		expect(
-			messages("export function f() {} export { f };"),
-		).toHaveLength(1);
+		expect(messages("export function f() {} export { f };")).toHaveLength(
+			1,
+		);
 		expect(
 			messages("export const { a, b } = q; export { a };"),
 		).toHaveLength(1);
 	});
 
 	it("allows each name once", () => {
-		expect(
-			messages("var x; export { x }; export default 1;"),
-		).toEqual([]);
+		expect(messages("var x; export { x }; export default 1;")).toEqual([]);
 		expect(messages("export * from 'm'; export * from 'n';")).toEqual([]);
 		expect(messages("export const q = 1; export { q as w };")).toEqual([]);
 	});
@@ -1386,9 +1391,7 @@ describe("module exports", () => {
 		expect(messages("{ var v; } export { v };")).toEqual([]);
 		expect(messages("import a from 'm'; export { a };")).toEqual([]);
 		expect(messages("interface I {} export { I };")).toEqual([]);
-		expect(
-			messages("import p = require('m'); export { p };"),
-		).toEqual([]);
+		expect(messages("import p = require('m'); export { p };")).toEqual([]);
 	});
 
 	/*
@@ -1418,9 +1421,7 @@ describe("module exports", () => {
 	});
 
 	it("takes a paired surrogate", () => {
-		expect(
-			messages("export { '\ud83c\udf19' } from 'm';"),
-		).toEqual([]);
+		expect(messages("export { '\ud83c\udf19' } from 'm';")).toEqual([]);
 	});
 
 	/*
@@ -1429,7 +1430,9 @@ describe("module exports", () => {
 	 */
 	it("reports a repeated import attribute", () => {
 		expect(
-			messages("import x from 'm' with { type: 'json', 'typ\u0065': '' };"),
+			messages(
+				"import x from 'm' with { type: 'json', 'typ\u0065': '' };",
+			),
 		).toEqual(["Duplicate import attribute 'type'."]);
 		expect(
 			messages("import 'm' with { type: 'json', type: '' };"),
@@ -1440,9 +1443,9 @@ describe("module exports", () => {
 	});
 
 	it("allows distinct attributes", () => {
-		expect(
-			messages("import x from 'm' with { a: '1', b: '2' };"),
-		).toEqual([]);
+		expect(messages("import x from 'm' with { a: '1', b: '2' };")).toEqual(
+			[],
+		);
 	});
 });
 
@@ -1677,9 +1680,9 @@ describe("using declarations", () => {
 		expect(messages("try {} catch (e) { using a = 1; }", script)).toEqual(
 			[],
 		);
-		expect(
-			messages("class C { static { using a = 1; } }", script),
-		).toEqual([]);
+		expect(messages("class C { static { using a = 1; } }", script)).toEqual(
+			[],
+		);
 		expect(messages("for (using a = 1;;) ;", script)).toEqual([]);
 	});
 });
@@ -1752,7 +1755,9 @@ describe("template literals", () => {
 	 * ordinary one that happens to be interpolated into the same declaration.
 	 */
 	it("still reports one in an expression beside a template literal type", () => {
-		expect(messages("type T = `\\u{}`; const a = `\\u{}`;")).toHaveLength(1);
+		expect(messages("type T = `\\u{}`; const a = `\\u{}`;")).toHaveLength(
+			1,
+		);
 	});
 });
 
@@ -1774,9 +1779,7 @@ describe("ambient declarations", () => {
 	});
 
 	it("allows a const inside an ambient module", () => {
-		expect(messages("declare module 'm' { const a: number; }")).toEqual(
-			[],
-		);
+		expect(messages("declare module 'm' { const a: number; }")).toEqual([]);
 	});
 
 	it("allows a const inside an ambient namespace", () => {
@@ -1787,7 +1790,9 @@ describe("ambient declarations", () => {
 
 	it("carries ambience into a nested namespace", () => {
 		expect(
-			messages("declare namespace N { namespace M { const a: number; } }"),
+			messages(
+				"declare namespace N { namespace M { const a: number; } }",
+			),
 		).toEqual([]);
 	});
 
@@ -1837,15 +1842,15 @@ describe("ambient declarations", () => {
 	});
 
 	it("still reports two ambient classes", () => {
-		expect(
-			messages("declare class f {}\ndeclare class f {}"),
-		).toHaveLength(1);
+		expect(messages("declare class f {}\ndeclare class f {}")).toHaveLength(
+			1,
+		);
 	});
 
 	it("still reports a signature beside a class that is not ambient", () => {
-		expect(messages("declare function f(): void;\nclass f {}")).toHaveLength(
-			1,
-		);
+		expect(
+			messages("declare function f(): void;\nclass f {}"),
+		).toHaveLength(1);
 	});
 
 	it("still reports an ambient const beside an ambient class", () => {
@@ -2022,9 +2027,7 @@ describe("parameter properties", () => {
 
 	it("still reports one after a defaulted parameter property", () => {
 		expect(
-			messages(
-				'class C { constructor(public x = 1) { "use strict"; } }',
-			),
+			messages('class C { constructor(public x = 1) { "use strict"; } }'),
 		).toEqual([expect.stringMatching(/non-simple parameter list/u)]);
 	});
 });
@@ -2085,9 +2088,9 @@ describe("definite assignment assertions", () => {
 	});
 
 	it("reports one on an abstract property", () => {
-		expect(
-			messages("abstract class C { abstract x!: number; }"),
-		).toEqual([expect.stringMatching(/not allowed here/u)]);
+		expect(messages("abstract class C { abstract x!: number; }")).toEqual([
+			expect.stringMatching(/not allowed here/u),
+		]);
 	});
 
 	/*
@@ -2095,9 +2098,7 @@ describe("definite assignment assertions", () => {
 	 * itself, not the ambient context it may sit in.
 	 */
 	it("allows one inside an ambient namespace", () => {
-		expect(messages("declare namespace N { let x!: number; }")).toEqual(
-			[],
-		);
+		expect(messages("declare namespace N { let x!: number; }")).toEqual([]);
 	});
 });
 
@@ -2108,15 +2109,15 @@ describe("abstract class elements", () => {
 	 * abstract member is supposed to be.
 	 */
 	it("allows an abstract method signature", () => {
-		expect(
-			messages("abstract class C { abstract m(): void; }"),
-		).toEqual([]);
+		expect(messages("abstract class C { abstract m(): void; }")).toEqual(
+			[],
+		);
 	});
 
 	it("allows an abstract property with only a type", () => {
-		expect(
-			messages("abstract class C { abstract x: number; }"),
-		).toEqual([]);
+		expect(messages("abstract class C { abstract x: number; }")).toEqual(
+			[],
+		);
 	});
 
 	it("allows an abstract accessor signature", () => {
@@ -2138,9 +2139,9 @@ describe("abstract class elements", () => {
 	});
 
 	it("reports an abstract setter with a body", () => {
-		expect(
-			messages("abstract class C { abstract set x(v) {} }"),
-		).toEqual([expect.stringMatching(/may not have an implementation/u)]);
+		expect(messages("abstract class C { abstract set x(v) {} }")).toEqual([
+			expect.stringMatching(/may not have an implementation/u),
+		]);
 	});
 
 	it("reports an abstract property with an initializer", () => {
@@ -2168,15 +2169,15 @@ describe("ambient function declarations", () => {
 	});
 
 	it("reports a declared async function", () => {
-		expect(
-			messages("declare async function f(): Promise<void>;"),
-		).toEqual([expect.stringMatching(/may not be async/u)]);
+		expect(messages("declare async function f(): Promise<void>;")).toEqual([
+			expect.stringMatching(/may not be async/u),
+		]);
 	});
 
 	it("reports a declared generator", () => {
-		expect(
-			messages("declare function* f(): Iterable<number>;"),
-		).toEqual([expect.stringMatching(/may not be a generator/u)]);
+		expect(messages("declare function* f(): Iterable<number>;")).toEqual([
+			expect.stringMatching(/may not be a generator/u),
+		]);
 	});
 
 	/*
@@ -2190,9 +2191,7 @@ describe("ambient function declarations", () => {
 	});
 
 	it("still allows an ordinary generator and async function", () => {
-		expect(messages("function* g() {}\nasync function h() {}")).toEqual(
-			[],
-		);
+		expect(messages("function* g() {}\nasync function h() {}")).toEqual([]);
 	});
 
 	/*
@@ -2200,9 +2199,7 @@ describe("ambient function declarations", () => {
 	 * the ambient context around it.
 	 */
 	it("allows a function with a body inside an ambient namespace", () => {
-		expect(messages("declare namespace N { function f() {} }")).toEqual(
-			[],
-		);
+		expect(messages("declare namespace N { function f() {} }")).toEqual([]);
 	});
 
 	it("allows a method with a body in an ambient class", () => {
@@ -2262,9 +2259,7 @@ describe("modifier placement", () => {
 	});
 
 	it("reports an accessibility modifier on an index signature", () => {
-		expect(
-			messages("class C { public [k: string]: number; }"),
-		).toEqual([
+		expect(messages("class C { public [k: string]: number; }")).toEqual([
 			expect.stringMatching(/may not have an accessibility modifier/u),
 		]);
 	});
@@ -2428,9 +2423,7 @@ describe("a class outside its body", () => {
 	});
 
 	it("still allows all three under dialect ts", () => {
-		expect(
-			messages("class C<T> extends B<T> implements I {}"),
-		).toEqual([]);
+		expect(messages("class C<T> extends B<T> implements I {}")).toEqual([]);
 	});
 });
 
@@ -2517,9 +2510,7 @@ describe("import meta-properties and type-only imports", () => {
 
 	it("allows a type-only default or named import alone", () => {
 		expect(
-			messages(
-				"import type A from 'm';\nimport type { B } from 'n';",
-			),
+			messages("import type A from 'm';\nimport type { B } from 'n';"),
 		).toEqual([]);
 	});
 
@@ -2603,9 +2594,9 @@ describe("legacy octals in TypeScript", () => {
 	});
 
 	it("reports an octal escape in a sloppy script", () => {
-		expect(
-			messages('var s = "\\1";', { sourceType: "script" }),
-		).toEqual([expect.stringMatching(/not allowed in TypeScript/u)]);
+		expect(messages('var s = "\\1";', { sourceType: "script" })).toEqual([
+			expect.stringMatching(/not allowed in TypeScript/u),
+		]);
 	});
 
 	it("still allows both under dialect js in a sloppy script", () => {
@@ -2630,9 +2621,9 @@ describe("legacy octals in TypeScript", () => {
 
 describe("for-in and for-of head annotations", () => {
 	it("allows an unannotated binding", () => {
-		expect(messages("for (const x of y) {}\nfor (const k in y) {}")).toEqual(
-			[],
-		);
+		expect(
+			messages("for (const x of y) {}\nfor (const k in y) {}"),
+		).toEqual([]);
 	});
 
 	/*

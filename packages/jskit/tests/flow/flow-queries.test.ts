@@ -45,9 +45,7 @@ describe("writes", () => {
 		const symbols = writesOf(tree.graphs[0]).map(write => write.symbol);
 
 		expect(symbols).toEqual(["a", "c"]);
-		expect(
-			writesOf(tree.graphs[0]).every(write => write.init),
-		).toBe(true);
+		expect(writesOf(tree.graphs[0]).every(write => write.init)).toBe(true);
 	});
 
 	it("records member writes with no symbol", () => {
@@ -229,9 +227,15 @@ describe("the node-block index", () => {
 		);
 
 		// The block a `return` leaves behind, which nothing branches into.
-		expect(fixture.reader.isReachable(
-			handleAt(fixture, "VariableDeclaration", code.indexOf("const g")),
-		)).toBe(false);
+		expect(
+			fixture.reader.isReachable(
+				handleAt(
+					fixture,
+					"VariableDeclaration",
+					code.indexOf("const g"),
+				),
+			),
+		).toBe(false);
 
 		/*
 		 * Each of these starts a graph of its own, whose entry block is
@@ -258,7 +262,11 @@ describe("the node-block index", () => {
 		// The closure is never created, but its body is its own unit.
 		expect(
 			fixture.reader.isReachable(
-				handleAt(fixture, "ArrowFunctionExpression", code.indexOf("()", 20)),
+				handleAt(
+					fixture,
+					"ArrowFunctionExpression",
+					code.indexOf("()", 20),
+				),
 			),
 		).toBe(false);
 		expect(
@@ -360,9 +368,7 @@ describe("input validation", () => {
 		const scope = analyzeTree(program as never, { sourceType: "module" });
 		const { parsed } = graphOf("const a = 1;");
 
-		expect(() => createGraph(parsed, scope)).toThrow(
-			/tree handles/u,
-		);
+		expect(() => createGraph(parsed, scope)).toThrow(/tree handles/u);
 	});
 
 	it("refuses buffers that are not what they claim", () => {
@@ -370,12 +376,8 @@ describe("input validation", () => {
 
 		expect(() => createGraph(scope, scope)).toThrow(TypeError);
 		expect(() => createGraph(parsed, parsed)).toThrow(TypeError);
-		expect(() => toGraphTree(parsed, parsed, scope)).toThrow(
-			TypeError,
-		);
-		expect(() => toGraphTree(flow, parsed, parsed)).toThrow(
-			TypeError,
-		);
+		expect(() => toGraphTree(parsed, parsed, scope)).toThrow(TypeError);
+		expect(() => toGraphTree(flow, parsed, parsed)).toThrow(TypeError);
 	});
 });
 
@@ -391,8 +393,7 @@ describe("edges read both ways", () => {
 					expect(
 						tree.graphs
 							.flatMap(g => g.blocks)
-							.find(b => b.blockId === edge.to)!
-							.predecessors,
+							.find(b => b.blockId === edge.to)!.predecessors,
 					).toContain(block.blockId);
 				}
 			}

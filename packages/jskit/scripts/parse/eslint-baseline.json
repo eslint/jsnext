@@ -1,7 +1,7 @@
 {
-	"no-eval": 1,
-	"no-invalid-this": 3,
-	"no-unused-expressions": 4,
-	"no-use-before-define": 1,
-	"strict": 9
+  "no-eval": 1,
+  "no-invalid-this": 3,
+  "no-unused-expressions": 4,
+  "no-use-before-define": 1,
+  "strict": 9
 }

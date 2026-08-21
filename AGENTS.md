@@ -4,9 +4,9 @@ An npm workspace holding a fast, ESLint-compatible toolchain for the latest
 JavaScript, TypeScript, and JSX syntax. TypeScript source, bundled with
 `esbuild`, tested with `vitest`.
 
-| Package | Name | What it does |
-| ------- | ---- | ------------ |
-| `packages/jskit` | `@eslint/jskit` | The toolkit: parser, scope analyzer, and control flow analyzer, in one package with one entry point. |
+| Package                  | Name                    | What it does                                                                                                                                                                                                                                                                     |
+| ------------------------ | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/jskit`         | `@eslint/jskit`         | The toolkit: parser, scope analyzer, and control flow analyzer, in one package with one entry point.                                                                                                                                                                             |
 | `packages/jskit-inspect` | `@eslint/jskit-inspect` | Web app (Astro + React) that runs all three in the browser: code in a left-hand editor, AST/scope/flow trees in tabs on the right, with the flow tab offering a Mermaid diagram of one chosen execution unit. Its `dev`/`build`/`typecheck` scripts build `@eslint/jskit` first. |
 
 **The three analyses are directories, not packages.** `parse`, `scope`, and
@@ -61,7 +61,7 @@ debugging view through `toScopeTree()`. The format is specified in
 A change to the walk's decisions belongs
 in `referencer.ts`, a change to binding/resolution semantics in
 `scope-builder.ts`, and either lands on both representations; a change to how
-a node is *read* belongs in `binary-ast.ts` or `estree-ast.ts` and must be
+a node is _read_ belongs in `binary-ast.ts` or `estree-ast.ts` and must be
 made in both, answering the same question the same way.
 
 Two consequences worth knowing before you touch it:
@@ -86,7 +86,7 @@ Two things that are easy to miss when matching the surrounding code:
 - The existing classes in `src/parse/` use TypeScript's `private`
   modifier rather than `#` fields. New code should follow the style guide, but
   do not churn existing files to match.
-  
+
 ## Performance
 
 This project is meant to be highly-performant. When writing code, follow the guidelines in [`performance.md`](./docs/performance.md).
@@ -133,10 +133,14 @@ Run from the repository root; every one delegates to the workspaces, and any of
 them takes `--workspace=@eslint/jskit` to narrow it.
 
 ```bash
-npm test           # vitest, ~3300 tests
+npm test           # vitest, ~3500 tests
 npm run test:coverage # the same run, with a coverage report and its gate
+npm run test:affected -- <area>...  # only the tests those areas can break
 npm run typecheck  # tsc --noEmit
 npm run lint       # builds first, then lints this repo with its own parser
+npm run lint:fix   # the same, applying what is fixable
+npm run fmt        # prettier --write .
+npm run fmt:check  # prettier --check ., which is what CI runs
 npm run build      # esbuild bundles + .d.ts files
 npm run conformance   # differential tests against every reference implementation
 npm run bench      # performance comparisons
@@ -150,6 +154,99 @@ The conformance scripts and benchmarks import `dist/` too. Plain `node` cannot
 execute the sources directly, because of those `.js` import specifiers. Build
 first.
 
+## Formatting, hooks, and CI
+
+**`prettier` owns formatting and `eslint` owns everything else.** The style is
+the one `docs/javascript.md` describes — tabs at width 4, double quotes — so
+turning the formatter on did not restyle the codebase out from under anyone.
+JSON is indented with two spaces instead, because npm rewrites `package.json`
+that way on every install and any other setting guarantees a diff.
+
+`yorkie` installs a `pre-commit` hook that runs `lint-staged`, which runs
+`eslint --fix` and then `prettier --write` over the staged files. Two things
+follow from that:
+
+- **The hook needs `dist/` to exist**, since `eslint.config.js` lints this
+  repository with its own parser. The root `prepare` script builds the toolkit
+  on every `npm install`, so a fresh clone is ready; if you have deleted
+  `dist/` by hand, `npm run build` before committing.
+- **`yorkie` only installs the hook if its install script is allowed to run.**
+  npm gates that behind the `allowScripts` block in the root `package.json`.
+  Bumping `yorkie` means updating the version pinned there, or the hook
+  silently stops being installed.
+
+`.npmrc` sets `legacy-peer-deps=true`. `@babel/eslint-parser` — a contender in
+the parser benchmark, and nothing else — still declares a peer range that stops
+at ESLint 9, and without this both `npm install` and `npm ci` fail outright.
+
+### The CI run only tests what the change can reach
+
+The work is split in two, and the split is the thing to understand before
+changing either half.
+
+`.github/workflows/ci.yml` decides **which areas a diff touched**, declaratively,
+with a set of path filters. `packages/jskit/scripts/test-affected.mjs` decides
+**what that implies**, by expanding those areas into the cascade the stack
+forces: `scope/` reads what `parse/` produced and `flow/` reads what both
+produced, so blast radius runs downstream and never up. The cascade is a fact
+about the source layout rather than about CI, which is why it is not in the
+workflow.
+
+| Changed         | Tests run   | Conformance                                                 |
+| --------------- | ----------- | ----------------------------------------------------------- |
+| `src/parse/`    | all three   | parse and scope                                             |
+| `src/scope/`    | scope, flow | scope                                                       |
+| `src/flow/`     | flow        | none — there is no reference implementation to diff against |
+| anything shared | all three   | parse and scope                                             |
+| prose only      | none        | none                                                        |
+
+**"Anything shared" is a default rather than a list.** The `all` filter is
+written as `**` followed by an exclusion per area, and the action runs with
+`predicate-quantifier: some-with-excludes`, so a file matches it when some
+pattern includes it and none excludes it. Read plainly, `all` means "everything
+not already accounted for" — the lockfile, `src/index.ts`, `vitest.config.ts`,
+the tsconfigs, the build and conformance scripts, and the workflow itself all
+land there, and so does a file in a directory nobody has thought of yet. That
+last part is the point: **a new subdirectory of `src/` runs the whole suite
+rather than silently running nothing.** Only Markdown, `docs/`, the agent
+directories, and the web app are excluded from it, and each of those is listed
+explicitly.
+
+Adding an area means adding its filter, adding its exclusion from `all`, and
+adding it to `DOWNSTREAM` in `test-affected.mjs`. Miss the exclusion and the
+new area merely runs everything; miss the filter and it runs everything too.
+Both failures are safe in the direction that matters.
+
+`dorny/paths-filter` is pinned by commit SHA, not by tag. A tag can be moved to
+point at different code; this repository lints itself with its own parser and
+publishes to npm from CI, so an action that can change under it is not worth
+the convenience.
+
+**The coverage gate is applied to the areas that ran**, not to all of `src/`,
+because a partial run cannot be held to a number the full suite earns. That
+works because each area clears the same 95% on its own, so narrowing the
+measurement narrows what is checked without lowering the bar. Adding an area
+that does not clear it on its own would break this, and the fix is tests rather
+than a lower threshold.
+
+`ci_success` is the check to require in branch protection. Requiring the gated
+jobs directly would block every merge where one of them correctly skipped.
+
+### Releases
+
+`release-please` watches `main`, keeps a release pull request open, and turns
+its merge into a tag and an npm publish. The version lives in
+`.release-please-manifest.json`; `release-please-config.json` lists the one
+public package, since `@eslint/jskit-inspect` is private and is not released.
+There is no JSR configuration and none is wanted.
+
+Publishing goes through npm trusted publishing, which authenticates with the
+workflow's OIDC token, so no npm secret is stored. The one secret the workflow
+does look for is `WORKFLOW_PUSH_BOT_TOKEN`, and it falls back to the built-in
+`GITHUB_TOKEN` — with the fallback the release pull request will not run CI,
+because pushes made with the built-in token deliberately do not trigger
+workflows.
+
 ## The rule that decides where code goes
 
 Parsing is split into three phases, and the dividing line is **whether the
@@ -158,7 +255,7 @@ answer depends on context the text alone does not supply**.
 - `parse()` throws only when the text cannot be tokenized, or the tokens cannot
   be shaped into a tree. It accepts the union of everything JavaScript and
   TypeScript allow.
-- `validate()` reports everything that is merely *not allowed here*: strict
+- `validate()` reports everything that is merely _not allowed here_: strict
   mode violations, redeclarations, `return` outside a function, TypeScript
   syntax under `dialect: "js"`, JSX without `jsx: true`, a mismatched JSX
   closing tag.
@@ -170,13 +267,13 @@ file is a `.d.ts`, belongs in `validate.ts`, even if a reference parser throws
 for it.
 
 **`sourceType` is the exception, and it is the only one.** It is an option of
-*both* phases, because it is the only thing that makes two readings of the same
+_both_ phases, because it is the only thing that makes two readings of the same
 text both valid and different:
 
-| | script | module |
-| --- | --- | --- |
+|           | script              | module         |
+| --------- | ------------------- | -------------- |
 | `await.x` | a member expression | a syntax error |
-| `a <!--b` | `a`, then a comment | `a < !(--b)` |
+| `a <!--b` | `a`, then a comment | `a < !(--b)`   |
 
 No single tree stands for both, so phase 1 has to choose, and it cannot choose
 without being told. `dialect`, `jsx`, and `declaration` never pose that
@@ -187,7 +284,7 @@ outside context" — everything here does — but "would two answers both be
 valid?"
 
 `declaration` is the newest of the three and the clearest case of context the
-text cannot supply: a declaration file is one by its *name*, which is why
+text cannot supply: a declaration file is one by its _name_, which is why
 TypeScript decides it that way too, and why the ESLint parser object reads it
 off the path along with `dialect` and `jsx`.
 
@@ -207,10 +304,10 @@ buffers together.
 `npm test` runs both kinds in one pass. Which one you are writing decides where
 the file goes and what it is allowed to import.
 
-| Kind | Name | Lives | Imports |
-| ---- | ---- | ----- | ------- |
-| Unit | `*.spec.ts` | `src/{parse,scope,flow}/`, beside the module it covers | that one module |
-| Integration | `*.test.ts` | `tests/{parse,scope,flow}/` | `../../src/index.js`, the package's public entry point |
+| Kind        | Name        | Lives                                                  | Imports                                                |
+| ----------- | ----------- | ------------------------------------------------------ | ------------------------------------------------------ |
+| Unit        | `*.spec.ts` | `src/{parse,scope,flow}/`, beside the module it covers | that one module                                        |
+| Integration | `*.test.ts` | `tests/{parse,scope,flow}/`                            | `../../src/index.js`, the package's public entry point |
 
 A **unit test** pins down one module's own behavior: the classification tables
 in `chars.ts`, the escape decoding in `values.ts`, the buffer layouts in
@@ -228,7 +325,7 @@ suites are integration tests, and so is anything that needs a real AST.
 Two mechanical consequences of putting unit tests inside `src/`:
 
 - `tsconfig.build.json` excludes `src/**/*.spec.ts`, so no `.spec.d.ts` lands
-  in `dist/`. `tsconfig.json` does *not* exclude them, which is what
+  in `dist/`. `tsconfig.json` does _not_ exclude them, which is what
   typechecks them.
 - `vitest.config.ts` lists both globs. A `.spec.ts` file under `tests/`, or a
   `.test.ts` file under `src/`, is simply never run.
@@ -347,7 +444,7 @@ baseline unchanged
 
 **Read its two counts differently from test262's.** **missed** is a rule that
 is not implemented yet, and is the count to drive down. **overzealous** is
-mostly this parser being *right*: `@typescript-eslint/parser` enforces a small
+mostly this parser being _right_: `@typescript-eslint/parser` enforces a small
 subset of the grammar rules `tsc` does and almost no ECMAScript early errors at
 all, so `continue` outside a loop and `with` in strict mode pass through it
 untouched. Read a new one before fixing it.
@@ -373,7 +470,7 @@ this corpus caught the parser rejecting.
 ### What no comparison of outputs can prove
 
 Every run above compares an output — a tree, a token list, a scope graph. None
-of them says whether a *rule* behaves the same, which is the only thing a user
+of them says whether a _rule_ behaves the same, which is the only thing a user
 of `eslintParser` actually sees.
 
 `npm run conformance:eslint --workspace=@eslint/jskit -- <path-to-eslint>` is

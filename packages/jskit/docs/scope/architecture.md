@@ -12,29 +12,29 @@ machinery behind it.
 - [What the analysis is](#what-the-analysis-is)
 - [Source layout](#source-layout)
 - [Two representations, one walk](#two-representations-one-walk)
-  - [The accessor](#the-accessor)
-  - [Nodes are integers, or objects](#nodes-are-integers-or-objects)
-  - [Dispatch](#dispatch)
-  - [The generic child walk](#the-generic-child-walk)
-  - [Slot names](#slot-names)
-  - [Names](#names)
-  - [Tree shaking](#tree-shaking)
+    - [The accessor](#the-accessor)
+    - [Nodes are integers, or objects](#nodes-are-integers-or-objects)
+    - [Dispatch](#dispatch)
+    - [The generic child walk](#the-generic-child-walk)
+    - [Slot names](#slot-names)
+    - [Names](#names)
+    - [Tree shaking](#tree-shaking)
 - [The walk](#the-walk)
-  - [Opening and closing scopes](#opening-and-closing-scopes)
-  - [Patterns](#patterns)
-  - [Value position and type position](#value-position-and-type-position)
-  - [Classes](#classes)
+    - [Opening and closing scopes](#opening-and-closing-scopes)
+    - [Patterns](#patterns)
+    - [Value position and type position](#value-position-and-type-position)
+    - [Classes](#classes)
 - [Resolution](#resolution)
-  - [Delegation](#delegation)
-  - [Dynamic scopes](#dynamic-scopes)
-  - [Implicit globals](#implicit-globals)
-  - [The two resolution rules that are not lexical](#the-two-resolution-rules-that-are-not-lexical)
+    - [Delegation](#delegation)
+    - [Dynamic scopes](#dynamic-scopes)
+    - [Implicit globals](#implicit-globals)
+    - [The two resolution rules that are not lexical](#the-two-resolution-rules-that-are-not-lexical)
 - [The binary scope format](#the-binary-scope-format)
-  - [IDs](#ids)
-  - [Node handles](#node-handles)
-  - [Layout](#layout)
-  - [What is stored and what is re-derived](#what-is-stored-and-what-is-re-derived)
-  - [The consumers](#the-consumers)
+    - [IDs](#ids)
+    - [Node handles](#node-handles)
+    - [Layout](#layout)
+    - [What is stored and what is re-derived](#what-is-stored-and-what-is-re-derived)
+    - [The consumers](#the-consumers)
 - [Reproducing two implementations at once](#reproducing-two-implementations-at-once)
 - [Invariants](#invariants)
 - [Adding a node kind](#adding-a-node-kind)
@@ -248,7 +248,7 @@ function scope under `globalReturn`, and a module scope, and all three close
 together.
 
 A scope's `block` is what identifies it, which is why a class field initializer
-uses the *value* expression as its block rather than the property: the property
+uses the _value_ expression as its block rather than the property: the property
 is not a scope, and the value is what runs.
 
 ### Patterns
@@ -287,7 +287,7 @@ the class even if the outer binding is later reassigned. Both bindings are
 separate `Variable`s in separate scopes with the same definition type.
 
 A method's parameter decorators are the one place where the two reference
-implementations order things differently from each other for the *same*
+implementations order things differently from each other for the _same_
 construct: on a plain function they are evaluated inside the function scope,
 after the parameter; on a method they are evaluated in the class scope, before
 the function scope opens. Both are reproduced, which is what the `isMethod`
@@ -363,7 +363,7 @@ IDs are assigned once, when the buffer is written, and are never renumbered:
   implicit variable a supplied global replaced simply not be emitted.
 - **Definitions** follow their symbols.
 
-Where a record field holds an *optional* ID or index, it is stored as
+Where a record field holds an _optional_ ID or index, it is stored as
 `value + 1` so that `0` can mean "none".
 
 ### Node handles

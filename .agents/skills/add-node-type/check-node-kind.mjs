@@ -33,9 +33,10 @@ const SITES = [
 		label: "kind name",
 		always: true,
 		test: (src, kind, type) =>
-			new RegExp(`names\\[${kind}\\]\\s*=\\s*\n?\\s*"${type}";`, "u").test(
-				src,
-			),
+			new RegExp(
+				`names\\[${kind}\\]\\s*=\\s*\n?\\s*"${type}";`,
+				"u",
+			).test(src),
 	},
 	{
 		file: "packages/jskit/src/parse/slots.ts",
@@ -209,7 +210,9 @@ function stable(value) {
  * this, and reusing their serializer keeps this honest with them.
  */
 const { serializeBinary, serializeReference, firstDifference } = await import(
-	pathToFileURL(new URL("packages/jskit/scripts/scope/serialize.mjs", ROOT).pathname)
+	pathToFileURL(
+		new URL("packages/jskit/scripts/scope/serialize.mjs", ROOT).pathname,
+	)
 );
 
 /** What the JavaScript conformance run compares. */
@@ -233,12 +236,12 @@ function childProps(node) {
 		const value = node[key];
 
 		if (Array.isArray(value)) {
-			return value.some(
-				item => item && typeof item?.type === "string",
-			);
+			return value.some(item => item && typeof item?.type === "string");
 		}
 
-		return value && typeof value === "object" && typeof value.type === "string";
+		return (
+			value && typeof value === "object" && typeof value.type === "string"
+		);
 	});
 }
 
@@ -428,11 +431,15 @@ try {
 			console.log("  ok    node matches the reference parser exactly");
 		} else {
 			failures++;
-			console.log(`  FAIL  node differs\n        ref  ${a}\n        ours ${b}`);
+			console.log(
+				`  FAIL  node differs\n        ref  ${a}\n        ours ${b}`,
+			);
 		}
 	}
 } catch (error) {
-	console.log(`  --    reference parser cannot parse this sample: ${error.message}`);
+	console.log(
+		`  --    reference parser cannot parse this sample: ${error.message}`,
+	);
 }
 
 console.log(

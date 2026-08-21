@@ -233,8 +233,7 @@ function serializeScopes(scopes, toKey, flags) {
 		variables: scope.variables
 			.filter(
 				variable =>
-					!flags.dropLibVariables ||
-					!isLibVariable(scope, variable),
+					!flags.dropLibVariables || !isLibVariable(scope, variable),
 			)
 			.map(variable => ({
 				name: variable.name,

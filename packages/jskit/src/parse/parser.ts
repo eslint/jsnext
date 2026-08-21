@@ -407,10 +407,7 @@ export class Parser extends JsxParser {
 					 * declaration's own start has to be handed down; the
 					 * current token is the `using` that follows it.
 					 */
-					return this.parseVariableStatement(
-						DECL_AWAIT_USING,
-						start,
-					);
+					return this.parseVariableStatement(DECL_AWAIT_USING, start);
 				}
 
 				break;
@@ -607,9 +604,7 @@ export class Parser extends JsxParser {
 				);
 			}
 
-			this.writer.pushList(
-				this.writer.finish(declarator, this.lastEnd),
-			);
+			this.writer.pushList(this.writer.finish(declarator, this.lastEnd));
 		} while (this.eat(T_COMMA));
 
 		this.writer.set(node, NODE_A, this.writer.endList(mark));
@@ -791,7 +786,9 @@ export class Parser extends JsxParser {
 			this.writer.set(
 				node,
 				NODE_B,
-				isOf ? this.parseAssignmentExpression() : this.parseExpression(),
+				isOf
+					? this.parseAssignmentExpression()
+					: this.parseExpression(),
 			);
 			this.expect(T_PAREN_CLOSE);
 			this.writer.set(node, NODE_C, this.parseStatement(true));
@@ -1111,9 +1108,7 @@ export class Parser extends JsxParser {
 			);
 
 			this.writer.set(specifier, NODE_A, this.parseIdentifier());
-			this.writer.pushList(
-				this.writer.finish(specifier, this.lastEnd),
-			);
+			this.writer.pushList(this.writer.finish(specifier, this.lastEnd));
 			this.eat(T_COMMA);
 		}
 
@@ -1126,9 +1121,7 @@ export class Parser extends JsxParser {
 			this.next();
 			this.expect(T_as);
 			this.writer.set(specifier, NODE_A, this.parseIdentifier());
-			this.writer.pushList(
-				this.writer.finish(specifier, this.lastEnd),
-			);
+			this.writer.pushList(this.writer.finish(specifier, this.lastEnd));
 		} else if (this.at(T_BRACE_OPEN)) {
 			this.enterBrace(false);
 
@@ -1205,10 +1198,7 @@ export class Parser extends JsxParser {
 	 * @returns A list handle holding the `ImportAttribute` nodes.
 	 */
 	private parseImportAttributes(): number {
-		if (
-			(!this.at(T_with) && !this.at(T_assert)) ||
-			this.newlineBefore
-		) {
+		if ((!this.at(T_with) && !this.at(T_assert)) || this.newlineBefore) {
 			return 0;
 		}
 
@@ -1230,9 +1220,7 @@ export class Parser extends JsxParser {
 			);
 			this.expect(T_COLON);
 			this.writer.set(attribute, NODE_B, this.parseLiteral());
-			this.writer.pushList(
-				this.writer.finish(attribute, this.lastEnd),
-			);
+			this.writer.pushList(this.writer.finish(attribute, this.lastEnd));
 
 			if (!this.eat(T_COMMA)) {
 				break;
@@ -1524,10 +1512,7 @@ export class Parser extends JsxParser {
 
 				this.next();
 
-				if (
-					!isIdentifierNameKind(this.kind) &&
-					!this.at(T_STRING)
-				) {
+				if (!isIdentifierNameKind(this.kind) && !this.at(T_STRING)) {
 					this.tokenizer.restore(state);
 				} else {
 					this.writer.addFlags(specifier, NF_TYPE_ONLY);
@@ -1552,9 +1537,7 @@ export class Parser extends JsxParser {
 				this.writer.set(specifier, NODE_B, local);
 			}
 
-			this.writer.pushList(
-				this.writer.finish(specifier, this.lastEnd),
-			);
+			this.writer.pushList(this.writer.finish(specifier, this.lastEnd));
 
 			if (!this.eat(T_COMMA)) {
 				break;
@@ -1794,7 +1777,9 @@ export class Parser extends JsxParser {
 			this.writer.set(
 				node,
 				NODE_A,
-				this.at(T_STRING) ? this.parseLiteral() : this.parseEntityName(),
+				this.at(T_STRING)
+					? this.parseLiteral()
+					: this.parseEntityName(),
 			);
 		}
 

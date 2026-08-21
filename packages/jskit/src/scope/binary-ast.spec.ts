@@ -71,7 +71,9 @@ describe("BinaryAst", () => {
 			expect(ast.kind(identifier)).toBe(N_Identifier);
 			expect(ast.typeName(identifier)).toBe("Identifier");
 			expect(ast.typeName(reader.root)).toBe("Program");
-			expect([ast.start(identifier), ast.end(identifier)]).toEqual([0, 1]);
+			expect([ast.start(identifier), ast.end(identifier)]).toEqual([
+				0, 1,
+			]);
 		});
 
 		it("reports an empty slot as null", () => {
@@ -103,16 +105,14 @@ describe("BinaryAst", () => {
 			const { ast, reader } = read("a;");
 
 			expect(ast.unknownChildren()).toEqual([]);
-			expect(ast.unknownChildren()).toBe(
-				ast.unknownChildren(),
-			);
+			expect(ast.unknownChildren()).toBe(ast.unknownChildren());
 			expect(reader.nodeCount).toBeGreaterThan(1);
 		});
 	});
 
 	describe("names", () => {
 		it("stops a name where the annotation begins", () => {
-			const { ast, reader } = read("let abc: string;", { });
+			const { ast, reader } = read("let abc: string;", {});
 			const identifier = find(reader, N_Identifier);
 
 			expect(ast.name(identifier)).toBe("abc");
@@ -134,9 +134,9 @@ describe("BinaryAst", () => {
 			const plain = read("enum E { 'ab' = 1 }");
 			const escaped = read("enum E { '\\u0061b' = 1 }");
 
-			expect(
-				plain.ast.literalString(find(plain.reader, N_Literal)),
-			).toBe("ab");
+			expect(plain.ast.literalString(find(plain.reader, N_Literal))).toBe(
+				"ab",
+			);
 			expect(
 				escaped.ast.literalString(find(escaped.reader, N_Literal)),
 			).toBe("ab");
@@ -154,7 +154,9 @@ describe("BinaryAst", () => {
 		it("reports null for an ordinary expression statement", () => {
 			const { ast, reader } = read("a;");
 
-			expect(ast.directive(find(reader, N_ExpressionStatement))).toBeNull();
+			expect(
+				ast.directive(find(reader, N_ExpressionStatement)),
+			).toBeNull();
 		});
 	});
 

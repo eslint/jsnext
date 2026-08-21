@@ -219,53 +219,47 @@ define([N_Literal], [D, D]);
 define([N_TemplateLiteral, N_TSTemplateLiteralType], [L, L]);
 define([N_TaggedTemplateExpression], [N, N, N]);
 define([N_ExpressionStatement], [N, D]);
-define(
-	[
-		N_BlockStatement,
-		N_StaticBlock,
-		N_ClassBody,
-		N_TSModuleBlock,
-		N_TSInterfaceBody,
-		N_TSEnumBody,
-		N_SequenceExpression,
-		N_TSTupleType,
-		N_TSUnionType,
-		N_TSIntersectionType,
-		N_TSTypeLiteral,
-		N_TSTypeParameterDeclaration,
-		N_TSTypeParameterInstantiation,
-		N_VariableDeclaration,
-	],
-	[L],
-);
+define([
+	N_BlockStatement,
+	N_StaticBlock,
+	N_ClassBody,
+	N_TSModuleBlock,
+	N_TSInterfaceBody,
+	N_TSEnumBody,
+	N_SequenceExpression,
+	N_TSTupleType,
+	N_TSUnionType,
+	N_TSIntersectionType,
+	N_TSTypeLiteral,
+	N_TSTypeParameterDeclaration,
+	N_TSTypeParameterInstantiation,
+	N_VariableDeclaration,
+], [L]);
 define([N_WithStatement, N_LabeledStatement], [N, N]);
-define(
-	[
-		N_ReturnStatement,
-		N_ThrowStatement,
-		N_AwaitExpression,
-		N_SpreadElement,
-		N_ChainExpression,
-		N_Decorator,
-		N_TSExportAssignment,
-		N_TSExternalModuleReference,
-		N_TSNamespaceExportDeclaration,
-		N_TSNonNullExpression,
-		N_YieldExpression,
-		N_BreakStatement,
-		N_ContinueStatement,
-		N_ExportDefaultDeclaration,
-		N_TSTypeAnnotation,
-		N_TSArrayType,
-		N_TSRestType,
-		N_TSOptionalType,
-		N_TSInferType,
-		N_TSLiteralType,
-		N_ImportDefaultSpecifier,
-		N_ImportNamespaceSpecifier,
-	],
-	[N],
-);
+define([
+	N_ReturnStatement,
+	N_ThrowStatement,
+	N_AwaitExpression,
+	N_SpreadElement,
+	N_ChainExpression,
+	N_Decorator,
+	N_TSExportAssignment,
+	N_TSExternalModuleReference,
+	N_TSNamespaceExportDeclaration,
+	N_TSNonNullExpression,
+	N_YieldExpression,
+	N_BreakStatement,
+	N_ContinueStatement,
+	N_ExportDefaultDeclaration,
+	N_TSTypeAnnotation,
+	N_TSArrayType,
+	N_TSRestType,
+	N_TSOptionalType,
+	N_TSInferType,
+	N_TSLiteralType,
+	N_ImportDefaultSpecifier,
+	N_ImportNamespaceSpecifier,
+], [N]);
 define([N_IfStatement, N_ConditionalExpression, N_TryStatement], [N, N, N]);
 define([N_SwitchStatement, N_SwitchCase], [N, L]);
 define([N_CatchClause, N_WhileStatement, N_DoWhileStatement], [N, N]);
@@ -273,64 +267,56 @@ define([N_ForStatement], [N, N, N, N]);
 define([N_ForInStatement, N_ForOfStatement], [N, N, N]);
 define([N_VariableDeclarator], [N, N]);
 define([N_AssignmentPattern], [N, N, L]);
-define(
-	[
-		N_FunctionDeclaration,
-		N_FunctionExpression,
-		N_TSDeclareFunction,
-		N_TSEmptyBodyFunctionExpression,
-		N_ArrowFunctionExpression,
-	],
-	[N, L, N, N, N],
-);
+define([
+	N_FunctionDeclaration,
+	N_FunctionExpression,
+	N_TSDeclareFunction,
+	N_TSEmptyBodyFunctionExpression,
+	N_ArrowFunctionExpression,
+], [N, L, N, N, N]);
 define([N_ClassDeclaration, N_ClassExpression], [N, N, N, N, N, L, L]);
 define([N_MethodDefinition, N_TSAbstractMethodDefinition], [N, N, L]);
-define(
-	[
-		N_PropertyDefinition,
-		N_TSAbstractPropertyDefinition,
-		N_AccessorProperty,
-		N_TSAbstractAccessorProperty,
-	],
-	[N, N, L, N],
-);
+define([
+	N_PropertyDefinition,
+	N_TSAbstractPropertyDefinition,
+	N_AccessorProperty,
+	N_TSAbstractAccessorProperty,
+], [N, N, L, N]);
 define([N_ArrayExpression, N_ObjectExpression], [L, N]);
 define([N_ArrayPattern, N_ObjectPattern], [L, N, L]);
-define(
-	[
-		N_Property,
-		N_MemberExpression,
-		N_MetaProperty,
-		N_ImportSpecifier,
-		N_ImportAttribute,
-		N_ExportSpecifier,
-		N_ImportExpression,
-		N_TSNamedTupleMember,
-		N_TSIndexedAccessType,
-		N_TSTypeReference,
-		N_TSQualifiedName,
-		N_TSTypeQuery,
-		N_TSInterfaceHeritage,
-		N_TSClassImplements,
-		N_TSPropertySignature,
-		N_TSEnumMember,
-		N_TSModuleDeclaration,
-		N_TSAsExpression,
-		N_TSSatisfiesExpression,
-		N_TSTypeAssertion,
-		N_TSInstantiationExpression,
-		N_TSImportEqualsDeclaration,
-		N_TSEnumDeclaration,
-		N_TSIndexSignature,
-	],
-	[N, N],
-);
+define([
+	N_Property,
+	N_MemberExpression,
+	N_MetaProperty,
+	N_ImportSpecifier,
+	N_ImportAttribute,
+	N_ExportSpecifier,
+	N_ImportExpression,
+	N_TSNamedTupleMember,
+	N_TSIndexedAccessType,
+	N_TSTypeReference,
+	N_TSQualifiedName,
+	N_TSTypeQuery,
+	N_TSInterfaceHeritage,
+	N_TSClassImplements,
+	N_TSPropertySignature,
+	N_TSEnumMember,
+	N_TSModuleDeclaration,
+	N_TSAsExpression,
+	N_TSSatisfiesExpression,
+	N_TSTypeAssertion,
+	N_TSInstantiationExpression,
+	N_TSImportEqualsDeclaration,
+	N_TSEnumDeclaration,
+	N_TSIndexSignature,
+], [N, N]);
 define([N_TSIndexSignature], [L, N]);
 define([N_UnaryExpression, N_UpdateExpression, N_TSTypeOperator], [N, D]);
-define(
-	[N_BinaryExpression, N_LogicalExpression, N_AssignmentExpression],
-	[N, N, D],
-);
+define([N_BinaryExpression, N_LogicalExpression, N_AssignmentExpression], [
+	N,
+	N,
+	D,
+]);
 define([N_CallExpression, N_NewExpression], [N, L, N]);
 define([N_RestElement], [N, N, L]);
 define([N_ImportDeclaration], [L, N, L]);
@@ -340,15 +326,12 @@ define([N_TSTypeParameter], [N, N, N]);
 define([N_TSConditionalType], [N, N, N, N]);
 define([N_TSMappedType], [N, D, N, N, D, D]);
 define([N_TSTypePredicate], [N, N, D]);
-define(
-	[
-		N_TSFunctionType,
-		N_TSConstructorType,
-		N_TSCallSignatureDeclaration,
-		N_TSConstructSignatureDeclaration,
-	],
-	[L, N, N],
-);
+define([
+	N_TSFunctionType,
+	N_TSConstructorType,
+	N_TSCallSignatureDeclaration,
+	N_TSConstructSignatureDeclaration,
+], [L, N, N]);
 define([N_TSImportType], [N, N, N, N]);
 define([N_TSMethodSignature], [N, L, N, N]);
 define([N_TSInterfaceDeclaration], [N, N, N, L]);
@@ -360,12 +343,5 @@ define([N_JSXOpeningElement], [N, L, D, N]);
 define([N_JSXClosingElement], [N]);
 define([N_JSXOpeningFragment, N_JSXClosingFragment, N_JSXIdentifier], []);
 define([N_JSXAttribute, N_JSXNamespacedName, N_JSXMemberExpression], [N, N]);
-define(
-	[
-		N_JSXSpreadAttribute,
-		N_JSXExpressionContainer,
-		N_JSXSpreadChild,
-	],
-	[N],
-);
+define([N_JSXSpreadAttribute, N_JSXExpressionContainer, N_JSXSpreadChild], [N]);
 define([N_JSXEmptyExpression, N_JSXText], []);

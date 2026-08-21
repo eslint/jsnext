@@ -180,11 +180,7 @@ export class EstreeAst implements AstAccess<EsTreeNode> {
 	 * @param index The position within the list.
 	 * @returns The element, or `null` for an array hole.
 	 */
-	listItem(
-		node: EsTreeNode,
-		slot: number,
-		index: number,
-	): EsTreeNode | null {
+	listItem(node: EsTreeNode, slot: number, index: number): EsTreeNode | null {
 		const list = this.listAt(node, slot);
 		const value = list === null ? null : list[index];
 

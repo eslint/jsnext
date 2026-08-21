@@ -329,7 +329,11 @@ export function buildAst(
 	);
 	const decoder = new AstDecoder(reader, dialect === "ts", lines);
 	const program = decoder.node(reader.root)!;
-	const { tokens, comments } = decodeTokens(tokenReader, reader.source, lines);
+	const { tokens, comments } = decodeTokens(
+		tokenReader,
+		reader.source,
+		lines,
+	);
 
 	program.sourceType = sourceType;
 	program.comments = comments;

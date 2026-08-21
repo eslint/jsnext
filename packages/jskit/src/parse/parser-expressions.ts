@@ -413,10 +413,7 @@ export abstract class ExpressionParser extends TypeParser {
 		const kind = this.writer.get(operand, NODE_KIND);
 
 		if (operator === T_STARSTAR) {
-			if (
-				kind === N_UnaryExpression ||
-				kind === N_AwaitExpression
-			) {
+			if (kind === N_UnaryExpression || kind === N_AwaitExpression) {
 				throw this.error(
 					"A unary expression may not be the base of an exponentiation; parenthesize it.",
 					this.writer.get(operand, NODE_START),
@@ -621,7 +618,8 @@ export abstract class ExpressionParser extends TypeParser {
 		atom = 0,
 		noComputed = false,
 	): number {
-		const start = atom === 0 ? this.start : this.writer.get(atom, NODE_START);
+		const start =
+			atom === 0 ? this.start : this.writer.get(atom, NODE_START);
 		let expression = atom === 0 ? this.parsePrimaryExpression() : atom;
 		let optionalChain = false;
 
@@ -776,10 +774,7 @@ export abstract class ExpressionParser extends TypeParser {
 					continue;
 				}
 
-				if (
-					this.at(T_TEMPLATE_FULL) ||
-					this.at(T_TEMPLATE_HEAD)
-				) {
+				if (this.at(T_TEMPLATE_FULL) || this.at(T_TEMPLATE_HEAD)) {
 					const node = this.writer.alloc(
 						N_TaggedTemplateExpression,
 						start,
@@ -907,9 +902,7 @@ export abstract class ExpressionParser extends TypeParser {
 					NODE_A,
 					this.parseAssignmentExpression(),
 				);
-				this.writer.pushList(
-					this.writer.finish(spread, this.lastEnd),
-				);
+				this.writer.pushList(this.writer.finish(spread, this.lastEnd));
 			} else {
 				this.writer.pushList(this.parseAssignmentExpression());
 			}
@@ -1311,11 +1304,7 @@ export abstract class ExpressionParser extends TypeParser {
 
 		if (methodKind !== MKIND_INIT) {
 			this.writer.addFlags(node, methodKind << MKIND_SHIFT);
-			this.writer.set(
-				node,
-				NODE_B,
-				this.parseMethodValue(false, false),
-			);
+			this.writer.set(node, NODE_B, this.parseMethodValue(false, false));
 
 			return this.writer.finish(node, this.lastEnd);
 		}
@@ -1561,7 +1550,9 @@ export abstract class ExpressionParser extends TypeParser {
 		 * its slots still name the callee and the type arguments, and a record
 		 * that is no longer in the tree must not go on claiming them.
 		 */
-		if (this.writer.get(callee, NODE_KIND) === N_TSInstantiationExpression) {
+		if (
+			this.writer.get(callee, NODE_KIND) === N_TSInstantiationExpression
+		) {
 			this.writer.set(node, NODE_A, this.writer.get(callee, NODE_A));
 			this.writer.set(node, NODE_C, this.writer.get(callee, NODE_B));
 			this.writer.discard(callee);
@@ -2447,8 +2438,7 @@ export abstract class ExpressionParser extends TypeParser {
 			if (
 				this.writer.get(heritage, NODE_KIND) ===
 					N_ArrowFunctionExpression &&
-				(this.writer.get(heritage, NODE_FLAGS) & NF_PARENTHESIZED) ===
-					0
+				(this.writer.get(heritage, NODE_FLAGS) & NF_PARENTHESIZED) === 0
 			) {
 				throw this.error(
 					"A class may not extend an arrow function.",
@@ -2672,10 +2662,7 @@ export abstract class ExpressionParser extends TypeParser {
 				(flags & NF_READONLY) !== 0,
 			);
 
-			this.writer.addFlags(
-				signature,
-				flags & ~NF_READONLY,
-			);
+			this.writer.addFlags(signature, flags & ~NF_READONLY);
 
 			if (isStatic) {
 				this.writer.addFlags(signature, NF_STATIC);
@@ -2849,7 +2836,11 @@ export abstract class ExpressionParser extends TypeParser {
 		const previousSuperCall = this.allowSuperCall;
 
 		this.allowSuperCall = isConstructor;
-		this.writer.set(node, NODE_B, this.parseMethodValue(isAsync, isGenerator));
+		this.writer.set(
+			node,
+			NODE_B,
+			this.parseMethodValue(isAsync, isGenerator),
+		);
 		this.allowSuperCall = previousSuperCall;
 
 		return this.writer.finish(node, this.lastEnd);
@@ -2946,9 +2937,8 @@ export abstract class ExpressionParser extends TypeParser {
 			);
 
 			return (
-				(raw.indexOf("\\") === -1
-					? raw
-					: decodeEscapes(raw, false)) === name
+				(raw.indexOf("\\") === -1 ? raw : decodeEscapes(raw, false)) ===
+				name
 			);
 		}
 
@@ -3031,5 +3021,8 @@ export abstract class ExpressionParser extends TypeParser {
 	 * @param withDirectives Whether a directive prologue may appear here.
 	 * @returns The index of the `BlockStatement` node.
 	 */
-	abstract parseBlock(withDirectives?: boolean, isStatement?: boolean): number;
+	abstract parseBlock(
+		withDirectives?: boolean,
+		isStatement?: boolean,
+	): number;
 }

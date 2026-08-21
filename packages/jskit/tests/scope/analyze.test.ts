@@ -79,12 +79,12 @@ describe("scope tree", () => {
 	});
 
 	it("treats a module as strict and a script as loose", () => {
-		expect(scopesOf("a;", { sourceType: "module" }).scopes[1].isStrict).toBe(
-			true,
-		);
-		expect(scopesOf("a;", { sourceType: "script" }).scopes[0].isStrict).toBe(
-			false,
-		);
+		expect(
+			scopesOf("a;", { sourceType: "module" }).scopes[1].isStrict,
+		).toBe(true);
+		expect(
+			scopesOf("a;", { sourceType: "script" }).scopes[0].isStrict,
+		).toBe(false);
 	});
 
 	it("honors a use strict directive", () => {
@@ -124,9 +124,9 @@ describe("resolution", () => {
 		const [variable] = moduleScope.variables;
 
 		expect(variable.references).toHaveLength(2);
-		expect(moduleScope.references.every(ref => ref.resolved === variable)).toBe(
-			true,
-		);
+		expect(
+			moduleScope.references.every(ref => ref.resolved === variable),
+		).toBe(true);
 	});
 
 	it("leaves an unknown name unresolved and passes it through", () => {
@@ -342,7 +342,9 @@ describe("typescript", () => {
 	});
 
 	it("binds an infer name in the conditional type that encloses it", () => {
-		const scopeManager = scopesOf("type A<T> = T extends Array<infer U> ? U : never;");
+		const scopeManager = scopesOf(
+			"type A<T> = T extends Array<infer U> ? U : never;",
+		);
 		const conditional = scopeManager.scopes.find(
 			scope => scope.type === "conditionalType",
 		)!;
@@ -371,9 +373,7 @@ describe("typescript", () => {
 
 describe("jsx", () => {
 	it("references a capitalized tag but not a host tag", () => {
-		const scopeManager = scopesOf(
-			"const a = <div><Component /></div>;",
-		);
+		const scopeManager = scopesOf("const a = <div><Component /></div>;");
 
 		expect(scopeManager.scopes[1].through.map(ref => ref.name)).toEqual([
 			"Component",
@@ -411,9 +411,7 @@ describe("jsx", () => {
 		const component = scopeManager.scopes[1].set.get("C")!;
 
 		// The declaration's own identifier, and the opening tag. Not `</C>`.
-		expect(
-			component.references.map(ref => ref.identifier),
-		).toHaveLength(2);
+		expect(component.references.map(ref => ref.identifier)).toHaveLength(2);
 	});
 
 	it("references the object of a member name once, at the opening tag", () => {
@@ -490,7 +488,7 @@ describe("analyzeTree", () => {
 		expect(variable.defs[0].node).toBe(declarator);
 		expect(variable.defs[0].parent).toBe(declaration);
 		expect(moduleScope.references[1].identifier).toBe(
-			((tree.body as EsTreeNode[])[1].expression as EsTreeNode),
+			(tree.body as EsTreeNode[])[1].expression as EsTreeNode,
 		);
 	});
 
@@ -545,9 +543,9 @@ describe("analyzeTree", () => {
 		expect(tree.scopes.map(scope => names(scope))).toEqual(
 			binary.scopes.map(scope => names(scope)),
 		);
-		expect(tree.scopes.map(scope => scope.through.map(r => r.name))).toEqual(
-			binary.scopes.map(scope => scope.through.map(r => r.name)),
-		);
+		expect(
+			tree.scopes.map(scope => scope.through.map(r => r.name)),
+		).toEqual(binary.scopes.map(scope => scope.through.map(r => r.name)));
 	});
 
 	it("walks a node type it has never heard of", () => {

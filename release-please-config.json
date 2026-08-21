@@ -1,0 +1,13 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "plugins": ["node-workspace"],
+  "bump-minor-pre-major": true,
+  "extra-label": "triage:no",
+  "pull-request-title-pattern": "chore: release${component} ${version}",
+  "packages": {
+    "packages/jskit": {
+      "release-as": "0.1.0",
+      "release-type": "node"
+    }
+  }
+}

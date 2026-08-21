@@ -291,7 +291,9 @@ export function toScopeTree(
 				.listItems(buffer.scopeField(scope, S_REFERENCES))
 				.map(renderReference),
 			through: buffer.listItems(buffer.scopeField(scope, S_THROUGH)),
-			implicit: isGlobal ? buffer.listItems(implicit).map(variable) : null,
+			implicit: isGlobal
+				? buffer.listItems(implicit).map(variable)
+				: null,
 			childScopes: children[scope].map(renderScope),
 		};
 	}

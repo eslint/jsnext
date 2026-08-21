@@ -64,11 +64,7 @@ export interface NodeBase {
 
 /** The declaration forms `VariableDeclaration.kind` can take. */
 export type VariableDeclarationKind =
-	| "var"
-	| "let"
-	| "const"
-	| "using"
-	| "await using";
+	"var" | "let" | "const" | "using" | "await using";
 
 /** The TypeScript accessibility modifiers, or `null` when none was written. */
 export type Accessibility = "public" | "private" | "protected" | null;
@@ -81,13 +77,7 @@ export type ImportExportKind = "type" | "value";
 
 /** The operators a `UnaryExpression` can hold. */
 export type UnaryOperator =
-	| "!"
-	| "+"
-	| "-"
-	| "delete"
-	| "typeof"
-	| "void"
-	| "~";
+	"!" | "+" | "-" | "delete" | "typeof" | "void" | "~";
 
 /** The operators an `UpdateExpression` can hold. */
 export type UpdateOperator = "++" | "--";
@@ -303,7 +293,8 @@ export type ModuleDeclaration =
 	| ImportDeclaration;
 
 /** Anything that can name a JSX element. */
-export type JSXTagName = JSXIdentifier | JSXMemberExpression | JSXNamespacedName;
+export type JSXTagName =
+	JSXIdentifier | JSXMemberExpression | JSXNamespacedName;
 
 /** Anything that can appear between a JSX element's tags. */
 export type JSXChild =
@@ -318,17 +309,11 @@ export type JSXAttributeLike = JSXAttribute | JSXSpreadAttribute;
 
 /** Anything that can be a JSX attribute's value. */
 export type JSXAttributeValue =
-	| JSXElement
-	| JSXExpressionContainer
-	| JSXFragment
-	| Literal
-	| null;
+	JSXElement | JSXExpressionContainer | JSXFragment | Literal | null;
 
 /** Anything that can appear in an `import` declaration's specifier list. */
 export type ImportClause =
-	| ImportDefaultSpecifier
-	| ImportNamespaceSpecifier
-	| ImportSpecifier;
+	ImportDefaultSpecifier | ImportNamespaceSpecifier | ImportSpecifier;
 
 /**
  * Any statement.

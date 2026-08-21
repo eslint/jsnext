@@ -233,9 +233,10 @@ describe("NodeWriter", () => {
 		it("returns two empty handles for a run with nothing in it", () => {
 			const writer = new NodeWriter(64);
 
-			expect(
-				writer.endInterleavedLists(writer.startList()),
-			).toEqual([EMPTY_LIST, EMPTY_LIST]);
+			expect(writer.endInterleavedLists(writer.startList())).toEqual([
+				EMPTY_LIST,
+				EMPTY_LIST,
+			]);
 		});
 	});
 

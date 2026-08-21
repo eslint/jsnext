@@ -47,10 +47,10 @@ The job ESLint actually asks for, where every node, token, and comment also
 carries `range` and `loc`. Both contenders are configured to produce all of it,
 and their output on this fixture is identical:
 
-| Parser                     | ops/s | Relative |
-| -------------------------- | ----- | -------- |
-| `jskit` (`eslintParser`)   | 26.0  | 1.00x    |
-| `espree`                   | 16.8  | 0.65x    |
+| Parser                   | ops/s | Relative |
+| ------------------------ | ----- | -------- |
+| `jskit` (`eslintParser`) | 26.0  | 1.00x    |
+| `espree`                 | 16.8  | 0.65x    |
 
 Measured in the same session as the JavaScript table above, so the two are
 directly comparable. Locations are not free for either parser: the ESTree shape
@@ -90,7 +90,6 @@ numbers:
 ```bash
 node benchmarks/parse/benchmark.js --suite=eslint
 ```
-
 
 `npm run bench:chart` runs the same benchmark, writes
 `benchmarks/parse/results.json`, and renders `benchmarks/parse/results.svg`

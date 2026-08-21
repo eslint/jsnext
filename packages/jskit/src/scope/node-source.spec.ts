@@ -103,9 +103,9 @@ describe("resolveNodeSource()", () => {
 
 	it("refuses anything that is neither", () => {
 		for (const value of [null, undefined, 42, "Program", {}]) {
-			expect(() =>
-				resolveNodeSource(value as never, false),
-			).toThrow(/Expected a parse result, an AstReader, or a Program node/u);
+			expect(() => resolveNodeSource(value as never, false)).toThrow(
+				/Expected a parse result, an AstReader, or a Program node/u,
+			);
 		}
 	});
 });

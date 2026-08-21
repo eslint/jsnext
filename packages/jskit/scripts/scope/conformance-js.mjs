@@ -147,7 +147,9 @@ function check(label, file, sourceType, expected, produce) {
 
 	if (!seen.has(key)) {
 		seen.add(key);
-		console.log(`DIFF [${label}] ${file} [${sourceType}]\n   ${difference}`);
+		console.log(
+			`DIFF [${label}] ${file} [${sourceType}]\n   ${difference}`,
+		);
 	}
 }
 

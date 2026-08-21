@@ -39,8 +39,7 @@ function expectWellFormed(fixture: GraphFixture): void {
 
 				// Every edge is reachable from the other direction too.
 				expect(
-					graph.blocks
-						.find(other => other.blockId === edge.to)!
+					graph.blocks.find(other => other.blockId === edge.to)!
 						.predecessors,
 				).toContain(block.blockId);
 			}
@@ -279,7 +278,9 @@ describe("logical assignment", () => {
 
 		expectWellFormed(fixture);
 		expect(writes).toHaveLength(2);
-		expect(writes.every(write => write.member && write.compound)).toBe(true);
+		expect(writes.every(write => write.member && write.compound)).toBe(
+			true,
+		);
 		expect(writes.every(write => write.symbol === null)).toBe(true);
 	});
 });
@@ -340,9 +341,9 @@ describe("update expressions", () => {
 
 		expectWellFormed(fixture);
 		expect(writes).toHaveLength(2);
-		expect(writes.every(write => write.symbol === "a" && write.update)).toBe(
-			true,
-		);
+		expect(
+			writes.every(write => write.symbol === "a" && write.update),
+		).toBe(true);
 	});
 
 	it("records an increment of a member as a member update", () => {

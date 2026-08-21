@@ -33,7 +33,17 @@ function fakeScope(isStatic: boolean): Scope<number> {
  * @returns The reference.
  */
 function reference(flag: number, referenceType = REF_VALUE): Reference<number> {
-	return new Reference(1, "a", fakeScope(true), flag, null, null, false, false, referenceType);
+	return new Reference(
+		1,
+		"a",
+		fakeScope(true),
+		flag,
+		null,
+		null,
+		false,
+		false,
+		referenceType,
+	);
 }
 
 describe("Reference", () => {

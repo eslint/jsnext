@@ -9,7 +9,10 @@ import { parse, toAST } from "../../src/index.js";
 import { asReferenceProgramExtent, normalize } from "./helpers.js";
 
 const samples: string[] = JSON.parse(
-	readFileSync(new URL("./fixtures/typescript.json", import.meta.url), "utf8"),
+	readFileSync(
+		new URL("./fixtures/typescript.json", import.meta.url),
+		"utf8",
+	),
 );
 
 describe("typescript-eslint conformance", () => {
@@ -25,9 +28,9 @@ describe("typescript-eslint conformance", () => {
 				dialect: "ts",
 			}).ast;
 
-			expect(
-				normalize(asReferenceProgramExtent(actual, code)),
-			).toEqual(normalize(expected));
+			expect(normalize(asReferenceProgramExtent(actual, code))).toEqual(
+				normalize(expected),
+			);
 		});
 	}
 });
@@ -59,9 +62,9 @@ describe("typescript-eslint conformance for JSX", () => {
 				jsx: true,
 			}).ast;
 
-			expect(
-				normalize(asReferenceProgramExtent(actual, code)),
-			).toEqual(normalize(expected));
+			expect(normalize(asReferenceProgramExtent(actual, code))).toEqual(
+				normalize(expected),
+			);
 		});
 	}
 });

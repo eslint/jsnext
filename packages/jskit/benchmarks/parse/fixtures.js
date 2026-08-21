@@ -187,7 +187,7 @@ export namespace Helpers${index} {
  * @returns The generated source text.
  */
 export function jsxFixture(targetBytes) {
-	const parts = ["import { useState } from \"react\";\n"];
+	const parts = ['import { useState } from "react";\n'];
 	let index = 0;
 
 	while (parts.join("").length < targetBytes) {

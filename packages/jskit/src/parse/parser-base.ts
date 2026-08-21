@@ -13,11 +13,7 @@
  * here, which lets the layers reference each other without circular imports.
  */
 
-import {
-	TF_HAS_ESCAPE,
-	TF_LEGACY_OCTAL,
-	TF_NEWLINE_BEFORE,
-} from "./binary.js";
+import { TF_HAS_ESCAPE, TF_LEGACY_OCTAL, TF_NEWLINE_BEFORE } from "./binary.js";
 import { ParseError } from "./errors.js";
 import { NodeWriter } from "./node-writer.js";
 import {
@@ -401,10 +397,7 @@ export abstract class ParserBase {
 	parseIdentifierName(): number {
 		const kind = this.tokenizer.kind;
 
-		if (
-			kind !== T_IDENT &&
-			(kind < KEYWORD_FIRST || kind > KEYWORD_LAST)
-		) {
+		if (kind !== T_IDENT && (kind < KEYWORD_FIRST || kind > KEYWORD_LAST)) {
 			throw this.unexpected();
 		}
 

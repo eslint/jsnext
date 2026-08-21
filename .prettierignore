@@ -1,0 +1,13 @@
+dist
+coverage
+CHANGELOG.md
+package-lock.json
+
+# 52,000 files of deliberately invalid JavaScript, cloned from somebody else's
+# repository. `eslint.config.js` ignores it for the same reason.
+test262/
+
+# Source strings quoted exactly as a reference parser tests them. Reformatting
+# one changes what is being tested.
+packages/jskit/tests/parse/fixtures/
+packages/jskit/tests/scope/fixtures/

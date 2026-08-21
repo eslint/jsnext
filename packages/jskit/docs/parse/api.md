@@ -55,11 +55,11 @@ each node's parent. `AstReader`, `TokenReader`, `readLineStarts()`, and
 `readParents()` read the regions; each takes the whole buffer and finds its
 own.
 
-| Option | Default | Meaning |
-| ------ | ------- | ------- |
-| `sourceType` | `"module"` | Whether to read the text as a script, an ES module, or a CommonJS module. |
-| `embedSource` | `false` | Copy the source text into the buffer, so it can be read in a process that did not parse it. |
-| `parents` | `false` | Derive each node's parent, so a tool can climb from a node to its context. |
+| Option        | Default    | Meaning                                                                                     |
+| ------------- | ---------- | ------------------------------------------------------------------------------------------- |
+| `sourceType`  | `"module"` | Whether to read the text as a script, an ES module, or a CommonJS module.                   |
+| `embedSource` | `false`    | Copy the source text into the buffer, so it can be read in a process that did not parse it. |
+| `parents`     | `false`    | Derive each node's parent, so a tool can climb from a node to its context.                  |
 
 `sourceType` is the one interpretation question phase 1 cannot leave to phase
 2, because two readings of the same text can both be valid and produce
@@ -104,7 +104,7 @@ try {
 }
 ```
 
-Everything that is merely *not allowed here* — a `with` statement in strict
+Everything that is merely _not allowed here_ — a `with` statement in strict
 mode, a redeclared binding, an octal literal, TypeScript syntax in a `.js`
 file — parses without complaint and is reported by `validate()` instead.
 
@@ -114,12 +114,12 @@ Returns an array of `{ message, lineNumber, column }`, in source order. The
 position is spelled the way `ParseError` spells one — both 1-based — so fatal
 and non-fatal problems can be reported through the same code path.
 
-| Option        | Values                                | Default              |
-| ------------- | ------------------------------------- | -------------------- |
-| `sourceType`  | `"script"`, `"module"`, `"commonjs"`  | what `parse()` used  |
-| `dialect`     | `"js"`, `"ts"`                        | `"ts"`               |
-| `jsx`         | `true`, `false`                       | `false`              |
-| `declaration` | `true`, `false`                       | `false`              |
+| Option        | Values                               | Default             |
+| ------------- | ------------------------------------ | ------------------- |
+| `sourceType`  | `"script"`, `"module"`, `"commonjs"` | what `parse()` used |
+| `dialect`     | `"js"`, `"ts"`                       | `"ts"`              |
+| `jsx`         | `true`, `false`                      | `false`             |
+| `declaration` | `true`, `false`                      | `false`             |
 
 `sourceType` normally need not be passed, since the buffer records what
 `parse()` was told. Its use is to narrow `"script"` to `"commonjs"` — the two
@@ -220,14 +220,14 @@ It differs from `toAST()` in five ways, each because ESLint requires it:
   place `espree` reads it from, so a configuration written for `espree` keeps
   working:
 
-  ```js
-  languageOptions: {
-  	parser: eslintParser,
-  	parserOptions: {
-  		ecmaFeatures: { jsx: true },
-  	},
-  }
-  ```
+    ```js
+    languageOptions: {
+    	parser: eslintParser,
+    	parserOptions: {
+    		ecmaFeatures: { jsx: true },
+    	},
+    }
+    ```
 
 `sourceType` is taken from the `languageOptions.sourceType` that ESLint already
 resolves for you.
@@ -293,7 +293,7 @@ support it, and each produces the JSX nodes its reference parser produces.
 
 ```js
 const { ast } = toAST(
-	parse('<ul>{items.map(i => <li key={i}>{i}</li>)}</ul>;'),
+	parse("<ul>{items.map(i => <li key={i}>{i}</li>)}</ul>;"),
 	{ jsx: true },
 );
 ```
@@ -354,12 +354,12 @@ ones.
 
 Fixed 16-byte records:
 
-| Offset | Size | Contents                                                    |
-| ------ | ---- | ----------------------------------------------------------- |
-| 0      | 4    | start offset                                                 |
-| 4      | 4    | end offset                                                   |
-| 8      | 2    | kind (fine-grained: every keyword, punctuator, and JSX form)  |
-| 10     | 2    | flags (line break before, contains escapes, legacy octal, …)  |
+| Offset | Size | Contents                                                          |
+| ------ | ---- | ----------------------------------------------------------------- |
+| 0      | 4    | start offset                                                      |
+| 4      | 4    | end offset                                                        |
+| 8      | 2    | kind (fine-grained: every keyword, punctuator, and JSX form)      |
+| 10     | 2    | flags (line break before, contains escapes, legacy octal, …)      |
 | 12     | 4    | auxiliary data (for a regular expression, where the pattern ends) |
 
 Comments are recorded in source order alongside everything else.
@@ -460,4 +460,3 @@ rewind the node writer and the scanner rather than building throwaway objects.
   code, function bodies included.
 - Scope analysis in `validate()` covers declarations and redeclarations. It does
   not resolve references or report unused bindings — that is ESLint's job.
-

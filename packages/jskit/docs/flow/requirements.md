@@ -6,7 +6,7 @@ Create a utility that evaluates the binary AST format from the parser and the bi
 
 ## Description
 
-This utility is meant to efficiently evaluate JavaScript/TypeScript code in such a way as to provide additional insights into how the code is structured and functions. 
+This utility is meant to efficiently evaluate JavaScript/TypeScript code in such a way as to provide additional insights into how the code is structured and functions.
 
 ## Control flow graph
 
@@ -14,8 +14,8 @@ ESLint already has a code path analysis system, however, it is buggy and unrelia
 
 Create a basic-block control flow graph. To support future type narrowing, basic blocks must record two things clearly:
 
-* Assignments / Variable Writes (updates the type environment).
-* Branch Conditions on edges (refines the type environment).
+- Assignments / Variable Writes (updates the type environment).
+- Branch Conditions on edges (refines the type environment).
 
 This information must be stored in a compact binary format. It may make references to the scope/symbol information through byte offsets into the `ArrayBuffer` holding the scope information and the `ArrayBuffer` holding the binary AST.
 

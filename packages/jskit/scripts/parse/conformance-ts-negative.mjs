@@ -117,7 +117,10 @@ function walk(dir, out = [], depth = 0) {
 
 		if (stats.isDirectory()) {
 			walk(full, out, depth + 1);
-		} else if (/\.(ts|mts|cts|tsx)$/u.test(name) && stats.size < MAX_BYTES) {
+		} else if (
+			/\.(ts|mts|cts|tsx)$/u.test(name) &&
+			stats.size < MAX_BYTES
+		) {
 			out.push(full);
 		}
 	}
@@ -195,7 +198,9 @@ const flags = new Set(args.filter(arg => arg.startsWith("--")));
 const positional = args.filter(arg => !arg.startsWith("--"));
 const root = positional[0] ?? "../../TypeScript";
 const cap = Number(positional[1] ?? Infinity);
-const files = walk(join(root, "tests", "cases")).sort().slice(0, cap);
+const files = walk(join(root, "tests", "cases"))
+	.sort()
+	.slice(0, cap);
 
 const counts = {
 	agreed: 0,

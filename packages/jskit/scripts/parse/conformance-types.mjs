@@ -93,7 +93,9 @@ function walk(dir, out = [], depth = 0) {
  * @returns How many braces it leaves open, negative when it closes more.
  */
 function countBraces(text) {
-	return (text.match(/\{/gu) ?? []).length - (text.match(/\}/gu) ?? []).length;
+	return (
+		(text.match(/\{/gu) ?? []).length - (text.match(/\}/gu) ?? []).length
+	);
 }
 
 /**
@@ -317,11 +319,18 @@ function record(ast, dialect, file) {
 			return;
 		}
 
-		if (!node || typeof node !== "object" || typeof node.type !== "string") {
+		if (
+			!node ||
+			typeof node !== "object" ||
+			typeof node.type !== "string"
+		) {
 			return;
 		}
 
-		const seen = byType.get(node.type) ?? { instances: 0, props: new Map() };
+		const seen = byType.get(node.type) ?? {
+			instances: 0,
+			props: new Map(),
+		};
 
 		seen.instances++;
 
@@ -359,7 +368,10 @@ for (const [name, dialect] of [
 	["typescript", "ts"],
 	["tsx", "ts"],
 ]) {
-	const path = new URL(`../../tests/parse/fixtures/${name}.json`, import.meta.url);
+	const path = new URL(
+		`../../tests/parse/fixtures/${name}.json`,
+		import.meta.url,
+	);
 	let snippets;
 
 	try {
@@ -373,7 +385,10 @@ for (const [name, dialect] of [
 			let ast;
 
 			try {
-				ast = toAST(parse(code, { sourceType }), { sourceType, dialect }).ast;
+				ast = toAST(parse(code, { sourceType }), {
+					sourceType,
+					dialect,
+				}).ast;
 			} catch {
 				continue;
 			}
@@ -434,9 +449,9 @@ for (const file of files) {
 
 	try {
 		ast = toAST(parse(code, { sourceType: "module" }), {
-		sourceType: "module",
-		dialect,
-	}).ast;
+			sourceType: "module",
+			dialect,
+		}).ast;
 	} catch {
 		threw++;
 		continue;
@@ -574,9 +589,7 @@ for (const problem of problems) {
 	}
 }
 
-const missed = kinds.filter(
-	type => !stats.js.has(type) && !stats.ts.has(type),
-);
+const missed = kinds.filter(type => !stats.js.has(type) && !stats.ts.has(type));
 
 if (missed.length > 0) {
 	console.log(`kinds not exercised: ${missed.join(", ")}`);

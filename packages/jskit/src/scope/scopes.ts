@@ -200,7 +200,9 @@ export class Scopes<TNode = number> {
 	 * @returns The symbol IDs.
 	 */
 	scopeSymbols(scope: number): number[] {
-		return this.buffer.listItems(this.buffer.scopeField(scope, S_VARIABLES));
+		return this.buffer.listItems(
+			this.buffer.scopeField(scope, S_VARIABLES),
+		);
 	}
 
 	/**
@@ -349,11 +351,7 @@ export class Scopes<TNode = number> {
 	 * @returns The symbol ID, or `null` when nothing in the chain binds it.
 	 */
 	getSymbolByName(scope: number, name: string): number | null {
-		for (
-			let at: number | null = scope;
-			at !== null;
-			at = this.upper(at)
-		) {
+		for (let at: number | null = scope; at !== null; at = this.upper(at)) {
 			const symbol = this.getOwnSymbolByName(at, name);
 
 			if (symbol !== null) {
@@ -532,9 +530,7 @@ export class Scopes<TNode = number> {
 	 * @returns `true` for a read or a read-write.
 	 */
 	referenceIsRead(reference: number): boolean {
-		return (
-			(this.buffer.referenceField(reference, R_FLAGS) & RF_READ) !== 0
-		);
+		return (this.buffer.referenceField(reference, R_FLAGS) & RF_READ) !== 0;
 	}
 
 	/**
@@ -554,9 +550,7 @@ export class Scopes<TNode = number> {
 	 * @returns `true` for an initializer.
 	 */
 	referenceIsInit(reference: number): boolean {
-		return (
-			(this.buffer.referenceField(reference, R_FLAGS) & RF_INIT) !== 0
-		);
+		return (this.buffer.referenceField(reference, R_FLAGS) & RF_INIT) !== 0;
 	}
 
 	//-------------------------------------------------------------------------

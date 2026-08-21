@@ -219,4 +219,3 @@ export const ORIGIN_NAMES: readonly string[] = [
 export const NODE_BLOCK_WORDS = 2;
 export const NB_NODE = 0; // node handle
 export const NB_BLOCK = 1; // block ID the node executes in
-

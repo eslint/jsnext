@@ -71,9 +71,7 @@ describe("eslintParser.parse()", () => {
 
 	it("makes range and loc plain properties, as espree does", () => {
 		const ast = eslintParser.parse("const a = 1;");
-		const keys = Object.keys(
-			(ast.body as Record<string, unknown>[])[0],
-		);
+		const keys = Object.keys((ast.body as Record<string, unknown>[])[0]);
 
 		expect(keys).toContain("range");
 		expect(keys).toContain("loc");
@@ -250,9 +248,8 @@ describe("eslintParser.parseForESLint()", () => {
 	});
 
 	it("builds the scope graph over the very nodes it returns", () => {
-		const { ast, scopeManager } = eslintParser.parseForESLint(
-			"let a = 1; a;",
-		);
+		const { ast, scopeManager } =
+			eslintParser.parseForESLint("let a = 1; a;");
 		const declarator = (
 			(ast.body as Record<string, Record<string, unknown>[]>[])[0]
 				.declarations as Record<string, unknown>[]
@@ -330,9 +327,9 @@ describe("eslintParser inside ESLint", () => {
 	});
 
 	it("lints a JSX file without complaint", () => {
-		expect(lint("export const a = <div x={1}>hi</div>;", "file.tsx")).toEqual(
-			[],
-		);
+		expect(
+			lint("export const a = <div x={1}>hi</div>;", "file.tsx"),
+		).toEqual([]);
 	});
 
 	it("reports a syntax error as a fatal message", () => {
@@ -406,9 +403,13 @@ describe("eslintParser inside ESLint", () => {
 	});
 
 	it("supports scope analysis, which rules depend on", () => {
-		const messages = lint("function f() { var unused = 1; }\nf();", "f.js", {
-			"no-unused-vars": "error",
-		});
+		const messages = lint(
+			"function f() { var unused = 1; }\nf();",
+			"f.js",
+			{
+				"no-unused-vars": "error",
+			},
+		);
 
 		expect(messages).toHaveLength(1);
 		expect(messages[0].message).toMatch(/'unused' is assigned/u);

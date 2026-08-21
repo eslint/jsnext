@@ -109,9 +109,9 @@ export function FlowDiagram({ graph, source }: FlowDiagramProps): ReactNode {
 	if (definition === null) {
 		return (
 			<div className="text-muted-foreground m-3 rounded-md border px-3 py-2 text-sm">
-				This execution unit has {diagram.blockCount} basic blocks,
-				more than the {diagram.limit} a readable diagram holds. The
-				tree view shows all of them.
+				This execution unit has {diagram.blockCount} basic blocks, more
+				than the {diagram.limit} a readable diagram holds. The tree view
+				shows all of them.
 			</div>
 		);
 	}
@@ -137,9 +137,6 @@ export function FlowDiagram({ graph, source }: FlowDiagramProps): ReactNode {
 	 * with Mermaid's own sanitizer at its strictest.
 	 */
 	return (
-		<div
-			className="w-max p-3"
-			dangerouslySetInnerHTML={{ __html: svg }}
-		/>
+		<div className="w-max p-3" dangerouslySetInnerHTML={{ __html: svg }} />
 	);
 }

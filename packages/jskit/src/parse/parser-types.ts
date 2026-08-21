@@ -252,7 +252,10 @@ export abstract class TypeParser extends ParserBase {
 		if (this.at(T_is) && !this.newlineBefore) {
 			const kindOfType = this.writer.get(type, NODE_KIND);
 
-			if (kindOfType === N_TSTypeReference || kindOfType === N_TSThisType) {
+			if (
+				kindOfType === N_TSTypeReference ||
+				kindOfType === N_TSThisType
+			) {
 				const node = this.writer.alloc(N_TSTypePredicate, start);
 
 				this.next();
@@ -373,10 +376,8 @@ export abstract class TypeParser extends ParserBase {
 	 * @returns The index of the type node.
 	 */
 	private parseUnionType(): number {
-		return this.parseUnionOrIntersection(
-			T_PIPE,
-			N_TSUnionType,
-			() => this.parseIntersectionType(),
+		return this.parseUnionOrIntersection(T_PIPE, N_TSUnionType, () =>
+			this.parseIntersectionType(),
 		);
 	}
 
@@ -385,10 +386,8 @@ export abstract class TypeParser extends ParserBase {
 	 * @returns The index of the type node.
 	 */
 	private parseIntersectionType(): number {
-		return this.parseUnionOrIntersection(
-			T_AMP,
-			N_TSIntersectionType,
-			() => this.parseTypeOperator(),
+		return this.parseUnionOrIntersection(T_AMP, N_TSIntersectionType, () =>
+			this.parseTypeOperator(),
 		);
 	}
 
@@ -508,7 +507,11 @@ export abstract class TypeParser extends ParserBase {
 			}
 		}
 
-		this.writer.set(node, NODE_A, this.writer.finish(parameter, this.lastEnd));
+		this.writer.set(
+			node,
+			NODE_A,
+			this.writer.finish(parameter, this.lastEnd),
+		);
 
 		return this.writer.finish(node, this.lastEnd);
 	}
@@ -1071,10 +1074,7 @@ export abstract class TypeParser extends ParserBase {
 
 		let methodKind = 0;
 
-		if (
-			(this.at(T_get) || this.at(T_set)) &&
-			this.nextStartsMemberName()
-		) {
+		if ((this.at(T_get) || this.at(T_set)) && this.nextStartsMemberName()) {
 			methodKind = this.kind === T_get ? 1 : 2;
 			this.next();
 		}
@@ -1262,9 +1262,7 @@ export abstract class TypeParser extends ParserBase {
 	 * @returns `true` when the current token opens a function type.
 	 */
 	private atConstructorTypeStart(): boolean {
-		return (
-			this.at(T_new) || (this.at(T_abstract) && this.peekIs(T_new))
-		);
+		return this.at(T_new) || (this.at(T_abstract) && this.peekIs(T_new));
 	}
 
 	/**
@@ -1507,11 +1505,7 @@ export abstract class TypeParser extends ParserBase {
 			const literal = this.writer.alloc(N_TemplateLiteral, start);
 			const quasi = this.parseTemplateElement(true);
 
-			this.writer.set(
-				literal,
-				NODE_A,
-				this.writer.singletonList(quasi),
-			);
+			this.writer.set(literal, NODE_A, this.writer.singletonList(quasi));
 			this.writer.set(literal, NODE_B, EMPTY_LIST);
 			this.writer.finish(literal, this.lastEnd);
 			this.writer.set(node, NODE_A, literal);

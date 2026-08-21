@@ -216,8 +216,8 @@ export class BinaryAst implements AstAccess<number> {
 	 */
 	isGlobalModule(node: number): boolean {
 		return (
-			((this.reader.flags(node) & MODULE_KIND_MASK) >>>
-				MODULE_KIND_SHIFT) ===
+			(this.reader.flags(node) & MODULE_KIND_MASK) >>>
+				MODULE_KIND_SHIFT ===
 			MODULE_GLOBAL
 		);
 	}

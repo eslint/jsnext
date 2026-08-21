@@ -77,11 +77,11 @@ internal, unpublished `ast-spec` package of hand-written per-node files.
 
 The output is not one shape. It varies three ways:
 
-| | `start`/`end` | `range`/`loc` | TypeScript-only properties |
-| --- | --- | --- | --- |
-| `toAST()`, `dialect: "js"` | yes | no | **omitted entirely** |
-| `toAST()`, `dialect: "ts"` | yes | no | present, `null` when absent |
-| `eslintParser.parse()` | yes | yes | per dialect |
+|                            | `start`/`end` | `range`/`loc` | TypeScript-only properties  |
+| -------------------------- | ------------- | ------------- | --------------------------- |
+| `toAST()`, `dialect: "js"` | yes           | no            | **omitted entirely**        |
+| `toAST()`, `dialect: "ts"` | yes           | no            | present, `null` when absent |
+| `eslintParser.parse()`     | yes           | yes           | per dialect                 |
 
 An earlier plan modeled this with generic parameters on the base node. Don't:
 every mechanism for varying a type across a whole tree is a transformation, and
@@ -115,7 +115,7 @@ requiredness.
 TypeScript-only properties: `espree` reports both on every opening fragment,
 `@typescript-eslint/parser` reports neither, so they appear under `dialect:
 "js"` only. This is why `conformance-types.mjs` only reports a property as
-wrongly optional when it is present on every instance in *both* dialects. A
+wrongly optional when it is present on every instance in _both_ dialects. A
 per-dialect rule is wrong in both directions.
 
 ### TypeScript-only properties on TypeScript-only nodes are optional anyway
@@ -174,7 +174,7 @@ observation would reject valid trees, which is worse than no type at all.
 
 So the unions — `Statement`, `Expression`, `TSType`, `TypeElement`, and the
 rest — are written by hand and are the part of this file with no machine
-backstop. Corpus slot data is still the right *evidence* when writing one; it
+backstop. Corpus slot data is still the right _evidence_ when writing one; it
 just has to be widened by hand afterwards. The one bug the corpus did catch
 this way was `MethodDefinition.value`, which is `FunctionExpression |
 TSEmptyBodyFunctionExpression` because an overload signature has no body.

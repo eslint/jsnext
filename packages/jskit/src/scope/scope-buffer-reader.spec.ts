@@ -36,7 +36,9 @@ describe("ScopeBufferReader", () => {
 		});
 
 		it("reports the counts the buffer holds", () => {
-			const reader = readerFor("const a = 1; function f(b) { return a; }");
+			const reader = readerFor(
+				"const a = 1; function f(b) { return a; }",
+			);
 
 			expect(reader.scopeCount).toBeGreaterThan(1);
 			expect(reader.symbolCount).toBeGreaterThan(1);
@@ -52,9 +54,9 @@ describe("ScopeBufferReader", () => {
 			};
 
 			expect(readerFor("a;").treeHandles).toBe(false);
-			expect(
-				new ScopeBufferReader(analyzeTree(tree)).treeHandles,
-			).toBe(true);
+			expect(new ScopeBufferReader(analyzeTree(tree)).treeHandles).toBe(
+				true,
+			);
 		});
 	});
 

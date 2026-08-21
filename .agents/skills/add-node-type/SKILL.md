@@ -85,9 +85,9 @@ export const N_TSNamespaceExportDeclaration = 172;
 /** One past the largest defined node kind. */
 export const NODE_KIND_COUNT = 173;
 ```
+
 ```ts
-	names[N_TSNamespaceExportDeclaration] =
-		"TSNamespaceExportDeclaration";
+names[N_TSNamespaceExportDeclaration] = "TSNamespaceExportDeclaration";
 ```
 
 Putting a TypeScript node below `TS_FIRST` is a silent bug: `validate.ts`
@@ -100,19 +100,16 @@ layout matches. `N` is a child node, `L` a list, `D` plain data. Join an
 existing group rather than adding a new call when the layout is the same:
 
 ```ts
-define(
-	[
-		N_ReturnStatement,
-		/* … */
-		N_TSNamespaceExportDeclaration,
-	],
-	[N],
-);
+define([
+	N_ReturnStatement,
+	/* … */
+	N_TSNamespaceExportDeclaration,
+], [N]);
 ```
 
 This one entry feeds three things: generic walks, and both of the tables
 `define()` fills. Describe a child as `D` and validation stops descending into
-it *and* its children come back from `reader.parent()` with no parent at all.
+it _and_ its children come back from `reader.parent()` with no parent at all.
 
 **3. The parser** — `parser.ts` for statements and declarations,
 `parser-expressions.ts`, `parser-types.ts`, or `parser-jsx.ts` otherwise.
@@ -170,11 +167,11 @@ boolean, or a pinned literal. What it cannot give you is which node types are
 allowed in each slot — that union is yours to write. Then add the node to any
 union it belongs to (`Statement`, `Expression`, `TSType`, `TSDeclaration`, …).
 
-**6. `packages/jskit/src/scope/slot-names.ts`** — what each child slot is *called*
+**6. `packages/jskit/src/scope/slot-names.ts`** — what each child slot is _called_
 in an ESTree tree. This is the one that fails silently:
 
 ```ts
-	define([N_TSNamespaceExportDeclaration], ["id"]);
+define([N_TSNamespaceExportDeclaration], ["id"]);
 ```
 
 **7. `packages/jskit/tests/parse/fixtures/`** — a snippet in `javascript.json`,
@@ -245,15 +242,15 @@ points agree across the whole corpus.
 
 ## Troubleshooting
 
-| Symptom | Cause |
-| --- | --- |
-| `FAIL parser emits it` but you wrote the branch | The parser file was not rebuilt, or the constant is only in the import list. |
-| `FAIL validate (js): accepted, but a TS kind must be rejected` | The kind number is below `TS_FIRST`. Renumber it. |
-| `FAIL scope entry points disagree` | Missing or wrong `slot-names.ts` entry — the names must match the ESTree property names exactly. |
-| `FAIL node differs` against the reference | Property names, order-independent, or an extra/missing property. The driver prints both. |
-| `derive-shapes` says `differ=1 … optionality` | The interface marks a property optional that the decoder always writes, or the reverse. Anything behind a condition other than `kind === N_Foo` is optional. |
-| `conformance-types` says `kinds not exercised: X` | Nothing parsed a sample containing it. Add a fixture. |
-| The driver's numbers look stale | You did not rebuild. Every check reads `dist/`. |
+| Symptom                                                        | Cause                                                                                                                                                        |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `FAIL parser emits it` but you wrote the branch                | The parser file was not rebuilt, or the constant is only in the import list.                                                                                 |
+| `FAIL validate (js): accepted, but a TS kind must be rejected` | The kind number is below `TS_FIRST`. Renumber it.                                                                                                            |
+| `FAIL scope entry points disagree`                             | Missing or wrong `slot-names.ts` entry — the names must match the ESTree property names exactly.                                                             |
+| `FAIL node differs` against the reference                      | Property names, order-independent, or an extra/missing property. The driver prints both.                                                                     |
+| `derive-shapes` says `differ=1 … optionality`                  | The interface marks a property optional that the decoder always writes, or the reverse. Anything behind a condition other than `kind === N_Foo` is optional. |
+| `conformance-types` says `kinds not exercised: X`              | Nothing parsed a sample containing it. Add a fixture.                                                                                                        |
+| The driver's numbers look stale                                | You did not rebuild. Every check reads `dist/`.                                                                                                              |
 
 ## Where this lives
 

@@ -1,0 +1,286 @@
+name: CI
+
+on:
+    push:
+        branches:
+            - main
+    pull_request:
+        branches:
+            - main
+
+permissions:
+    contents: read
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+    # ------------------------------------------------------------------------
+    # Which of the three analyses can this diff have broken?
+    #
+    # The filters below name the areas a file belongs to. They do not encode
+    # the cascade — `scope/` reads what `parse/` produced and `flow/` reads
+    # what both produced, so a `parse/` change has to run all three — because
+    # that is a fact about the source layout rather than about CI, and it lives
+    # in `packages/jskit/scripts/test-affected.mjs`. This job hands that script
+    # the areas the diff touched and lets it expand them.
+    #
+    # `predicate-quantifier: some-with-excludes` is what makes `all` work: a
+    # file matches it when some pattern includes it and no pattern excludes it.
+    # `all` therefore reads as "everything that is not already accounted for",
+    # so a file in a directory nobody has thought of yet — a new subdirectory
+    # of `src/`, a new config at the root — runs the whole suite rather than
+    # silently running nothing.
+    # ------------------------------------------------------------------------
+    changes:
+        name: Detect Affected Areas
+        runs-on: ubuntu-latest
+        outputs:
+            areas: ${{ join(fromJSON(steps.tests.outputs.changes), ' ') }}
+            inspect: ${{ steps.apps.outputs.inspect }}
+        steps:
+            - uses: actions/checkout@v7
+
+            - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+              id: tests
+              with:
+                  predicate-quantifier: some-with-excludes
+                  filters: |
+                      parse:
+                        - 'packages/jskit/src/parse/**'
+                        - 'packages/jskit/tests/parse/**'
+                        - '!**/*.md'
+                      scope:
+                        - 'packages/jskit/src/scope/**'
+                        - 'packages/jskit/tests/scope/**'
+                        - '!**/*.md'
+                      flow:
+                        - 'packages/jskit/src/flow/**'
+                        - 'packages/jskit/tests/flow/**'
+                        - '!**/*.md'
+                      all:
+                        - '**'
+                        - '!**/*.md'
+                        - '!docs/**'
+                        - '!packages/*/docs/**'
+                        - '!.agents/**'
+                        - '!.claude/**'
+                        - '!.github/ISSUE_TEMPLATE/**'
+                        - '!packages/jskit/src/parse/**'
+                        - '!packages/jskit/tests/parse/**'
+                        - '!packages/jskit/src/scope/**'
+                        - '!packages/jskit/tests/scope/**'
+                        - '!packages/jskit/src/flow/**'
+                        - '!packages/jskit/tests/flow/**'
+                        - '!packages/jskit-inspect/**'
+
+            # A separate step so that the web app stays out of `changes`, which
+            # is passed to `test-affected.mjs` verbatim and would reject it.
+            - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+              id: apps
+              with:
+                  filters: |
+                      inspect:
+                        - 'packages/jskit-inspect/**'
+
+    # ------------------------------------------------------------------------
+    # Lint and formatting. Cheap, and unaffected by which analysis changed.
+    # ------------------------------------------------------------------------
+    verify_files:
+        name: Verify Files
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v7
+
+            - uses: actions/setup-node@v7
+              with:
+                  node-version: "lts/*"
+                  cache: npm
+
+            # `npm ci` runs the root `prepare`, which builds the toolkit —
+            # `eslint.config.js` lints this repository with its own parser and
+            # imports it from `dist/`.
+            - name: Install Packages
+              run: npm ci
+
+            - name: Lint Files
+              run: npx eslint .
+
+            - name: Check Formatting
+              run: npm run fmt:check
+
+    typecheck:
+        name: Typecheck
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v7
+
+            - uses: actions/setup-node@v7
+              with:
+                  node-version: "lts/*"
+                  cache: npm
+
+            - name: Install Packages
+              run: npm ci
+
+            - name: Run TypeScript Compiler
+              run: npm run typecheck
+
+    # ------------------------------------------------------------------------
+    # The affected tests, across the supported Node versions and platforms.
+    # ------------------------------------------------------------------------
+    test:
+        name: Test (${{ matrix.os }}, Node ${{ matrix.node-version }})
+        needs: changes
+        if: needs.changes.outputs.areas != ''
+        runs-on: ${{ matrix.os }}
+
+        strategy:
+            fail-fast: false
+            matrix:
+                os: [ubuntu-latest]
+                node-version: [22.x, 24.x, 26.x]
+                include:
+                    - os: windows-latest
+                      node-version: 24.x
+                    - os: macos-latest
+                      node-version: 24.x
+
+        steps:
+            - uses: actions/checkout@v7
+
+            - name: Set up Node.js ${{ matrix.node-version }}
+              uses: actions/setup-node@v7
+              with:
+                  node-version: ${{ matrix.node-version }}
+                  cache: npm
+
+            - name: Install Packages
+              run: npm ci
+
+            - name: Run Affected Tests
+              run: npm run test:affected -- ${{ needs.changes.outputs.areas }}
+              env:
+                  CI: true
+
+    # ------------------------------------------------------------------------
+    # The same selection, once, with the coverage gate applied to it.
+    #
+    # Measuring only the areas that ran is what makes a partial run gradeable:
+    # each area clears the 95% in `vitest.config.ts` on its own, so narrowing
+    # the measurement narrows what is checked without lowering the bar.
+    # ------------------------------------------------------------------------
+    coverage:
+        name: Coverage
+        needs: changes
+        if: needs.changes.outputs.areas != ''
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v7
+
+            - uses: actions/setup-node@v7
+              with:
+                  node-version: "lts/*"
+                  cache: npm
+
+            - name: Install Packages
+              run: npm ci
+
+            - name: Run Affected Tests With Coverage
+              run: npm run test:affected -- ${{ needs.changes.outputs.areas }} --coverage
+              env:
+                  CI: true
+
+            - name: Summarize Coverage
+              if: always()
+              run: node .github/scripts/coverage-summary.mjs >> "$GITHUB_STEP_SUMMARY"
+
+            - name: Upload Coverage Report
+              if: always()
+              uses: actions/upload-artifact@v5
+              with:
+                  name: coverage
+                  path: packages/jskit/coverage
+                  retention-days: 7
+
+    # ------------------------------------------------------------------------
+    # The differential corpus: every file in `node_modules` parsed and scoped,
+    # compared against the implementation each analysis replaces. `flow/` has
+    # no reference implementation, so a flow-only change skips this entirely.
+    # ------------------------------------------------------------------------
+    conformance:
+        name: Conformance
+        needs: changes
+        if: contains(needs.changes.outputs.areas, 'all') || contains(needs.changes.outputs.areas, 'parse') || contains(needs.changes.outputs.areas, 'scope')
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v7
+
+            - uses: actions/setup-node@v7
+              with:
+                  node-version: "lts/*"
+                  cache: npm
+
+            - name: Install Packages
+              run: npm ci
+
+            # A `parse/` change moves the trees the scope analyzer reads, so it
+            # has to run both halves. A `scope/` change cannot move a tree.
+            - name: Run Full Conformance Suite
+              if: contains(needs.changes.outputs.areas, 'all') || contains(needs.changes.outputs.areas, 'parse')
+              run: npm run conformance --workspace=@eslint/jskit
+
+            - name: Run Scope Conformance Suite
+              if: ${{ !(contains(needs.changes.outputs.areas, 'all') || contains(needs.changes.outputs.areas, 'parse')) }}
+              run: npm run conformance:scope --workspace=@eslint/jskit
+
+    # ------------------------------------------------------------------------
+    # The web app consumes the toolkit, so it is built whenever either moves.
+    # ------------------------------------------------------------------------
+    build_inspect:
+        name: Build Inspector
+        needs: changes
+        if: needs.changes.outputs.inspect == 'true' || needs.changes.outputs.areas != ''
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v7
+
+            - uses: actions/setup-node@v7
+              with:
+                  node-version: "lts/*"
+                  cache: npm
+
+            - name: Install Packages
+              run: npm ci
+
+            - name: Build
+              run: npm run build --workspace=@eslint/jskit-inspect
+
+    # ------------------------------------------------------------------------
+    # One check to require in branch protection. Without it, every gated job
+    # above would have to be listed there, and a job that correctly skipped —
+    # flow-only changes skip conformance, prose-only changes skip the tests —
+    # would read as a missing required check and block the merge.
+    # ------------------------------------------------------------------------
+    ci_success:
+        name: CI Success
+        needs:
+            - verify_files
+            - typecheck
+            - test
+            - coverage
+            - conformance
+            - build_inspect
+        if: always()
+        runs-on: ubuntu-latest
+        steps:
+            - name: Check Results
+              run: |
+                  results='${{ toJSON(needs) }}'
+                  echo "$results"
+                  if echo "$results" | grep -q '"result": *"\(failure\|cancelled\)"'; then
+                    echo "::error::At least one required job did not succeed."
+                    exit 1
+                  fi
+                  echo "All required jobs succeeded or were skipped."

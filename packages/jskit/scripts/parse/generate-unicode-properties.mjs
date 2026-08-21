@@ -23,7 +23,10 @@ import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 /** Where the generated table is written. */
-const OUTPUT = new URL("../../src/parse/unicode-properties.ts", import.meta.url);
+const OUTPUT = new URL(
+	"../../src/parse/unicode-properties.ts",
+	import.meta.url,
+);
 
 /**
  * Every `\p{…}` and `\P{…}` in a test file, captured whole.

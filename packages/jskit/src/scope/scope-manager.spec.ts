@@ -54,8 +54,18 @@ const CLASS = 3;
 
 const NODES: FakeNode[] = [
 	{ kind: N_Program, type: "Program", start: 0, end: 40 },
-	{ kind: N_FunctionDeclaration, type: "FunctionDeclaration", start: 0, end: 20 },
-	{ kind: N_ArrowFunctionExpression, type: "ArrowFunctionExpression", start: 20, end: 30 },
+	{
+		kind: N_FunctionDeclaration,
+		type: "FunctionDeclaration",
+		start: 0,
+		end: 20,
+	},
+	{
+		kind: N_ArrowFunctionExpression,
+		type: "ArrowFunctionExpression",
+		start: 20,
+		end: 30,
+	},
 	{ kind: N_ClassDeclaration, type: "ClassDeclaration", start: 30, end: 40 },
 ];
 
@@ -112,7 +122,9 @@ describe("ScopeManager", () => {
 			scopeManager.nestGlobalScope(PROGRAM);
 
 			expect(
-				scopeManager.nestFunctionScope(ARROW, false).set.has("arguments"),
+				scopeManager
+					.nestFunctionScope(ARROW, false)
+					.set.has("arguments"),
 			).toBe(false);
 		});
 
@@ -121,9 +133,9 @@ describe("ScopeManager", () => {
 
 			scopeManager.nestGlobalScope(PROGRAM);
 
-			expect(scopeManager.nestFunctionScope(FUNCTION, true).isStrict).toBe(
-				true,
-			);
+			expect(
+				scopeManager.nestFunctionScope(FUNCTION, true).isStrict,
+			).toBe(true);
 		});
 
 		it("marks a function expression name scope as one", () => {
@@ -131,7 +143,8 @@ describe("ScopeManager", () => {
 
 			scopeManager.nestGlobalScope(PROGRAM);
 
-			const scope = scopeManager.nestFunctionExpressionNameScope(FUNCTION);
+			const scope =
+				scopeManager.nestFunctionExpressionNameScope(FUNCTION);
 
 			expect(scope.type).toBe(SCOPE_FUNCTION_EXPRESSION_NAME);
 			expect(scope.functionExpressionScope).toBe(true);
@@ -143,7 +156,9 @@ describe("ScopeManager", () => {
 			scopeManager.nestGlobalScope(PROGRAM);
 
 			expect(scopeManager.nestBlockScope(PROGRAM).type).toBe(SCOPE_BLOCK);
-			expect(scopeManager.nestSwitchScope(PROGRAM).type).toBe(SCOPE_SWITCH);
+			expect(scopeManager.nestSwitchScope(PROGRAM).type).toBe(
+				SCOPE_SWITCH,
+			);
 			expect(scopeManager.nestCatchScope(PROGRAM).type).toBe(SCOPE_CATCH);
 			expect(scopeManager.nestWithScope(PROGRAM).type).toBe(SCOPE_WITH);
 			expect(scopeManager.nestForScope(PROGRAM).type).toBe(SCOPE_FOR);
@@ -188,7 +203,9 @@ describe("ScopeManager", () => {
 		});
 
 		it("reports `globalReturn` for CommonJS as well as for the option", () => {
-			expect(manager({ sourceType: "script" }).isGlobalReturn()).toBe(false);
+			expect(manager({ sourceType: "script" }).isGlobalReturn()).toBe(
+				false,
+			);
 			expect(manager({ globalReturn: true }).isGlobalReturn()).toBe(true);
 			expect(manager({ sourceType: "commonjs" }).isGlobalReturn()).toBe(
 				true,
@@ -197,7 +214,9 @@ describe("ScopeManager", () => {
 
 		it("reports implied strictness", () => {
 			expect(manager().isImpliedStrict()).toBe(false);
-			expect(manager({ impliedStrict: true }).isImpliedStrict()).toBe(true);
+			expect(manager({ impliedStrict: true }).isImpliedStrict()).toBe(
+				true,
+			);
 		});
 	});
 
@@ -274,7 +293,10 @@ describe("ScopeManager", () => {
 
 			expect(scopeManager.acquire(FUNCTION)).toBe(body);
 			expect(scopeManager.acquire(FUNCTION, true)).toBe(body);
-			expect(scopeManager.acquireAll(FUNCTION)).toEqual([nameScope, body]);
+			expect(scopeManager.acquireAll(FUNCTION)).toEqual([
+				nameScope,
+				body,
+			]);
 		});
 
 		it("returns null when every scope a node opened is a name scope", () => {

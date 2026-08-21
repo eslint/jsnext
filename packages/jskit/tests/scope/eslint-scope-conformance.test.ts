@@ -92,7 +92,10 @@ function compare(
 	const parsed = parse(code);
 
 	expect(
-		serializeBinary(toScopeManager(analyze(parsed, options), parsed), FLAGS),
+		serializeBinary(
+			toScopeManager(analyze(parsed, options), parsed),
+			FLAGS,
+		),
 	).toEqual(expected);
 	expect(
 		serializeReference(

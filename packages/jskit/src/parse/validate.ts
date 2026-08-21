@@ -246,8 +246,7 @@ function isIteration(kind: number): boolean {
  */
 function isFunctionBinding(binding: number): boolean {
 	return (
-		binding === BINDING_FUNCTION ||
-		binding === BINDING_ASYNC_OR_GENERATOR
+		binding === BINDING_FUNCTION || binding === BINDING_ASYNC_OR_GENERATOR
 	);
 }
 
@@ -700,7 +699,10 @@ class Validator {
 			this.strict = true;
 		}
 
-		this.hoist(this.reader.field(root, NODE_A), this.sourceType === "module");
+		this.hoist(
+			this.reader.field(root, NODE_A),
+			this.sourceType === "module",
+		);
 		this.visitModuleItems(this.reader.field(root, NODE_A));
 
 		if (this.sourceType === "module") {
@@ -735,9 +737,7 @@ class Validator {
 				return false;
 			}
 
-			const raw = this.reader.text(
-				this.reader.field(statement, NODE_A),
-			);
+			const raw = this.reader.text(this.reader.field(statement, NODE_A));
 
 			if (raw === '"use strict"' || raw === "'use strict'") {
 				return true;
@@ -875,8 +875,7 @@ class Validator {
 				const previousAmbient = this.ambient;
 
 				this.ambient =
-					previousAmbient ||
-					(reader.flags(node) & NF_DECLARE) !== 0;
+					previousAmbient || (reader.flags(node) & NF_DECLARE) !== 0;
 				this.visitChildren(node, kind);
 				this.ambient = previousAmbient;
 				return;
@@ -938,9 +937,7 @@ class Validator {
 					this.superPropertyAllowed = true;
 					this.superCallAllowed = false;
 					this.checkNoArguments(
-						this.findArgumentsInList(
-							reader.field(node, NODE_A),
-						),
+						this.findArgumentsInList(reader.field(node, NODE_A)),
 						"a class static block",
 					);
 				}
@@ -1400,8 +1397,7 @@ class Validator {
 			);
 		}
 
-		this.uniqueParams =
-			this.strict || !simple || isMethod || isArrow;
+		this.uniqueParams = this.strict || !simple || isMethod || isArrow;
 
 		const isDeclaration =
 			kind === N_FunctionDeclaration || kind === N_TSDeclareFunction;
@@ -1443,10 +1439,7 @@ class Validator {
 		for (let i = 0; i < size; i++) {
 			const param = reader.listItem(params, i);
 
-			if (
-				reader.kind(param) === N_RestElement &&
-				i !== size - 1
-			) {
+			if (reader.kind(param) === N_RestElement && i !== size - 1) {
 				this.report(
 					"A rest parameter must be the last parameter.",
 					reader.start(param),
@@ -1747,8 +1740,7 @@ class Validator {
 	 */
 	private checkUsingPlacement(node: number): void {
 		const reader = this.reader;
-		const declarationKind =
-			(reader.flags(node) & DECL_MASK) >>> DECL_SHIFT;
+		const declarationKind = (reader.flags(node) & DECL_MASK) >>> DECL_SHIFT;
 
 		if (
 			declarationKind === DECL_USING ||
@@ -2146,10 +2138,7 @@ class Validator {
 				"A parameter property may not be a rest parameter.",
 				reader.start(node),
 			);
-		} else if (
-			kind === N_ObjectPattern ||
-			kind === N_ArrayPattern
-		) {
+		} else if (kind === N_ObjectPattern || kind === N_ArrayPattern) {
 			this.report(
 				"A parameter property may not use a binding pattern.",
 				reader.start(node),
@@ -2256,10 +2245,7 @@ class Validator {
 		}
 
 		if (body === 0 && (flags & NF_GENERATOR) !== 0) {
-			this.report(
-				"A function signature may not be a generator.",
-				start,
-			);
+			this.report("A function signature may not be a generator.", start);
 		}
 	}
 
@@ -2497,10 +2483,7 @@ class Validator {
 							continue;
 						}
 
-						if (
-							scope.names.has(name) ||
-							scope.varNames.has(name)
-						) {
+						if (scope.names.has(name) || scope.varNames.has(name)) {
 							continue;
 						}
 
@@ -2551,10 +2534,7 @@ class Validator {
 			return;
 		}
 
-		if (
-			kind !== N_FunctionDeclaration &&
-			kind !== N_ClassDeclaration
-		) {
+		if (kind !== N_FunctionDeclaration && kind !== N_ClassDeclaration) {
 			return;
 		}
 
@@ -2721,16 +2701,13 @@ class Validator {
 			 */
 			const local = reader.field(
 				specifier,
-				reader.kind(specifier) === N_ImportSpecifier
-					? NODE_B
-					: NODE_A,
+				reader.kind(specifier) === N_ImportSpecifier ? NODE_B : NODE_A,
 			);
 
 			this.checkRestrictedName(local, "bound");
 			this.declare(
 				local,
-				typeOnly ||
-					(reader.flags(specifier) & NF_TYPE_ONLY) !== 0
+				typeOnly || (reader.flags(specifier) & NF_TYPE_ONLY) !== 0
 					? BINDING_TYPE
 					: BINDING_LEXICAL,
 			);
@@ -3049,8 +3026,7 @@ class Validator {
 				(incoming === BINDING_SIGNATURE ||
 					isFunctionBinding(incoming))) ||
 			(incoming === BINDING_AMBIENT_CLASS &&
-				(existing === BINDING_SIGNATURE ||
-					isFunctionBinding(existing)))
+				(existing === BINDING_SIGNATURE || isFunctionBinding(existing)))
 		) {
 			return false;
 		}
@@ -3209,7 +3185,10 @@ class Validator {
 		const start = this.reader.start(node);
 		const first = source.charCodeAt(start);
 
-		if (first >= RESERVED_INITIALS.length || RESERVED_INITIALS[first] === 0) {
+		if (
+			first >= RESERVED_INITIALS.length ||
+			RESERVED_INITIALS[first] === 0
+		) {
 			return;
 		}
 
@@ -3334,10 +3313,7 @@ class Validator {
 			if ((flags & NF_SHORTHAND) !== 0) {
 				const value = reader.field(property, NODE_B);
 
-				if (
-					value !== 0 &&
-					reader.kind(value) === N_AssignmentPattern
-				) {
+				if (value !== 0 && reader.kind(value) === N_AssignmentPattern) {
 					this.report(
 						"A shorthand property may only take a default inside a destructuring pattern.",
 						reader.start(property),
@@ -3750,9 +3726,7 @@ class Validator {
 
 		const property = reader.field(current, NODE_B);
 
-		return (
-			property !== 0 && reader.kind(property) === N_PrivateIdentifier
-		);
+		return property !== 0 && reader.kind(property) === N_PrivateIdentifier;
 	}
 
 	/**
@@ -3907,10 +3881,7 @@ class Validator {
 				break;
 		}
 
-		this.report(
-			"Invalid assignment target.",
-			reader.start(node),
-		);
+		this.report("Invalid assignment target.", reader.start(node));
 	}
 
 	/**
@@ -4171,10 +4142,7 @@ class Validator {
 		if (!isForOf) {
 			const headKind = (reader.flags(left) & DECL_MASK) >>> DECL_SHIFT;
 
-			if (
-				headKind === DECL_USING ||
-				headKind === DECL_AWAIT_USING
-			) {
+			if (headKind === DECL_USING || headKind === DECL_AWAIT_USING) {
 				this.report(
 					`A '${DECL_KIND_NAMES[headKind]}' declaration may not head a for-in loop.`,
 					reader.start(left),
@@ -4209,8 +4177,7 @@ class Validator {
 			return;
 		}
 
-		const declarationKind =
-			(reader.flags(left) & DECL_MASK) >>> DECL_SHIFT;
+		const declarationKind = (reader.flags(left) & DECL_MASK) >>> DECL_SHIFT;
 
 		if (
 			!isForOf &&
@@ -4358,7 +4325,10 @@ class Validator {
 		 * another — so only an implementation is counted, and two of those
 		 * are what a class may not have.
 		 */
-		if (value === 0 || reader.kind(value) === N_TSEmptyBodyFunctionExpression) {
+		if (
+			value === 0 ||
+			reader.kind(value) === N_TSEmptyBodyFunctionExpression
+		) {
 			return;
 		}
 
@@ -4403,9 +4373,7 @@ class Validator {
 
 		if (kind === N_VariableDeclaration) {
 			// `var` is the one declaration that is also a statement.
-			if (
-				((reader.flags(body) & DECL_MASK) >>> DECL_SHIFT) === DECL_VAR
-			) {
+			if ((reader.flags(body) & DECL_MASK) >>> DECL_SHIFT === DECL_VAR) {
 				return;
 			}
 		} else if (
@@ -4545,10 +4513,7 @@ class Validator {
 
 				this.checkMethodModifiers(node);
 
-				if (
-					value !== 0 &&
-					this.reader.field(value, NODE_C) !== 0
-				) {
+				if (value !== 0 && this.reader.field(value, NODE_C) !== 0) {
 					this.report(
 						"An abstract class element may not have an implementation.",
 						this.reader.start(node),
@@ -4582,9 +4547,7 @@ class Validator {
 					this.checkImportAttributes(
 						this.reader.field(
 							node,
-							kind === N_ExportNamedDeclaration
-								? NODE_D
-								: NODE_C,
+							kind === N_ExportNamedDeclaration ? NODE_D : NODE_C,
 						),
 					);
 				}

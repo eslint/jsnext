@@ -538,10 +538,7 @@ export function buildParseBuffer(input: ParseBufferInput): ArrayBuffer {
 	}
 
 	view.set(input.lists.words.subarray(0, input.lists.length), listOffset / 4);
-	view.set(
-		input.tokens.words.subarray(0, tokenBytes / 4),
-		tokensOffset / 4,
-	);
+	view.set(input.tokens.words.subarray(0, tokenBytes / 4), tokensOffset / 4);
 	view.set(input.lineStarts.subarray(0, input.lineCount), linesOffset / 4);
 
 	if (embedSource) {

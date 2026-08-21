@@ -327,7 +327,8 @@ async function contenders(dialect) {
 			run: code =>
 				jskit.eslintParser.parse(code, {
 					sourceType: "module",
-					filePath: dialect === "ts" ? "benchmark.ts" : "benchmark.js",
+					filePath:
+						dialect === "ts" ? "benchmark.ts" : "benchmark.js",
 					ecmaFeatures: { jsx: dialect === "jsx" },
 				}),
 		},
@@ -607,10 +608,7 @@ async function runSuite(title, code, dialect, sourceArgs) {
 		);
 
 		for (const id of ids) {
-			const measured = await runChild([
-				...sourceArgs,
-				`--measure=${id}`,
-			]);
+			const measured = await runChild([...sourceArgs, `--measure=${id}`]);
 
 			// A dot per contender, so a run that takes minutes looks alive.
 			process.stdout.write(".");

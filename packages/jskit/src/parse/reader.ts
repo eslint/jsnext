@@ -21,12 +21,7 @@ import {
 	readParents,
 	readSource,
 } from "./binary.js";
-import {
-	NODE_END,
-	NODE_FLAGS,
-	NODE_KIND,
-	NODE_START,
-} from "./node-kinds.js";
+import { NODE_END, NODE_FLAGS, NODE_KIND, NODE_START } from "./node-kinds.js";
 
 /**
  * Reads nodes and child lists out of a parse buffer.

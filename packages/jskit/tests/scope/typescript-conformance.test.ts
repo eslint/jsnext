@@ -78,7 +78,10 @@ function compare(code: string, jsx: boolean): void {
 	 * analyzer follows `eslint-scope`. `docs/deviations.md` records it.
 	 */
 	const flags = { ...FLAGS, dropReferences: jsxClosingNameKeys(tree) };
-	const binaryFlags = { ...BINARY_FLAGS, dropReferences: flags.dropReferences };
+	const binaryFlags = {
+		...BINARY_FLAGS,
+		dropReferences: flags.dropReferences,
+	};
 	const expected = serializeReference(
 		analyzeReference(tree, {
 			sourceType: "module",

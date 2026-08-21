@@ -61,11 +61,7 @@ export function graphOf(
  * @returns The node's handle.
  * @throws {Error} When no such node exists.
  */
-export function handleOf(
-	fixture: GraphFixture,
-	type: string,
-	nth = 0,
-): number {
+export function handleOf(fixture: GraphFixture, type: string, nth = 0): number {
 	const ast = fixture.ast;
 	let seen = 0;
 
@@ -150,7 +146,8 @@ export function edgesOf(graph: FlowTreeGraph): {
  */
 export function nodeTextOf(block: FlowTreeBlock, code: string): string[] {
 	return block.nodes.map(
-		node => `${node.type} ${JSON.stringify(code.slice(node.start, node.end))}`,
+		node =>
+			`${node.type} ${JSON.stringify(code.slice(node.start, node.end))}`,
 	);
 }
 

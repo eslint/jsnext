@@ -187,7 +187,10 @@ export function functionNameDefinition<TNode>(
  * @param node The class node.
  * @returns The definition.
  */
-export function classNameDefinition<TNode>(name: TNode, node: TNode): Definition<TNode> {
+export function classNameDefinition<TNode>(
+	name: TNode,
+	node: TNode,
+): Definition<TNode> {
 	return new Definition(
 		DEF_CLASS_NAME,
 		name,
@@ -280,7 +283,10 @@ export function implicitGlobalDefinition<TNode>(
  * @param node The declaring node.
  * @returns The definition.
  */
-export function typeDefinition<TNode>(name: TNode, node: TNode): Definition<TNode> {
+export function typeDefinition<TNode>(
+	name: TNode,
+	node: TNode,
+): Definition<TNode> {
 	return new Definition(
 		DEF_TYPE,
 		name,
@@ -300,7 +306,10 @@ export function typeDefinition<TNode>(name: TNode, node: TNode): Definition<TNod
  * @param node The `TSEnumDeclaration` node.
  * @returns The definition.
  */
-export function enumNameDefinition<TNode>(name: TNode, node: TNode): Definition<TNode> {
+export function enumNameDefinition<TNode>(
+	name: TNode,
+	node: TNode,
+): Definition<TNode> {
 	return new Definition(
 		DEF_TS_ENUM_NAME,
 		name,
@@ -320,7 +329,10 @@ export function enumNameDefinition<TNode>(name: TNode, node: TNode): Definition<
  * @param node The `TSEnumMember` node.
  * @returns The definition.
  */
-export function enumMemberDefinition<TNode>(name: TNode, node: TNode): Definition<TNode> {
+export function enumMemberDefinition<TNode>(
+	name: TNode,
+	node: TNode,
+): Definition<TNode> {
 	return new Definition(
 		DEF_TS_ENUM_MEMBER,
 		name,
@@ -340,7 +352,10 @@ export function enumMemberDefinition<TNode>(name: TNode, node: TNode): Definitio
  * @param node The `TSModuleDeclaration` node.
  * @returns The definition.
  */
-export function moduleNameDefinition<TNode>(name: TNode, node: TNode): Definition<TNode> {
+export function moduleNameDefinition<TNode>(
+	name: TNode,
+	node: TNode,
+): Definition<TNode> {
 	return new Definition(
 		DEF_TS_MODULE_NAME,
 		name,

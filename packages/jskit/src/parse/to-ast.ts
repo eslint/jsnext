@@ -787,10 +787,12 @@ export class AstDecoder {
 
 			case N_JSXElement:
 			case N_JSXFragment:
-				node[kind === N_JSXElement ? "openingElement" : "openingFragment"] =
-					this.node(a);
-				node[kind === N_JSXElement ? "closingElement" : "closingFragment"] =
-					this.node(b);
+				node[
+					kind === N_JSXElement ? "openingElement" : "openingFragment"
+				] = this.node(a);
+				node[
+					kind === N_JSXElement ? "closingElement" : "closingFragment"
+				] = this.node(b);
 				node.children = this.list(c);
 				return;
 
@@ -942,8 +944,6 @@ export class AstDecoder {
 				node.optional = (flags & NF_OPTIONAL) !== 0;
 				return;
 
-
-
 			case N_TSUnionType:
 			case N_TSIntersectionType:
 				node.types = this.list(a);
@@ -1048,8 +1048,7 @@ export class AstDecoder {
 				node.static = (flags & NF_STATIC) !== 0;
 				node.accessibility = this.accessibility(flags);
 				node.kind =
-					MKIND_NAMES[(flags & MKIND_MASK) >>> MKIND_SHIFT] ===
-					"init"
+					MKIND_NAMES[(flags & MKIND_MASK) >>> MKIND_SHIFT] === "init"
 						? "method"
 						: MKIND_NAMES[(flags & MKIND_MASK) >>> MKIND_SHIFT];
 				return;
@@ -1104,7 +1103,7 @@ export class AstDecoder {
 					];
 				node.declare = (flags & NF_DECLARE) !== 0;
 				node.global =
-					((flags & MODULE_KIND_MASK) >>> MODULE_KIND_SHIFT) ===
+					(flags & MODULE_KIND_MASK) >>> MODULE_KIND_SHIFT ===
 					MODULE_GLOBAL;
 				return;
 
@@ -1206,11 +1205,7 @@ export class AstDecoder {
 	 * @param handle The list handle.
 	 * @returns Nothing.
 	 */
-	private addListIfPresent(
-		node: EsNode,
-		name: string,
-		handle: number,
-	): void {
+	private addListIfPresent(node: EsNode, name: string, handle: number): void {
 		if (handle !== 0) {
 			node[name] = this.list(handle);
 		} else if (this.typescript) {

@@ -10,32 +10,32 @@ covers the public API; this document covers the machinery behind it.
 - [The three phases](#the-three-phases)
 - [Source layout](#source-layout)
 - [Tokenization](#tokenization)
-  - [Character classification](#character-classification)
-  - [Token kinds](#token-kinds)
-  - [Keyword recognition](#keyword-recognition)
-  - [The parser drives the scanner](#the-parser-drives-the-scanner)
-  - [The context stack](#the-context-stack)
-  - [Rescanning](#rescanning)
-  - [JSX modes](#jsx-modes)
+    - [Character classification](#character-classification)
+    - [Token kinds](#token-kinds)
+    - [Keyword recognition](#keyword-recognition)
+    - [The parser drives the scanner](#the-parser-drives-the-scanner)
+    - [The context stack](#the-context-stack)
+    - [Rescanning](#rescanning)
+    - [JSX modes](#jsx-modes)
 - [Parsing](#parsing)
-  - [The parser chain](#the-parser-chain)
-  - [Writing nodes](#writing-nodes)
-  - [Building child lists](#building-child-lists)
-  - [Speculation and rewinding](#speculation-and-rewinding)
-  - [Expressions](#expressions)
-  - [Patterns without a cover grammar](#patterns-without-a-cover-grammar)
-  - [The two ambiguities worth knowing](#the-two-ambiguities-worth-knowing)
+    - [The parser chain](#the-parser-chain)
+    - [Writing nodes](#writing-nodes)
+    - [Building child lists](#building-child-lists)
+    - [Speculation and rewinding](#speculation-and-rewinding)
+    - [Expressions](#expressions)
+    - [Patterns without a cover grammar](#patterns-without-a-cover-grammar)
+    - [The two ambiguities worth knowing](#the-two-ambiguities-worth-knowing)
 - [Binary format](#binary-format)
-  - [Shared conventions](#shared-conventions)
-  - [The header](#the-header)
-  - [Token records](#token-records)
-  - [Node records](#node-records)
-  - [The flags word](#the-flags-word)
-  - [The list region](#the-list-region)
-  - [The parent table](#the-parent-table)
-  - [Records that are not in the tree](#records-that-are-not-in-the-tree)
-  - [The embedded source text](#the-embedded-source-text)
-  - [Reading a buffer](#reading-a-buffer)
+    - [Shared conventions](#shared-conventions)
+    - [The header](#the-header)
+    - [Token records](#token-records)
+    - [Node records](#node-records)
+    - [The flags word](#the-flags-word)
+    - [The list region](#the-list-region)
+    - [The parent table](#the-parent-table)
+    - [Records that are not in the tree](#records-that-are-not-in-the-tree)
+    - [The embedded source text](#the-embedded-source-text)
+    - [Reading a buffer](#reading-a-buffer)
 - [Validation](#validation)
 - [Decoding to ESTree](#decoding-to-estree)
 - [Invariants](#invariants)
@@ -46,18 +46,18 @@ covers the public API; this document covers the machinery behind it.
 Most parsers do one pass and hand back an object tree. This one splits that
 into three, and the split is the reason the fast path is fast.
 
-| Phase | Entry point | Produces | Fails how |
-| ----- | ----------- | -------- | --------- |
-| Parse | `parse(code)` | Two `ArrayBuffer`s and a `Uint32Array` | Throws `ParseError` |
-| Validate | `validate(result, options)` | An array of problems | Never throws |
-| Decode | `toAST(result, options)` | ESTree objects, plus the problems | Never throws |
+| Phase    | Entry point                 | Produces                               | Fails how           |
+| -------- | --------------------------- | -------------------------------------- | ------------------- |
+| Parse    | `parse(code)`               | Two `ArrayBuffer`s and a `Uint32Array` | Throws `ParseError` |
+| Validate | `validate(result, options)` | An array of problems                   | Never throws        |
+| Decode   | `toAST(result, options)`    | ESTree objects, plus the problems      | Never throws        |
 
 The dividing line between phase 1 and phase 2 is **whether the answer depends
 on context that the text alone does not supply**. `parse()` accepts the union
 of everything JavaScript and TypeScript allow. It throws only when the text
 cannot be turned into tokens, or those tokens cannot be shaped into a tree.
 
-Everything that is merely *not allowed here* — `with` in strict mode, a
+Everything that is merely _not allowed here_ — `with` in strict mode, a
 redeclared binding, `return` outside a function, TypeScript syntax in a `.js`
 file, JSX in a file that is not JSX, top-level `await` in a script — parses
 cleanly and is reported by `validate()`. That is what makes the source type,
@@ -106,14 +106,14 @@ src/
 `chars.ts` holds `CHAR_FLAGS`, a `Uint8Array(128)` with one entry per ASCII
 character. Each entry packs six answers into bits:
 
-| Mask | Bit | Meaning |
-| ---- | --- | ------- |
-| `MASK_ID_START` | 0 | May begin an identifier |
-| `MASK_ID_PART` | 1 | May continue an identifier |
-| `MASK_SPACE` | 2 | Is whitespace |
-| `MASK_NEWLINE` | 3 | Is a line terminator |
-| `MASK_DIGIT` | 4 | Is `0`–`9` |
-| `MASK_HEX_DIGIT` | 5 | Is a hexadecimal digit |
+| Mask             | Bit | Meaning                    |
+| ---------------- | --- | -------------------------- |
+| `MASK_ID_START`  | 0   | May begin an identifier    |
+| `MASK_ID_PART`   | 1   | May continue an identifier |
+| `MASK_SPACE`     | 2   | Is whitespace              |
+| `MASK_NEWLINE`   | 3   | Is a line terminator       |
+| `MASK_DIGIT`     | 4   | Is `0`–`9`                 |
+| `MASK_HEX_DIGIT` | 5   | Is a hexadecimal digit     |
 
 Classifying a character is one array read and one bitwise AND. Characters at or
 above 128 fall through to `isNonAsciiIdStart`, `isNonAsciiIdPart`, and
@@ -122,15 +122,15 @@ essentially all of real-world source text.
 
 ### Token kinds
 
-A *kind* is a small integer identifying a token precisely: not "punctuator" but
+A _kind_ is a small integer identifying a token precisely: not "punctuator" but
 `T_PLUS_EQUALS`, not "keyword" but `T_instanceof`. The range is partitioned so
 that a category test is a comparison rather than a set lookup:
 
-| Range | Contents |
-| ----- | -------- |
-| 0–19 | Literals and trivia: EOF, identifiers, numbers, strings, regexps, the four template pieces, comments, hashbang, the three JSX kinds |
-| 20–`PUNCT_LAST` | Punctuators, starting at `T_BRACE_OPEN = 20` |
-| 100–182 | Keywords, from `T_await = 100` to `T_intrinsic = 182` |
+| Range           | Contents                                                                                                                            |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| 0–19            | Literals and trivia: EOF, identifiers, numbers, strings, regexps, the four template pieces, comments, hashbang, the three JSX kinds |
+| 20–`PUNCT_LAST` | Punctuators, starting at `T_BRACE_OPEN = 20`                                                                                        |
+| 100–182         | Keywords, from `T_await = 100` to `T_intrinsic = 182`                                                                               |
 
 Anything else a consumer needs is a table indexed by kind, built once at module
 load:
@@ -192,13 +192,13 @@ contains trivia that the parser itself skipped over.
 
 The scanner keeps a small stack of what brackets are currently open:
 
-| Context | Pushed by |
-| ------- | --------- |
-| `CTX_BLOCK` | `{` that opened a statement block |
-| `CTX_OBJECT` | `{` that opened an object literal |
+| Context          | Pushed by                                |
+| ---------------- | ---------------------------------------- |
+| `CTX_BLOCK`      | `{` that opened a statement block        |
+| `CTX_OBJECT`     | `{` that opened an object literal        |
 | `CTX_PAREN_STMT` | `(` of `if`, `for`, `while`, and friends |
-| `CTX_PAREN_EXPR` | any other `(` |
-| `CTX_TEMPLATE` | `${` inside a template literal |
+| `CTX_PAREN_EXPR` | any other `(`                            |
+| `CTX_TEMPLATE`   | `${` inside a template literal           |
 
 Alongside it sits `exprAllowed`, a boolean meaning "an expression could start
 at the next token". After most tokens it is set from
@@ -232,14 +232,14 @@ one:
 ### JSX modes
 
 JSX cannot be handled by the parser alone, because its lexical grammar differs
-from JavaScript's in ways that change what a token *is*:
+from JavaScript's in ways that change what a token _is_:
 
-| Source | JavaScript scanning | JSX needs |
-| ------ | ------------------- | --------- |
-| `<div>a + b</div>` | `a`, `+`, `b` | one `JSXText` token |
-| `<foo-bar/>` | `foo`, `-`, `bar` | one `JSXIdentifier` |
-| `attr="a\nb"` | `\n` is an escape | literal backslash and `n`; `&amp;` is an entity |
-| `</div>` | regexp literal, since `<` allows an expression | `/` punctuator |
+| Source             | JavaScript scanning                            | JSX needs                                       |
+| ------------------ | ---------------------------------------------- | ----------------------------------------------- |
+| `<div>a + b</div>` | `a`, `+`, `b`                                  | one `JSXText` token                             |
+| `<foo-bar/>`       | `foo`, `-`, `bar`                              | one `JSXIdentifier`                             |
+| `attr="a\nb"`      | `\n` is an escape                              | literal backslash and `n`; `&amp;` is an entity |
+| `</div>`           | regexp literal, since `<` allows an expression | `/` punctuator                                  |
 
 So JSX is three extra scanner entry points the parser calls where the grammar
 says a JSX construct is expected. Each falls back to ordinary scanning when the
@@ -296,7 +296,7 @@ that is required and what goes wrong without it.
 ### Building child lists
 
 A node slot cannot hold a variable number of children, so children go in a
-separate list region and the slot holds a *handle* — a word index into that
+separate list region and the slot holds a _handle_ — a word index into that
 region.
 
 Lists are gathered on a shared scratch stack:
@@ -308,7 +308,7 @@ while (!this.at(T_BRACKET_CLOSE)) {
 	writer.pushList(this.parseElement());
 }
 
-const handle = writer.endList(mark);   // flushed to the list region
+const handle = writer.endList(mark); // flushed to the list region
 ```
 
 `endList` copies the run into the list region and returns the handle, resetting
@@ -415,7 +415,7 @@ divergence.
   extension story: a later version can grow a record, or grow the header
   itself, and a reader built against an earlier version still finds every field
   it knows about, because they are all at the front.
-- Offsets stored in records are offsets into the *source text*, in UTF-16 code
+- Offsets stored in records are offsets into the _source text_, in UTF-16 code
   units — the same units as JavaScript string indices.
 
 ### The header
@@ -457,7 +457,7 @@ The parent table has no count of its own: it is one word per node, so
 `nodeCount` sizes it. Like the source text, it is present only when it was
 asked for, and the flag in word 2 is what says so.
 
-`sourceLength` describes the *program*, not the region: it is recorded whether
+`sourceLength` describes the _program_, not the region: it is recorded whether
 or not the text is present, and the flag in word 2 is what says whether the
 characters are actually there.
 
@@ -483,12 +483,12 @@ offset of the closing `/`. That is what lets a consumer split the token into
 
 The four token flags occupy the high half of word 2:
 
-| Flag | Bit | Meaning |
-| ---- | --- | ------- |
-| `TF_NEWLINE_BEFORE` | 0 | A line terminator precedes this token. Automatic semicolon insertion reads this. |
-| `TF_HAS_ESCAPE` | 1 | The text contains a backslash escape, so the raw text is not the value. |
-| `TF_INVALID_ESCAPE` | 2 | Contains an escape that is only legal in a tagged template. |
-| `TF_LEGACY_OCTAL` | 3 | Uses legacy octal syntax, which strict mode forbids. |
+| Flag                | Bit | Meaning                                                                          |
+| ------------------- | --- | -------------------------------------------------------------------------------- |
+| `TF_NEWLINE_BEFORE` | 0   | A line terminator precedes this token. Automatic semicolon insertion reads this. |
+| `TF_HAS_ESCAPE`     | 1   | The text contains a backslash escape, so the raw text is not the value.          |
+| `TF_INVALID_ESCAPE` | 2   | Contains an escape that is only legal in a tagged template.                      |
+| `TF_LEGACY_OCTAL`   | 3   | Uses legacy octal syntax, which strict mode forbids.                             |
 
 Comments and the hashbang are recorded as tokens. There is no separate comment
 region.
@@ -550,20 +550,20 @@ bits, which keeps them out of the data slots.
 
 Bits 0–22 are independent booleans:
 
-| Bit | Flag | Bit | Flag |
-| --- | ---- | --- | ---- |
-| 0 | `NF_ASYNC` | 12 | `NF_ABSTRACT` |
-| 1 | `NF_GENERATOR` | 13 | `NF_CONST` |
-| 2 | `NF_STATIC` | 14 | `NF_OVERRIDE` |
-| 3 | `NF_COMPUTED` | 15 | `NF_DEFINITE` |
-| 4 | `NF_OPTIONAL` | 16 | `NF_TYPE_ONLY` |
-| 5 | `NF_PREFIX` | 17 | `NF_PARENTHESIZED` |
-| 6 | `NF_DELEGATE` | 18 | `NF_TAIL` |
-| 7 | `NF_SHORTHAND` | 19 | `NF_INVALID_ESCAPE` |
-| 8 | `NF_METHOD` | 20 | `NF_STRICT` |
-| 9 | `NF_EXPRESSION_BODY` | 21 | `NF_EXPORT` |
-| 10 | `NF_READONLY` | 22 | `NF_IN` |
-| 11 | `NF_DECLARE` | | |
+| Bit | Flag                 | Bit | Flag                |
+| --- | -------------------- | --- | ------------------- |
+| 0   | `NF_ASYNC`           | 12  | `NF_ABSTRACT`       |
+| 1   | `NF_GENERATOR`       | 13  | `NF_CONST`          |
+| 2   | `NF_STATIC`          | 14  | `NF_OVERRIDE`       |
+| 3   | `NF_COMPUTED`        | 15  | `NF_DEFINITE`       |
+| 4   | `NF_OPTIONAL`        | 16  | `NF_TYPE_ONLY`      |
+| 5   | `NF_PREFIX`          | 17  | `NF_PARENTHESIZED`  |
+| 6   | `NF_DELEGATE`        | 18  | `NF_TAIL`           |
+| 7   | `NF_SHORTHAND`       | 19  | `NF_INVALID_ESCAPE` |
+| 8   | `NF_METHOD`          | 20  | `NF_STRICT`         |
+| 9   | `NF_EXPRESSION_BODY` | 21  | `NF_EXPORT`         |
+| 10  | `NF_READONLY`        | 22  | `NF_IN`             |
+| 11  | `NF_DECLARE`         |     |                     |
 
 `NF_SELF_CLOSING` is deliberately an alias of `NF_ASYNC` (bit 0). A JSX opening
 element is never async, so the bit is free on that kind. Reusing bits across
@@ -571,11 +571,11 @@ disjoint kinds is allowed, but it must be documented at the definition.
 
 Bits 23 and up hold packed enumerations:
 
-| Field | Shift | Width | Values |
-| ----- | ----- | ----- | ------ |
-| Accessibility | 23 | 2 | none, `public`, `private`, `protected` |
-| Declaration kind | 25 | 3 | `var`, `let`, `const`, `using`, `await using` |
-| Module/misc kind | 28 | 3 | kind-dependent; also used for literal subtype |
+| Field            | Shift | Width | Values                                        |
+| ---------------- | ----- | ----- | --------------------------------------------- |
+| Accessibility    | 23    | 2     | none, `public`, `private`, `protected`        |
+| Declaration kind | 25    | 3     | `var`, `let`, `const`, `using`, `await using` |
+| Module/misc kind | 28    | 3     | kind-dependent; also used for literal subtype |
 
 The literal subtypes carried in the third field are `LIT_STRING`, `LIT_NUMBER`,
 `LIT_BOOLEAN`, `LIT_NULL`, `LIT_REGEXP`, `LIT_BIGINT`, and `LIT_JSX_STRING`.
@@ -591,7 +591,7 @@ word h+2     element 1
 ...
 ```
 
-A *handle* is the word index `h`, relative to the start of the list region.
+A _handle_ is the word index `h`, relative to the start of the list region.
 Handle `0` means the empty list, so no list is ever stored with size zero.
 Elements are node indices; a `0` element is an array hole, as in `[a, , b]`.
 
@@ -613,7 +613,7 @@ it resolves the source text that way: a reader over a buffer without one is
 perfectly usable for everything else.
 
 The parser cannot fill this in as it goes, because a node is very often
-allocated *after* its children — `a + b` parses both operands before the
+allocated _after_ its children — `a + b` parses both operands before the
 `BinaryExpression` that owns them exists, and `retype()` can change what a
 finished node even is. So `fillParentTable()` derives it once during buffer
 assembly, in a linear sweep over the node region that hands each node's own
@@ -644,18 +644,18 @@ appear in about one file in five, so a pass that walks node indices rather than
 the tree has to expect them.
 
 They exist because `alloc()` hands out an index at the moment the parser
-decides to *try* a production, and an index is a position: once a later node
+decides to _try_ a production, and an index is a position: once a later node
 has one, an earlier one cannot be given back. The usual escape hatch is
 `rewind()`, which rolls `count` back so the indices are reused — which is why
 speculation leaves nothing behind, not even for a whole abandoned arrow
 function. A record survives only where the parse moved forward past a node it
 turned out not to need. There are three such places:
 
-| Where | What is left | Why |
-| ----- | ------------ | --- |
-| `parseNewExpression()` | an `Identifier` covering `new` | `parseWordAsIdentifier()` must consume the keyword before the parser can see whether `.target` follows, and that node *is* the `meta` slot of a `MetaProperty` if it does |
-| `parseImportExpression()` | an `Identifier` covering `import` | the same shape, for `import.meta` |
-| `parseNewExpression()` | a zeroed record | `new Map<K, V>()` parses its callee as a `TSInstantiationExpression`, then lifts the callee and type arguments into the `NewExpression` |
+| Where                     | What is left                      | Why                                                                                                                                                                       |
+| ------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `parseNewExpression()`    | an `Identifier` covering `new`    | `parseWordAsIdentifier()` must consume the keyword before the parser can see whether `.target` follows, and that node _is_ the `meta` slot of a `MetaProperty` if it does |
+| `parseImportExpression()` | an `Identifier` covering `import` | the same shape, for `import.meta`                                                                                                                                         |
+| `parseNewExpression()`    | a zeroed record                   | `new Map<K, V>()` parses its callee as a `TSInstantiationExpression`, then lifts the callee and type arguments into the `NewExpression`                                   |
 
 The first two are the common case by far — a little over 22,000 of them across
 7.4 million nodes — and both are leaves, so they cost 48 bytes and mislead
@@ -663,7 +663,7 @@ nothing that reads their slots.
 
 The third is different in kind, and is the reason `discard()` exists. The
 wrapper's slots still named the callee and the type arguments after the
-`NewExpression` took them, and because the wrapper is allocated *after* the
+`NewExpression` took them, and because the wrapper is allocated _after_ the
 node that now owns them, it won the parent sweep's last write and handed both
 children a parent that is not in the tree. `parseNewExpression()` therefore
 zeroes it, kind `0` and all, exactly as `rewind()` zeroes a speculative parse.
@@ -690,7 +690,7 @@ for (let node = 1; node < reader.nodeCount; node++) {
 
 ### The embedded source text
 
-The parse buffer *can* carry a copy of the source as little-endian UTF-16 code
+The parse buffer _can_ carry a copy of the source as little-endian UTF-16 code
 units, so that the buffer is self-describing when it is transferred to a worker
 or written to disk. It does not by default: the region is roughly a sixth of
 the buffer and costs about 4% of a parse, and a consumer that stays in the
@@ -814,7 +814,7 @@ Things that will break subtly if violated:
 To add a field to a node kind: use a free slot. Slots are per kind, so a slot
 unused by that kind costs nothing.
 
-To add a *new* word to every node record: raise `NODE_WORDS`. Existing readers
+To add a _new_ word to every node record: raise `NODE_WORDS`. Existing readers
 keep working because they compute stride from the header's `nodeBytes` and only
 read the fields they know. Do not reorder existing words.
 

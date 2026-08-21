@@ -80,11 +80,7 @@ describe("RegExpValidator", () => {
 			["a", "gg", "Duplicate regular expression flag."],
 			["a", "uu", "Duplicate regular expression flag."],
 			["a", "gug", "Duplicate regular expression flag."],
-			[
-				"a",
-				"uv",
-				"The 'u' and 'v' flags are mutually exclusive.",
-			],
+			["a", "uv", "The 'u' and 'v' flags are mutually exclusive."],
 		]);
 	});
 
@@ -173,11 +169,7 @@ describe("RegExpValidator", () => {
 			["(?<1n>a)", "", "Invalid capture group name."],
 			["(?<n->a)", "", "Invalid capture group name."],
 			["(?<n>a)(?<n>b)", "", "Duplicate capture group name."],
-			[
-				"((?<n>a)|(?<n>b))(?<n>c)",
-				"",
-				"Duplicate capture group name.",
-			],
+			["((?<n>a)|(?<n>b))(?<n>c)", "", "Duplicate capture group name."],
 		]);
 	});
 
@@ -383,11 +375,7 @@ describe("RegExpValidator", () => {
 			["[&&]", "v", "Invalid character in character class."],
 
 			// Negating anything that can match a sequence.
-			[
-				"[^\\q{ab}]",
-				"v",
-				"Negated character class may contain strings.",
-			],
+			["[^\\q{ab}]", "v", "Negated character class may contain strings."],
 			[
 				"[^\\q{a|bc}]",
 				"v",
@@ -493,11 +481,7 @@ describe("RegExpValidator", () => {
 		]);
 
 		rejects([
-			[
-				"[^\\q{ab}]",
-				"v",
-				"Negated character class may contain strings.",
-			],
+			["[^\\q{ab}]", "v", "Negated character class may contain strings."],
 			[
 				"[[^\\q{ab}]]",
 				"v",

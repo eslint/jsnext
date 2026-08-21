@@ -322,9 +322,9 @@ describe("buildParseBuffer()", () => {
 		});
 
 		expect(buffer.byteLength).toBe(PARSE_HEADER_BYTES + TOKEN_BYTES + 4);
-		expect(Array.from(new Uint32Array(buffer, PARSE_HEADER_BYTES, 4))).toEqual(
-			[1, 2, 3, 4],
-		);
+		expect(
+			Array.from(new Uint32Array(buffer, PARSE_HEADER_BYTES, 4)),
+		).toEqual([1, 2, 3, 4]);
 	});
 
 	it("keeps every region word-aligned even for odd-length text", () => {
@@ -347,7 +347,7 @@ describe("buildParseBuffer()", () => {
 	});
 
 	it("embeds text outside the ASCII range", () => {
-		const source = "const é = \"日\";";
+		const source = 'const é = "日";';
 		const buffer = build({ source }).slice(0);
 		const view = new Uint32Array(buffer);
 
@@ -388,14 +388,14 @@ describe("buildParseBuffer()", () => {
 		it("records the flag and leaves the region empty", () => {
 			const source = "const a = 1;";
 			const embedded = new Uint32Array(build({ source }));
-			const bare = new Uint32Array(
-				build({ source, embedSource: false }),
-			);
+			const bare = new Uint32Array(build({ source, embedSource: false }));
 
-			expect(embedded[PARSE_HEADER_FLAGS] & PARSE_FLAG_SOURCE_EMBEDDED).toBe(
-				PARSE_FLAG_SOURCE_EMBEDDED,
+			expect(
+				embedded[PARSE_HEADER_FLAGS] & PARSE_FLAG_SOURCE_EMBEDDED,
+			).toBe(PARSE_FLAG_SOURCE_EMBEDDED);
+			expect(bare[PARSE_HEADER_FLAGS] & PARSE_FLAG_SOURCE_EMBEDDED).toBe(
+				0,
 			);
-			expect(bare[PARSE_HEADER_FLAGS] & PARSE_FLAG_SOURCE_EMBEDDED).toBe(0);
 
 			// The length still describes the program; only the bytes are gone.
 			expect(bare[PARSE_HEADER_SOURCE_LENGTH]).toBe(source.length);
@@ -575,10 +575,7 @@ describe("fillParentTable()", () => {
 
 	it("reads the slots of a node from its own kind", () => {
 		// Slot B of an `Identifier` is its type annotation, a child node.
-		const nodes = nodeRegion([
-			[N_Identifier, 3, 2],
-			[N_Identifier],
-		]);
+		const nodes = nodeRegion([[N_Identifier, 3, 2], [N_Identifier]]);
 
 		expect(
 			Array.from(

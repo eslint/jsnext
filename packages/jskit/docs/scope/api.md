@@ -8,21 +8,21 @@ The [package README](../../README.md#scope-analysis) has the short version.
 
 ## Two ways in
 
-| Entry point | Reads | Use it when |
-| ----------- | ----- | ----------- |
-| `analyze()` | the [parser](../parse/api.md)'s binary buffers | The source is yours to parse. Nothing is ever decoded into ESTree objects, which is where the speed comes from. |
-| `analyzeTree()` | An ordinary ESTree tree | You already have an AST, from `espree`, `@typescript-eslint/parser`, or anything else ESLint-compatible. |
+| Entry point     | Reads                                          | Use it when                                                                                                     |
+| --------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `analyze()`     | the [parser](../parse/api.md)'s binary buffers | The source is yours to parse. Nothing is ever decoded into ESTree objects, which is where the speed comes from. |
+| `analyzeTree()` | An ordinary ESTree tree                        | You already have an AST, from `espree`, `@typescript-eslint/parser`, or anything else ESLint-compatible.        |
 
 Both run the same walk and return the same thing: one `ArrayBuffer` in a
 compact binary scope format, where every binding has a stable symbol ID and
 every node reference is an integer handle into the program that was analyzed.
 Three consumers read that buffer, each shaped for a different job:
 
-| Consumer | Returns | Use it when |
-| -------- | ------- | ----------- |
-| `toScopeManager()` | The escope-compatible object graph | You have code written against `eslint-scope`, including `@eslint-community/eslint-utils`. |
-| `new Scopes()` | Point queries straight off the buffer | You want one answer — *is this the global `Symbol`?* — without building the graph. |
-| `toScopeTree()` | A plain JSON-serializable tree | You are debugging, diffing, or writing golden files. |
+| Consumer           | Returns                               | Use it when                                                                               |
+| ------------------ | ------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `toScopeManager()` | The escope-compatible object graph    | You have code written against `eslint-scope`, including `@eslint-community/eslint-utils`. |
+| `new Scopes()`     | Point queries straight off the buffer | You want one answer — _is this the global `Symbol`?_ — without building the graph.        |
+| `toScopeTree()`    | A plain JSON-serializable tree        | You are debugging, diffing, or writing golden files.                                      |
 
 ## Usage
 
@@ -52,7 +52,7 @@ variable.references.length; // 2 — the initializer's write and the later read
 variable.identifiers[0]; // the very Identifier node espree produced
 ```
 
-Every consumer takes the buffer *and the program it was produced from* — the
+Every consumer takes the buffer _and the program it was produced from_ — the
 same `tree` here — and hands back the tree's own node objects, so they compare
 by identity with the nodes you already hold.
 
@@ -96,10 +96,7 @@ binary format can answer well — so expect it to move.
 import { parse, analyze, Scopes } from "@eslint/jskit";
 
 const result = parse("console.log(missing);");
-const scopes = new Scopes(
-	analyze(result, { globals: ["console"] }),
-	result,
-);
+const scopes = new Scopes(analyze(result, { globals: ["console"] }), result);
 
 // The single most common question rules ask, one call:
 scopes.isGlobalReference(node); // SourceCode#isGlobalReference() semantics
@@ -156,17 +153,17 @@ JSON.stringify(tree, null, 2); // fully self-contained; nodes are {type, start, 
 
 Both entry points take the same options. Every one has a default.
 
-| Option | Default | Meaning |
-| ------ | ------- | ------- |
-| `sourceType` | `"module"` | `"script"`, `"module"`, or `"commonjs"`. |
-| `dialect` | `"ts"` | `"js"` or `"ts"`. See [the disagreements](#where-the-two-reference-implementations-disagree). |
-| `jsx` | `true` | Whether a JSX identifier counts as a reference. |
-| `impliedStrict` | `false` | Apply strict mode without a directive. |
-| `globalReturn` | `false` | Wrap the program in a function scope. Implied by `"commonjs"`. |
-| `ignoreEval` | `false` | Do not let a direct `eval` make scopes dynamic. |
-| `globals` | `null` | Names to declare in the global scope. |
-| `jsxPragma` | `null` | Name a JSX element compiles a call to, referenced once per file. |
-| `jsxFragmentName` | `null` | Name a JSX fragment compiles a call to. |
+| Option            | Default    | Meaning                                                                                       |
+| ----------------- | ---------- | --------------------------------------------------------------------------------------------- |
+| `sourceType`      | `"module"` | `"script"`, `"module"`, or `"commonjs"`.                                                      |
+| `dialect`         | `"ts"`     | `"js"` or `"ts"`. See [the disagreements](#where-the-two-reference-implementations-disagree). |
+| `jsx`             | `true`     | Whether a JSX identifier counts as a reference.                                               |
+| `impliedStrict`   | `false`    | Apply strict mode without a directive.                                                        |
+| `globalReturn`    | `false`    | Wrap the program in a function scope. Implied by `"commonjs"`.                                |
+| `ignoreEval`      | `false`    | Do not let a direct `eval` make scopes dynamic.                                               |
+| `globals`         | `null`     | Names to declare in the global scope.                                                         |
+| `jsxPragma`       | `null`     | Name a JSX element compiles a call to, referenced once per file.                              |
+| `jsxFragmentName` | `null`     | Name a JSX fragment compiles a call to.                                                       |
 
 ### Supplying globals
 
@@ -194,18 +191,18 @@ it.
 
 ### `ScopeManager`
 
-| Member | Description |
-| ------ | ----------- |
-| `scopes` | Every scope, in the order they were created. |
-| `globalScope` | The outermost scope. |
-| `ast` | How the analysis read the program. |
-| `reader` | The `AstReader`, for `analyze()`; `null` for `analyzeTree()`. |
-| `acquire(node, inner?)` | The scope a node opened. |
-| `acquireAll(node)` | Every scope a node opened. |
-| `release(node, inner?)` | The scope enclosing the one a node opened. |
-| `getDeclaredVariables(node)` | The variables a node declares. |
-| `addGlobals(names)` | Declare globals and resolve what waited for them. |
-| `nodeType(node)`, `nodeRange(node)` | Read a node without caring which representation it is. |
+| Member                              | Description                                                   |
+| ----------------------------------- | ------------------------------------------------------------- |
+| `scopes`                            | Every scope, in the order they were created.                  |
+| `globalScope`                       | The outermost scope.                                          |
+| `ast`                               | How the analysis read the program.                            |
+| `reader`                            | The `AstReader`, for `analyze()`; `null` for `analyzeTree()`. |
+| `acquire(node, inner?)`             | The scope a node opened.                                      |
+| `acquireAll(node)`                  | Every scope a node opened.                                    |
+| `release(node, inner?)`             | The scope enclosing the one a node opened.                    |
+| `getDeclaredVariables(node)`        | The variables a node declares.                                |
+| `addGlobals(names)`                 | Declare globals and resolve what waited for them.             |
+| `nodeType(node)`, `nodeRange(node)` | Read a node without caring which representation it is.        |
 
 ### `Scope`
 
@@ -291,7 +288,7 @@ binary files=… ok=… mismatch=0 threw=0   # vs @typescript-eslint/scope-manag
 tree   files=… ok=… mismatch=0 threw=0
 ```
 
-Both entry points are compared *through the buffer*: the corpus serializes,
+Both entry points are compared _through the buffer_: the corpus serializes,
 rehydrates with `toScopeManager()`, and diffs the result against the
 reference, so a field the format dropped or reordered cannot pass.
 
@@ -310,11 +307,11 @@ node scripts/scope/conformance-ts.mjs ../some-react-app/src 500
 Importing one entry point does not ship the other, and neither ships the rest
 of the toolkit. Minified, bundled with `esbuild`:
 
-| Imports | Size |
-| ------- | ---- |
-| `analyze` | 51.2 KiB |
+| Imports       | Size     |
+| ------------- | -------- |
+| `analyze`     | 51.2 KiB |
 | `analyzeTree` | 52.3 KiB |
-| both | 57.0 KiB |
+| both          | 57.0 KiB |
 
 A tree-only bundle contains neither the binary reader nor the parser; a
 binary-only bundle contains neither the tree adapter nor the slot-name table it

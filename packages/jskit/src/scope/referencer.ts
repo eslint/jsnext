@@ -794,7 +794,11 @@ export class Referencer<TNode> {
 		this.visitPattern(
 			param,
 			(pattern, info) => {
-				this.builder.defineCatchClause(pattern, ast.name(pattern), node);
+				this.builder.defineCatchClause(
+					pattern,
+					ast.name(pattern),
+					node,
+				);
 				this.referencingDefaultValue(
 					pattern,
 					info.assignments,
@@ -869,9 +873,7 @@ export class Referencer<TNode> {
 			this.visitPattern(
 				left,
 				(pattern, info) => {
-					const implicitNode = this.builder.isStrict()
-						? null
-						: node;
+					const implicitNode = this.builder.isStrict() ? null : node;
 
 					this.referencingDefaultValue(
 						pattern,
@@ -1631,7 +1633,10 @@ export class Referencer<TNode> {
 		const expression = ast.child(node, SLOT_A);
 
 		if (expression !== null && ast.kind(expression) === N_Identifier) {
-			this.builder.referenceDualValueType(expression, ast.name(expression));
+			this.builder.referenceDualValueType(
+				expression,
+				ast.name(expression),
+			);
 			return;
 		}
 
@@ -2069,10 +2074,7 @@ export class Referencer<TNode> {
 			}
 
 			entityName = left;
-		} else if (
-			exprName !== null &&
-			ast.kind(exprName) === N_TSImportType
-		) {
+		} else if (exprName !== null && ast.kind(exprName) === N_TSImportType) {
 			this.visitType(exprName);
 		}
 

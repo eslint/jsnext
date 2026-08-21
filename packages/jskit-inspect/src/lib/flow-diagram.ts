@@ -390,9 +390,7 @@ export function toFlowDiagram(
 		for (const edge of block.successors) {
 			const arrow = edge.back ? "-.->" : "-->";
 			const kind =
-				edge.kind === "normal"
-					? ""
-					: `|"${escapeLabel(edge.kind)}"|`;
+				edge.kind === "normal" ? "" : `|"${escapeLabel(edge.kind)}"|`;
 
 			links.push(`b${block.blockId} ${arrow}${kind} b${edge.to}`);
 		}

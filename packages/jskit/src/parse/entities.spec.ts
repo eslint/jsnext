@@ -62,7 +62,9 @@ describe("decodeEntities()", () => {
 	});
 
 	it("decodes every reference in a run of text", () => {
-		expect(decodeEntities("a &amp; b &#65; c &#x42; d")).toBe("a & b A c B d");
+		expect(decodeEntities("a &amp; b &#65; c &#x42; d")).toBe(
+			"a & b A c B d",
+		);
 	});
 
 	it("keeps the text around a reference it could not decode", () => {

@@ -1,5 +1,5 @@
 ---
-applyTo: '**/*.ts, **/*.js, **/*.astro, **/*.tsx, **/*.jsx'
+applyTo: "**/*.ts, **/*.js, **/*.astro, **/*.tsx, **/*.jsx"
 ---
 
 # JavaScript/TypeScript Coding Style Guide
@@ -14,15 +14,19 @@ Use tabs for indentation.
 
 Use double quotes for strings. Example:
 <incorrect_code>
-```typescript
-const message = 'Hello, world!';
-```
-</incorrect_code>
 
-<correct_code>
 ```typescript
 const message = "Hello, world!";
 ```
+
+</incorrect_code>
+
+<correct_code>
+
+```typescript
+const message = "Hello, world!";
+```
+
 </correct_code>
 
 ## Variable and Function Naming
@@ -30,43 +34,55 @@ const message = "Hello, world!";
 Use camelCase for variable and function names. Example:
 
 <incorrect_code>
+
 ```typescript
 const my_variable = "value";
 ```
+
 </incorrect_code>
 
 <correct_code>
+
 ```typescript
 const myVariable = "value";
 ```
+
 </correct_code>
 
 Exception: If the variable represents a "magic value", use UPPER_SNAKE_CASE. Example:
 
 <incorrect_code>
+
 ```typescript
 const myConstant = "value";
 ```
+
 </incorrect_code>
 
 <correct_code>
+
 ```typescript
 const MY_CONSTANT = "value";
 ```
+
 </correct_code>
 
 Exception: If the variable directly represents a database or API field, use snake_case. Example:
 
 <incorrect_code>
+
 ```typescript
 const userId = "12345";
 ```
+
 </incorrect_code>
 
 <correct_code>
+
 ```typescript
 const user_id = "12345";
 ```
+
 </correct_code>
 
 Variable names should be descriptive and meaningful. Avoid using single-letter variable names except for loop indices or when the context is very clear.
@@ -76,12 +92,15 @@ Variable names should be descriptive and meaningful. Avoid using single-letter v
 For conditional statements, always use indented blocks. Example:
 
 <incorrect_code>
+
 ```typescript
 if (condition) return;
 ```
+
 </incorrect_code>
 
 <correct_code>
+
 ```typescript
 if (condition) {
 	// do something
@@ -89,11 +108,13 @@ if (condition) {
 	// do something else
 }
 ```
+
 </correct_code>
 
 Always include one blank line before and after a block statement. Example:
 
 <incorrect_code>
+
 ```typescript
 doSomething();
 if (condition) {
@@ -101,9 +122,11 @@ if (condition) {
 }
 callFunction();
 ```
+
 </incorrect_code>
 
 <correct_code>
+
 ```typescript
 doSomething();
 
@@ -113,6 +136,7 @@ if (condition) {
 
 callFunction();
 ```
+
 </correct_code>
 
 ## JSDoc
@@ -131,12 +155,13 @@ function add(a: number, b: number): number {
 	if (typeof a !== "number" || typeof b !== "number") {
 		throw new Error("Both parameters must be numbers.");
 	}
-	
-  	return a + b;
+
+	return a + b;
 }
 ```
 
 Note:
+
 - `@returns` should describe the purpose of the return value, not its type.
 - Use `@throws` to document any exceptions that the function may throw, including the conditions under which they are thrown. Use the actual error type if applicable, or `Error` if a generic error is thrown.
 
@@ -159,7 +184,6 @@ function doSomething() {
 
 // Correct
 function doSomething() {
-	
 	/*
 	 * This function does something.
 	 */
@@ -178,7 +202,6 @@ function doSomething() {
 
 // Correct
 function doSomething() {
-	
 	// This is a comment.
 	console.log("Doing something");
 }
@@ -189,7 +212,6 @@ Do not use multiple single-line comments in a row. Instead, use a multi-line com
 ```typescript
 // Incorrect
 function doSomething() {
-	
 	// This is a comment.
 	// This is another comment.
 	console.log("Doing something");
@@ -197,7 +219,6 @@ function doSomething() {
 
 // Correct
 function doSomething() {
-	
 	/*
 	 * This is a comment.
 	 * This is another comment.
@@ -225,17 +246,17 @@ When parsing URLs, use `URL.parse()` to ensure the URL is valid instead of `new 
 ```typescript
 // incorrect
 try {
-  const parsedUrl = new URL(url);
+	const parsedUrl = new URL(url);
 } catch (error) {
-  console.error("Invalid URL:", url);
-  // Handle error
+	console.error("Invalid URL:", url);
+	// Handle error
 }
 
 // correct
 const parsedUrl = URL.parse(url);
 if (!parsedUrl) {
-  console.error("Invalid URL:", url);
-  // Handle error
+	console.error("Invalid URL:", url);
+	// Handle error
 }
 ```
 

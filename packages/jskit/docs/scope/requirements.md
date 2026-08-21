@@ -6,7 +6,7 @@ Create a utility that evaluates the binary AST format from the parser for scope 
 
 ## Description
 
-This utility is meant to efficiently evaluate JavaScript/TypeScript code in such a way as to provide additional insights into how the code is structured and functions. 
+This utility is meant to efficiently evaluate JavaScript/TypeScript code in such a way as to provide additional insights into how the code is structured and functions.
 
 ## Scope analysis
 
@@ -45,7 +45,7 @@ found the usage concentrates into a few patterns. Ranked by rule count:
 
 1. **Global identity checks — 43 rules, half of all scope use.** "Does this
    identifier still refer to the built-in `Symbol`/`RegExp`/`console`?" and
-   "enumerate every reference to global *X*." Asked via
+   "enumerate every reference to global _X_." Asked via
    `getVariableByName() + defs.length === 0`, `isGlobalReference()`, or
    `ReferenceTracker`.
 2. **Declaration node → bindings — 19 rules** (`getDeclaredVariables()`),
@@ -55,7 +55,7 @@ found the usage concentrates into a few patterns. Ranked by rule count:
    (`prefer-const`, `no-param-reassign`, …). Needs the per-reference
    read/write/init flags.
 4. **Unresolved references — 7 rules.** `no-undef` is a loop over the global
-   scope's `through`; `no-loop-func` reads a *function* scope's `through` to
+   scope's `through`; `no-loop-func` reads a _function_ scope's `through` to
    find what it closes over.
 5. **Position and nesting comparisons — 6 rules** (`no-shadow`,
    `no-use-before-define`, `no-redeclare`). Needs scope-chain walking,
@@ -66,38 +66,38 @@ found the usage concentrates into a few patterns. Ranked by rule count:
    primitives as 4 and 5.
 
 Full scope traversal (every scope, every symbol) is rare — two rules — so it
-must be *possible* but does not need to be optimized for.
+must be _possible_ but does not need to be optimized for.
 
 ## Public API
 
 - A `analyze()` function that accepts an array buffer representing a binary AST and the same options as the current version. It returns an array buffer containing the scope and symbol information.
 - A `toScopeTree()` function that takes the result of `analyze()` and the binary AST, and converts it into an object AST for easy debugging and serialization. The returned value must be JSON-serializable and match the style of the AST produced by the parser. The tree must be fully-self contained without references to external objects.
 - A `Scopes` class that accepts the result of `analyze()` and the binary AST, and contains methods for easy lookup of scope data based on common use cases. The methods interrogate the array buffer to find the information. `Scopes` is an exploratory API — a way to find out what queries the binary format can answer well, not a planned replacement for the rule-facing scope API. Prioritized by the survey above:
-  - `isGlobalReference(node)` — matches the semantics of ESLint's
-    `SourceCode#isGlobalReference()` exactly: true only when the identifier
-    resolves to a configured global with no definitions in code. A fully
-    unresolved reference returns false; those are served by
-    `getGlobalReferences(name)` and `getUnresolvedReferences(scope)` instead.
-    This is the single most common question rules ask; it should be
-    answerable without materializing any objects.
-  - `getGlobalReferences(name)` — every reference to global *name*, including
-    unresolved ones, for the "report all uses of `eval`/`Symbol`/`console`"
-    pattern.
-  - `getDeclaredSymbols(node)` — declaration node → symbol IDs.
-  - `getReferences(symbolId)` — iterate a symbol's references with their
-    read/write/init flags exposed.
-  - `getSymbolReadCount(symbolId)` / `getSymbolWriteCount(symbolId)` /
-    `getSymbolReferenceCount(symbolId)` — the same list summarized, for the
-    rules that only need to count.
-  - `getOwnSymbolByName(scope, name)` / `getSymbolByName(scope, name)` —
-    `getVariableByName()`, the second-most-used entry point in the survey:
-    one scope's own binding, and the same lookup climbing the chain.
-  - `getUnresolvedReferences(scope)` — the `through` list, for the global
-    scope (`no-undef`) or any function scope (`no-loop-func`).
-  - `getScope(node)`, `upper(scope)`, `variableScope(scope)`,
-    `isStrict(scope)` — chain walking for the shadowing/position rules.
-  - `markSymbolAsUsed(symbolId)` / `isSymbolUsed(symbolId)` — the
-    `eslintUsed` protocol. The buffer is immutable, so this is a mutable side
-    bitset keyed by symbol ID, owned by the `Scopes` instance.
+    - `isGlobalReference(node)` — matches the semantics of ESLint's
+      `SourceCode#isGlobalReference()` exactly: true only when the identifier
+      resolves to a configured global with no definitions in code. A fully
+      unresolved reference returns false; those are served by
+      `getGlobalReferences(name)` and `getUnresolvedReferences(scope)` instead.
+      This is the single most common question rules ask; it should be
+      answerable without materializing any objects.
+    - `getGlobalReferences(name)` — every reference to global _name_, including
+      unresolved ones, for the "report all uses of `eval`/`Symbol`/`console`"
+      pattern.
+    - `getDeclaredSymbols(node)` — declaration node → symbol IDs.
+    - `getReferences(symbolId)` — iterate a symbol's references with their
+      read/write/init flags exposed.
+    - `getSymbolReadCount(symbolId)` / `getSymbolWriteCount(symbolId)` /
+      `getSymbolReferenceCount(symbolId)` — the same list summarized, for the
+      rules that only need to count.
+    - `getOwnSymbolByName(scope, name)` / `getSymbolByName(scope, name)` —
+      `getVariableByName()`, the second-most-used entry point in the survey:
+      one scope's own binding, and the same lookup climbing the chain.
+    - `getUnresolvedReferences(scope)` — the `through` list, for the global
+      scope (`no-undef`) or any function scope (`no-loop-func`).
+    - `getScope(node)`, `upper(scope)`, `variableScope(scope)`,
+      `isStrict(scope)` — chain walking for the shadowing/position rules.
+    - `markSymbolAsUsed(symbolId)` / `isSymbolUsed(symbolId)` — the
+      `eslintUsed` protocol. The buffer is immutable, so this is a mutable side
+      bitset keyed by symbol ID, owned by the `Scopes` instance.
 - A `toScopeManager()` function that accepts the result of `analyze()` and the binary AST, and produces an escope-compatible `ScopeManager` structure (with optional extra properties as needed for common use cases). Compatibility bar: the structure must be complete enough for `@eslint-community/eslint-utils` (`ReferenceTracker`, `findVariable`, `getStaticValue`) to work unmodified — 8+ core rules reach scope only through those helpers — and `Variable#eslintUsed` must be settable, feeding the same side bitset as `markSymbolAsUsed()`.
 - `analyzeTree` is updated to return the same binary representation as `analyze()`.

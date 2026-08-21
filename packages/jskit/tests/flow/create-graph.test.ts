@@ -152,7 +152,8 @@ describe("loops", () => {
 	});
 
 	it("routes continue to the update of a for loop", () => {
-		const code = "for (let i = 0; i < n; i++) { if (skip) continue; body(); }";
+		const code =
+			"for (let i = 0; i < n; i++) { if (skip) continue; body(); }";
 		const fixture = graphOf(code);
 		const [graph] = fixture.tree.graphs;
 

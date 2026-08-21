@@ -118,7 +118,10 @@ function recordedAll(source: string, isModule = true): Scanned[] {
 			start: words[base + TOKEN_START],
 			end: words[base + TOKEN_END],
 			flags: words[base + TOKEN_KIND_FLAGS] >>> 16,
-			text: source.slice(words[base + TOKEN_START], words[base + TOKEN_END]),
+			text: source.slice(
+				words[base + TOKEN_START],
+				words[base + TOKEN_END],
+			),
 		});
 	}
 
@@ -302,12 +305,17 @@ describe("Tokenizer", () => {
 
 	describe("strings", () => {
 		it("scans both quote styles", () => {
-			expect(scanFirst('"a"')).toMatchObject({ kind: T_STRING, text: '"a"' });
+			expect(scanFirst('"a"')).toMatchObject({
+				kind: T_STRING,
+				text: '"a"',
+			});
 			expect(scanFirst("'a'")).toMatchObject({ kind: T_STRING });
 		});
 
 		it("refuses an unterminated string", () => {
-			expect(() => scanAll('"a')).toThrow(/Unterminated string constant/u);
+			expect(() => scanAll('"a')).toThrow(
+				/Unterminated string constant/u,
+			);
 		});
 
 		it("refuses a string broken by a line terminator", () => {
@@ -529,19 +537,39 @@ describe("Tokenizer", () => {
 
 	describe("operators", () => {
 		it("scans every compound assignment", () => {
-			expect(kinds("a -= 1")).toEqual([T_IDENT, T_ASSIGN_MINUS, T_NUMBER]);
+			expect(kinds("a -= 1")).toEqual([
+				T_IDENT,
+				T_ASSIGN_MINUS,
+				T_NUMBER,
+			]);
 			expect(kinds("a *= 1")).toEqual([T_IDENT, T_ASSIGN_STAR, T_NUMBER]);
-			expect(kinds("a %= 1")).toEqual([T_IDENT, T_ASSIGN_PERCENT, T_NUMBER]);
-			expect(kinds("a ^= 1")).toEqual([T_IDENT, T_ASSIGN_CARET, T_NUMBER]);
+			expect(kinds("a %= 1")).toEqual([
+				T_IDENT,
+				T_ASSIGN_PERCENT,
+				T_NUMBER,
+			]);
+			expect(kinds("a ^= 1")).toEqual([
+				T_IDENT,
+				T_ASSIGN_CARET,
+				T_NUMBER,
+			]);
 			expect(kinds("a &= 1")).toEqual([T_IDENT, T_ASSIGN_AMP, T_NUMBER]);
 			expect(kinds("a |= 1")).toEqual([T_IDENT, T_ASSIGN_PIPE, T_NUMBER]);
 			expect(kinds("a <<= 1")).toEqual([T_IDENT, T_ASSIGN_SHL, T_NUMBER]);
 			expect(kinds("a >>= 1")).toEqual([T_IDENT, T_ASSIGN_SAR, T_NUMBER]);
-			expect(kinds("a >>>= 1")).toEqual([T_IDENT, T_ASSIGN_SHR, T_NUMBER]);
+			expect(kinds("a >>>= 1")).toEqual([
+				T_IDENT,
+				T_ASSIGN_SHR,
+				T_NUMBER,
+			]);
 		});
 
 		it("scans `/=` where a regular expression cannot start", () => {
-			expect(kinds("a /= 1")).toEqual([T_IDENT, T_ASSIGN_SLASH, T_NUMBER]);
+			expect(kinds("a /= 1")).toEqual([
+				T_IDENT,
+				T_ASSIGN_SLASH,
+				T_NUMBER,
+			]);
 		});
 
 		it("scans the comparisons", () => {

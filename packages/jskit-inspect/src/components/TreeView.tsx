@@ -27,7 +27,11 @@ export interface TreeViewProps {
  * @returns `true` for arrays and plain-ish objects with at least one entry.
  */
 function isExpandable(value: unknown): value is object {
-	if (typeof value !== "object" || value === null || value instanceof RegExp) {
+	if (
+		typeof value !== "object" ||
+		value === null ||
+		value instanceof RegExp
+	) {
 		return false;
 	}
 
@@ -72,7 +76,9 @@ function Primitive({ value }: { value: unknown }): ReactNode {
 				</span>
 			);
 		case "undefined":
-			return <span className="text-muted-foreground italic">undefined</span>;
+			return (
+				<span className="text-muted-foreground italic">undefined</span>
+			);
 		default:
 			if (value instanceof RegExp) {
 				return (
@@ -169,7 +175,9 @@ function TreeNode({ name, value, depth }: TreeNodeProps): ReactNode {
 					</svg>
 				</span>
 				<span className="text-foreground/80">{name}:</span>
-				<span className="text-muted-foreground">{summarize(value)}</span>
+				<span className="text-muted-foreground">
+					{summarize(value)}
+				</span>
 			</button>
 			{expanded &&
 				entriesOf(value).map(([childName, childValue]) => (
@@ -187,7 +195,10 @@ function TreeNode({ name, value, depth }: TreeNodeProps): ReactNode {
 /**
  * Renders a serialized analysis result as an expandable tree.
  */
-export function TreeView({ data, rootLabel = "root" }: TreeViewProps): ReactNode {
+export function TreeView({
+	data,
+	rootLabel = "root",
+}: TreeViewProps): ReactNode {
 	return (
 		<div className="font-mono text-[13px]">
 			<TreeNode name={rootLabel} value={data} depth={0} />

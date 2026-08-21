@@ -29,19 +29,19 @@
  * using` are implemented.
  */
 export const UNSUPPORTED_FEATURES = new Set([
-  /*
-   * `import source x from "m"` and `import.source(...)`. The declaration
-   * form is not recognized at all.
-   */
-  "source-phase-imports",
-  "source-phase-imports-module-source",
+	/*
+	 * `import source x from "m"` and `import.source(...)`. The declaration
+	 * form is not recognized at all.
+	 */
+	"source-phase-imports",
+	"source-phase-imports-module-source",
 
-  /*
-   * `import defer * as ns from "m"`. The `defer` is read as an ordinary
-   * specifier, so the declaration parses into the wrong tree rather than
-   * failing outright, which is worse than not parsing.
-   */
-  "import-defer",
+	/*
+	 * `import defer * as ns from "m"`. The `defer` is read as an ordinary
+	 * specifier, so the declaration parses into the wrong tree rather than
+	 * failing outright, which is worse than not parsing.
+	 */
+	"import-defer",
 ]);
 
 /**

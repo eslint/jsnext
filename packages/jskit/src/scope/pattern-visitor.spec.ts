@@ -28,7 +28,11 @@ import {
 } from "../parse/index.js";
 import { SLOT_A, SLOT_B } from "./ast-access.js";
 import { FakeAst, type FakeNode } from "./fake-ast.spec-helpers.js";
-import { isPatternKind, PatternVisitor, type PatternInfo } from "./pattern-visitor.js";
+import {
+	isPatternKind,
+	PatternVisitor,
+	type PatternInfo,
+} from "./pattern-visitor.js";
 
 /** One name the walk reached, with what it knew at the time. */
 interface Found {
@@ -180,7 +184,10 @@ describe("PatternVisitor", () => {
 	it("treats a member expression as an evaluated object, not a binding", () => {
 		const { found, rightHandNodes } = walk([
 			{ kind: N_ArrayPattern, lists: { [SLOT_A]: [1] } },
-			{ kind: N_MemberExpression, children: { [SLOT_A]: 2, [SLOT_B]: 3 } },
+			{
+				kind: N_MemberExpression,
+				children: { [SLOT_A]: 2, [SLOT_B]: 3 },
+			},
 			{ kind: N_Identifier },
 			{ kind: N_Identifier },
 		]);

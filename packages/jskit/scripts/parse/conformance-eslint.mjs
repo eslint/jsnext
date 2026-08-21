@@ -166,7 +166,9 @@ if (flags.has("--update")) {
 	);
 
 	writeFileSync(BASELINE, `${JSON.stringify(sorted, null, "\t")}\n`);
-	console.log(`wrote ${Object.keys(sorted).length} rules to eslint-baseline.json`);
+	console.log(
+		`wrote ${Object.keys(sorted).length} rules to eslint-baseline.json`,
+	);
 }
 
 const seen = new Set();
@@ -179,7 +181,9 @@ for (const [rule, title, message] of problems) {
 	}
 
 	seen.add(key);
-	console.log(`${rule}: ${title.slice(0, 100)}\n     ${message.slice(0, 120)}`);
+	console.log(
+		`${rule}: ${title.slice(0, 100)}\n     ${message.slice(0, 120)}`,
+	);
 
 	if (!flags.has("--verbose") && seen.size >= MAX_REPORTED) {
 		break;

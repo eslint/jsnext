@@ -117,8 +117,9 @@ describe("Scopes", () => {
 		const globalUse = consoleVar.references[0].identifier;
 		const shadowedUse = manager.scopes
 			.find(scope => scope.type === "function")!
-			.references.find(reference => reference.name === "console")!
-			.identifier;
+			.references.find(
+				reference => reference.name === "console",
+			)!.identifier;
 		const unresolvedUse = manager.globalScope!.through[0].identifier;
 
 		expect(scopes.isGlobalReference(globalUse)).toBe(true);
@@ -127,9 +128,12 @@ describe("Scopes", () => {
 	});
 
 	it("returns resolved and unresolved references to a global name", () => {
-		const { parsed, buffer } = analyzed("console.log(1); console.error(2);", {
-			globals: ["console"],
-		});
+		const { parsed, buffer } = analyzed(
+			"console.log(1); console.error(2);",
+			{
+				globals: ["console"],
+			},
+		);
 		const scopes = new Scopes(buffer, parsed);
 
 		expect(scopes.getGlobalReferences("console")).toHaveLength(2);
@@ -150,7 +154,9 @@ describe("Scopes", () => {
 		const declaration = manager.scopes[1].variables[0].defs[0].parent!;
 
 		expect(
-			scopes.getDeclaredSymbols(declaration).map(id => scopes.symbolName(id)),
+			scopes
+				.getDeclaredSymbols(declaration)
+				.map(id => scopes.symbolName(id)),
 		).toEqual(["a", "b"]);
 	});
 
@@ -315,9 +321,9 @@ describe("Scopes", () => {
 		expect(scopes.scopeType(scopes.getScope(functionNode)!)).toBe(
 			"function",
 		);
-		expect(scopes.getScope(manager.scopes[1].variables[0].identifiers[0])).toBe(
-			null,
-		);
+		expect(
+			scopes.getScope(manager.scopes[1].variables[0].identifiers[0]),
+		).toBe(null);
 	});
 
 	it("counts the scopes, symbols, and references it holds", () => {
@@ -368,7 +374,9 @@ describe("Scopes", () => {
 
 		// The program opens the global scope and the module scope.
 		expect(scopes.getScope(program)).toBe(0);
-		expect(scopes.scopeType(scopes.getScope(program, true)!)).toBe("module");
+		expect(scopes.scopeType(scopes.getScope(program, true)!)).toBe(
+			"module",
+		);
 	});
 
 	it("reports no scope for a node that opened none, either direction", () => {
@@ -449,14 +457,12 @@ describe("toScopeManager", () => {
 		for (const scope of manager.scopes) {
 			for (const variable of scope.variables) {
 				expect(variable.readCount).toBe(
-					variable.references.filter(reference =>
-						reference.isRead(),
-					).length,
+					variable.references.filter(reference => reference.isRead())
+						.length,
 				);
 				expect(variable.writeCount).toBe(
-					variable.references.filter(reference =>
-						reference.isWrite(),
-					).length,
+					variable.references.filter(reference => reference.isWrite())
+						.length,
 				);
 
 				// The rehydrated graph and the buffer say the same thing.
@@ -481,7 +487,9 @@ describe("toScopeManager", () => {
 
 		for (const scope of manager.scopes) {
 			for (const variable of scope.variables) {
-				expect(scopes.symbolName(variable.symbolId)).toBe(variable.name);
+				expect(scopes.symbolName(variable.symbolId)).toBe(
+					variable.name,
+				);
 				expect(scopes.symbolScope(variable.symbolId)).toBe(
 					manager.scopes.indexOf(scope),
 				);

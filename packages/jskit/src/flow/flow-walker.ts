@@ -1211,10 +1211,7 @@ export class FlowWalker {
 
 			case N_TSEnumDeclaration: {
 				this.#record(node);
-				this.#visitTs(
-					reader.field(node, NODE_B),
-					N_TSEnumBody,
-				);
+				this.#visitTs(reader.field(node, NODE_B), N_TSEnumBody);
 				break;
 			}
 
@@ -1300,12 +1297,7 @@ export class FlowWalker {
 			const handle = this.#handle(left);
 
 			this.#builder.addEdge(this.#current, right, EK_NULLISH, handle);
-			this.#builder.addEdge(
-				this.#current,
-				join,
-				EK_NOT_NULLISH,
-				handle,
-			);
+			this.#builder.addEdge(this.#current, join, EK_NOT_NULLISH, handle);
 		}
 
 		this.#current = right;
@@ -1380,10 +1372,20 @@ export class FlowWalker {
 		const join = this.#builder.newBlock();
 
 		if (operator === T_ASSIGN_AMPAMP) {
-			this.#builder.addEdge(this.#current, rightBlock, EK_TRUE, leftHandle);
+			this.#builder.addEdge(
+				this.#current,
+				rightBlock,
+				EK_TRUE,
+				leftHandle,
+			);
 			this.#builder.addEdge(this.#current, join, EK_FALSE, leftHandle);
 		} else if (operator === T_ASSIGN_PIPEPIPE) {
-			this.#builder.addEdge(this.#current, rightBlock, EK_FALSE, leftHandle);
+			this.#builder.addEdge(
+				this.#current,
+				rightBlock,
+				EK_FALSE,
+				leftHandle,
+			);
 			this.#builder.addEdge(this.#current, join, EK_TRUE, leftHandle);
 		} else {
 			this.#builder.addEdge(
@@ -1494,7 +1496,13 @@ export class FlowWalker {
 		this.#maybeVisit(reader.field(node, NODE_A));
 		this.#builder.addEdge(this.#current, test, EK_NORMAL, 0);
 		this.#current = test;
-		this.#visitCondition(reader.field(node, NODE_B), body, after, EF_BACK, 0);
+		this.#visitCondition(
+			reader.field(node, NODE_B),
+			body,
+			after,
+			EF_BACK,
+			0,
+		);
 		this.#contexts.pop();
 		this.#current = after;
 	}

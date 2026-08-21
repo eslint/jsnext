@@ -15,10 +15,7 @@
  * simply knew what to do.
  */
 
-import {
-	AFTER_JSX_ATTRIBUTE,
-	AFTER_JSX_CHILDREN,
-} from "./parser-base.js";
+import { AFTER_JSX_ATTRIBUTE, AFTER_JSX_CHILDREN } from "./parser-base.js";
 import { ExpressionParser } from "./parser-expressions.js";
 import {
 	LIT_JSX_STRING,
@@ -233,10 +230,7 @@ export abstract class JsxParser extends ExpressionParser {
 				}
 
 				this.writer.pushList(
-					this.parseJsxAfterOpenAngle(
-						childStart,
-						AFTER_JSX_CHILDREN,
-					),
+					this.parseJsxAfterOpenAngle(childStart, AFTER_JSX_CHILDREN),
 				);
 				continue;
 			}
@@ -374,10 +368,7 @@ export abstract class JsxParser extends ExpressionParser {
 	 * @returns The index of the `JSXNamespacedName` node.
 	 * @throws {ParseError} When the second half is missing.
 	 */
-	private finishJsxNamespacedName(
-		start: number,
-		namespace: number,
-	): number {
+	private finishJsxNamespacedName(start: number, namespace: number): number {
 		const node = this.writer.alloc(N_JSXNamespacedName, start);
 
 		this.tokenizer.nextJsxName();
@@ -435,11 +426,7 @@ export abstract class JsxParser extends ExpressionParser {
 
 				this.writer.set(literal, NODE_A, LIT_JSX_STRING);
 				this.tokenizer.nextJsxName();
-				this.writer.set(
-					node,
-					NODE_B,
-					this.writer.finish(literal, end),
-				);
+				this.writer.set(node, NODE_B, this.writer.finish(literal, end));
 			} else if (this.at(T_BRACE_OPEN)) {
 				this.writer.set(
 					node,
@@ -506,10 +493,7 @@ export abstract class JsxParser extends ExpressionParser {
 	 */
 	private parseJsxExpressionContainer(isChild: boolean): number {
 		const start = this.start;
-		const node = this.writer.alloc(
-			N_JSXExpressionContainer,
-			start,
-		);
+		const node = this.writer.alloc(N_JSXExpressionContainer, start);
 
 		this.enterBrace(false);
 

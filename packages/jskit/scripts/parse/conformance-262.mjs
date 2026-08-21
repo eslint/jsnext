@@ -34,10 +34,7 @@
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { parse, validate } from "../../dist/jskit.js";
-import {
-	KNOWN_OVERZEALOUS,
-	UNSUPPORTED_FEATURES,
-} from "./262-exclusions.mjs";
+import { KNOWN_OVERZEALOUS, UNSUPPORTED_FEATURES } from "./262-exclusions.mjs";
 
 /** Where the per-directory failure counts are kept. */
 const BASELINE = new URL("./262-baseline.json", import.meta.url);

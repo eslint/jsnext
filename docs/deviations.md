@@ -7,7 +7,7 @@ and `@typescript-eslint/scope-manager`. "Reproduces" means byte-for-byte equal
 output on every file of the differential corpus, and that is enforced — see
 [Conformance is the real test suite](../AGENTS.md#conformance-is-the-real-test-suite).
 
-Everything below is a place where the output is deliberately *not* equal. Each
+Everything below is a place where the output is deliberately _not_ equal. Each
 one is a decision, not a gap. **If you find a difference that is not on this
 list, it is a bug** — fix the parser rather than adding an entry, unless you
 have a reason of the kind the entries below give.
@@ -51,7 +51,7 @@ This generalizes: **wherever the reference omits a property or leaves it
 documented contract; the omitted half is the same rule.
 
 **How conformance absorbs it:** the comparison helpers drop any property whose
-value is `null` or `undefined` from *both* sides before comparing, so an absent
+value is `null` or `undefined` from _both_ sides before comparing, so an absent
 property and a `null` one are the same thing. A real disagreement — `null`
 against a value — still fails.
 
@@ -69,7 +69,7 @@ as U+F600, a private-use character, rather than as the emoji.
 **Here:** `@typescript-eslint/parser`'s answer, in both dialects.
 
 ```jsx
-<div>&#x1F600;</div>   // value: "😀", not ""
+<div>&#x1F600;</div> // value: "😀", not ""
 ```
 
 **Why:** the two references disagree and one of them is wrong. Reproducing a
@@ -143,13 +143,28 @@ never saw the other rule.
 ### Function declarations in a class static block
 
 **Reference:** `espree` treats a function declaration at the top level of a
-class static block as a *lexical* declaration, so it rejects all three of
+class static block as a _lexical_ declaration, so it rejects all three of
 these.
 
 ```js
-class C { static { var a; function a(){} } }
-class C { static { function a(){} var a; } }
-class C { static { function a(){} function a(){} } }
+class C {
+	static {
+		var a;
+		function a() {}
+	}
+}
+class C {
+	static {
+		function a() {}
+		var a;
+	}
+}
+class C {
+	static {
+		function a() {}
+		function a() {}
+	}
+}
 ```
 
 **Here:** all three are accepted. A static block is a variable scope, so a
@@ -159,7 +174,7 @@ function body does.
 **Why:** `acorn` is wrong here, and V8 agrees. `ClassStaticBlockBody` is
 specified with `TopLevelVarDeclaredNames` and `TopLevelLexicallyDeclaredNames`,
 exactly as a function body is, which puts a top-level function declaration
-among the *var*-declared names. `node --input-type=module -e` accepts all three.
+among the _var_-declared names. `node --input-type=module -e` accepts all three.
 Reproducing the reference would mean rejecting valid code, which is the worse
 of the two failure modes, so the specification wins.
 
@@ -201,7 +216,7 @@ and `packages/jskit/tests/parse/test262.test.ts` pins both halves.
 ### `eval` and `arguments` where `espree` misses them
 
 **Reference:** `espree` implements the strict mode rules about these two names,
-and two of its checks fall short. It rejects a class *declaration* named
+and two of its checks fall short. It rejects a class _declaration_ named
 `eval` but accepts the expression, and it does not look inside an arrow
 function for the `arguments` that a class static block bans.
 
@@ -229,8 +244,8 @@ diagnostics, and the differential corpus compares trees.
 escape it cannot read a `cooked` value equal to its `raw` text.
 
 ```ts
-String.raw`\u{}`;      // cooked: "\\u{}"
-type T = `\u{}`;       // the same, in a template literal type
+String.raw`\u{}`; // cooked: "\\u{}"
+type T = `\u{}`; // the same, in a template literal type
 ```
 
 **Here:** `cooked` is `null`, which is what `espree` produces and what the
@@ -258,8 +273,8 @@ that starts with `=`, when the token before it ended a statement without a
 semicolon.
 
 ```js
-debugger
-/=/.test(s);          // a regular expression matching "="
+debugger;
+/=/.test(s); // a regular expression matching "="
 ```
 
 **Here:** it parses, as `@babel/parser` and `@typescript-eslint/parser` both
@@ -318,12 +333,20 @@ bodies, which every parser agrees on.
 `tsc`.
 
 ```ts
-class D { #y = 1 }
-class C { static { const g = (o: D) => o.#y; } }  // a private name from D
+class D {
+	#y = 1;
+}
+class C {
+	static {
+		const g = (o: D) => o.#y;
+	}
+} // a private name from D
 
-declare namespace Foo { export var static: any; } // a reserved word in strict
+declare namespace Foo {
+	export var static: any;
+} // a reserved word in strict
 
-var v =0;                                       // NEL as whitespace
+var v = 0; // NEL as whitespace
 ```
 
 **Here:** all three are reported.
@@ -331,7 +354,7 @@ var v =0;                                       // NEL as whitespace
 **Why:** each is an early error in ECMAScript, and the leniency is
 TypeScript's own. Reading a private name that no enclosing class declares is
 an early error the specification states outright; TypeScript reports it as
-TS2339, a *type* error, which is a classification rather than a disagreement,
+TS2339, a _type_ error, which is a classification rather than a disagreement,
 and `@babel/parser` rejects it here too. `static`, `public`, and the rest are
 future reserved words in strict mode, and a module is strict. U+0085 is in
 neither `WhiteSpace` nor `LineTerminator`, so a program that uses it as a
@@ -342,7 +365,7 @@ where the two references disagree: the ECMAScript answer wins.
 
 **How conformance absorbs it:** they appear as `overzealous` in
 `conformance-ts-negative.mjs`, where most of that count is this parser being
-right rather than wrong. Its baseline records them per rule, so a *new* one is
+right rather than wrong. Its baseline records them per rule, so a _new_ one is
 still visible.
 
 ---
@@ -443,7 +466,7 @@ confined to input that is already an error, which is why they have been left.
   where code goes](../AGENTS.md#the-rule-that-decides-where-code-goes).
 
 ECMAScript's early errors used to be the fourth entry here, and are not any
-more. test262 tests what the parser *rejects* in JavaScript, and both of its
+more. test262 tests what the parser _rejects_ in JavaScript, and both of its
 counts are now zero: no valid program is rejected, and no invalid one is
 accepted. `262-baseline.json` is an empty object, so any directory that starts
 failing is one that was passing.
@@ -463,10 +486,10 @@ Two things look like deviations and are not.
 
 **`parse()` accepts more than either reference.** It accepts the union of
 everything JavaScript and TypeScript allow and throws only when the text cannot
-be tokenized or shaped into a tree. Everything that is merely *not allowed
-here* — strict mode violations, `return` outside a function, TypeScript syntax
+be tokenized or shaped into a tree. Everything that is merely _not allowed
+here_ — strict mode violations, `return` outside a function, TypeScript syntax
 under `dialect: "js"` — is reported by `validate()` instead. The output for a
-program both accept is unchanged; what moved is *when* the complaint arrives.
+program both accept is unchanged; what moved is _when_ the complaint arrives.
 See [The rule that decides where code goes](../AGENTS.md#the-rule-that-decides-where-code-goes).
 
 **A malformed regular expression pattern is part of that**, which surprises,

@@ -289,7 +289,12 @@ if (argument && argument.startsWith("--suite=")) {
 		process.exit(1);
 	}
 
-	await runSuite(suite.title, suite.fixture(), suite.dialect, suite.withParse);
+	await runSuite(
+		suite.title,
+		suite.fixture(),
+		suite.dialect,
+		suite.withParse,
+	);
 } else {
 	for (const name of Object.keys(SUITES)) {
 		const child = spawn(

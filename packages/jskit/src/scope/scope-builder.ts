@@ -275,7 +275,8 @@ const BVF_SERIALIZED = VF_TAINTED | VF_STACK | VF_IMPLICIT_GLOBAL;
 
 /** Scope type codes whose scopes are their own variable scope, as a bitmask. */
 const VARIABLE_SCOPE_MASK = /* @__PURE__ */ SCOPE_TYPE_CODES.reduce(
-	(mask, type, code) => (isVariableScopeType(type) ? mask | (1 << code) : mask),
+	(mask, type, code) =>
+		isVariableScopeType(type) ? mask | (1 << code) : mask,
 	0,
 );
 
@@ -294,25 +295,21 @@ const CODE_WITH = /* @__PURE__ */ codeOfScopeType(SCOPE_WITH);
 
 const DEF_CODE_CATCH = /* @__PURE__ */ codeOfDefinitionType(DEF_CATCH_CLAUSE);
 const DEF_CODE_PARAMETER = /* @__PURE__ */ codeOfDefinitionType(DEF_PARAMETER);
-const DEF_CODE_FUNCTION = /* @__PURE__ */ codeOfDefinitionType(
-	DEF_FUNCTION_NAME,
-);
+const DEF_CODE_FUNCTION =
+	/* @__PURE__ */ codeOfDefinitionType(DEF_FUNCTION_NAME);
 const DEF_CODE_CLASS = /* @__PURE__ */ codeOfDefinitionType(DEF_CLASS_NAME);
 const DEF_CODE_VARIABLE = /* @__PURE__ */ codeOfDefinitionType(DEF_VARIABLE);
-const DEF_CODE_IMPORT = /* @__PURE__ */ codeOfDefinitionType(
-	DEF_IMPORT_BINDING,
-);
+const DEF_CODE_IMPORT =
+	/* @__PURE__ */ codeOfDefinitionType(DEF_IMPORT_BINDING);
 const DEF_CODE_IMPLICIT = /* @__PURE__ */ codeOfDefinitionType(
 	DEF_IMPLICIT_GLOBAL_VARIABLE,
 );
 const DEF_CODE_TYPE = /* @__PURE__ */ codeOfDefinitionType(DEF_TYPE);
 const DEF_CODE_ENUM = /* @__PURE__ */ codeOfDefinitionType(DEF_TS_ENUM_NAME);
-const DEF_CODE_ENUM_MEMBER = /* @__PURE__ */ codeOfDefinitionType(
-	DEF_TS_ENUM_MEMBER,
-);
-const DEF_CODE_MODULE = /* @__PURE__ */ codeOfDefinitionType(
-	DEF_TS_MODULE_NAME,
-);
+const DEF_CODE_ENUM_MEMBER =
+	/* @__PURE__ */ codeOfDefinitionType(DEF_TS_ENUM_MEMBER);
+const DEF_CODE_MODULE =
+	/* @__PURE__ */ codeOfDefinitionType(DEF_TS_MODULE_NAME);
 
 /**
  * Sorts an array of `(key, value)` pairs by key, then value, and flattens it.
@@ -546,10 +543,7 @@ export class ScopeBuilder<TNode> {
 			flags |= SF_DYNAMIC;
 		}
 
-		if (
-			code === CODE_FUNCTION &&
-			this.ast.kind(block) === N_Program
-		) {
+		if (code === CODE_FUNCTION && this.ast.kind(block) === N_Program) {
 			flags |= BSF_PROGRAM_BLOCK;
 		}
 
@@ -598,7 +592,10 @@ export class ScopeBuilder<TNode> {
 			return true;
 		}
 
-		if (isMethodDefinition || ((IMPLICITLY_STRICT_MASK >> code) & 1) === 1) {
+		if (
+			isMethodDefinition ||
+			((IMPLICITLY_STRICT_MASK >> code) & 1) === 1
+		) {
 			return true;
 		}
 
@@ -840,9 +837,7 @@ export class ScopeBuilder<TNode> {
 	 * @returns Its ID.
 	 */
 	currentVariableScope(): number {
-		return this.scopes.data[
-			this.current * BS_WORDS + BS_VARIABLE_SCOPE
-		];
+		return this.scopes.data[this.current * BS_WORDS + BS_VARIABLE_SCOPE];
 	}
 
 	/**
@@ -896,9 +891,8 @@ export class ScopeBuilder<TNode> {
 	 * @returns Nothing.
 	 */
 	detectThis(): void {
-		this.scopes.data[
-			this.currentVariableScope() * BS_WORDS + BS_FLAGS
-		] |= SF_THIS_FOUND;
+		this.scopes.data[this.currentVariableScope() * BS_WORDS + BS_FLAGS] |=
+			SF_THIS_FOUND;
 	}
 
 	/**
@@ -948,12 +942,7 @@ export class ScopeBuilder<TNode> {
 		if (symbol === undefined) {
 			symbol = this.newSymbol(scope, nameId, VF_STACK);
 			map.set(nameId, symbol);
-			this.appendTo(
-				this.scopes,
-				scope * BS_WORDS,
-				BS_VARS_HEAD,
-				symbol,
-			);
+			this.appendTo(this.scopes, scope * BS_WORDS, BS_VARS_HEAD, symbol);
 		}
 
 		if (identifier !== null) {
@@ -1028,7 +1017,12 @@ export class ScopeBuilder<TNode> {
 		words[base + D_FLAGS] = flags;
 		this.defStarts.push(this.ast.start(name));
 
-		this.appendTo(this.symbols, symbol * BV_WORDS, BV_DEFS_HEAD, definition);
+		this.appendTo(
+			this.symbols,
+			symbol * BV_WORDS,
+			BV_DEFS_HEAD,
+			definition,
+		);
 
 		const symbolFlags = symbol * BV_WORDS + BV_FLAGS;
 
@@ -1398,10 +1392,7 @@ export class ScopeBuilder<TNode> {
 			this.current,
 			identifier,
 			this.intern(name),
-			flag |
-				RF_VALUE |
-				(partial ? RF_PARTIAL : 0) |
-				(init ? RF_INIT : 0),
+			flag | RF_VALUE | (partial ? RF_PARTIAL : 0) | (init ? RF_INIT : 0),
 			writeExpr,
 			igNode === null ? null : identifier,
 			igNode,
@@ -1458,7 +1449,11 @@ export class ScopeBuilder<TNode> {
 			return false;
 		}
 
-		for (let scope = this.current; scope !== -1; scope = this.upperOf(scope)) {
+		for (
+			let scope = this.current;
+			scope !== -1;
+			scope = this.upperOf(scope)
+		) {
 			const symbol = this.bindings[scope]?.get(nameId);
 
 			if (symbol !== undefined) {
@@ -1502,10 +1497,7 @@ export class ScopeBuilder<TNode> {
 		if (code === CODE_GLOBAL) {
 			this.closeGlobal(scope);
 			this.resolveLeft(scope, true);
-		} else if (
-			code === CODE_WITH &&
-			(flags & SF_DYNAMIC) !== 0
-		) {
+		} else if (code === CODE_WITH && (flags & SF_DYNAMIC) !== 0) {
 			/*
 			 * A `with` body whose object is not statically known cannot
 			 * resolve anything: every name in it might be a property of that
@@ -1896,7 +1888,7 @@ export class ScopeBuilder<TNode> {
 		let newHead = 0;
 		let newTail = 0;
 
-		for (let cell = oldHead; cell !== 0; ) {
+		for (let cell = oldHead; cell !== 0;) {
 			const next = cells.data[cell + 1];
 			const reference = cells.data[cell];
 			const nameId = refWords[reference * REFERENCE_WORDS + R_NAME];
@@ -1904,8 +1896,7 @@ export class ScopeBuilder<TNode> {
 			if (added.has(nameId)) {
 				const symbol = map.get(nameId)!;
 
-				refWords[reference * REFERENCE_WORDS + R_RESOLVED] =
-					symbol + 1;
+				refWords[reference * REFERENCE_WORDS + R_RESOLVED] = symbol + 1;
 				this.appendTo(
 					this.symbols,
 					symbol * BV_WORDS,
@@ -1934,7 +1925,7 @@ export class ScopeBuilder<TNode> {
 		let implicitHead = 0;
 		let implicitTail = 0;
 
-		for (let cell = this.implicitHead; cell !== 0; ) {
+		for (let cell = this.implicitHead; cell !== 0;) {
 			const next = cells.data[cell + 1];
 			const symbol = cells.data[cell];
 			const nameId = this.symbols.data[symbol * BV_WORDS + BV_NAME];
@@ -1993,11 +1984,7 @@ export class ScopeBuilder<TNode> {
 			}
 		}
 
-		for (
-			let cell = this.implicitHead;
-			cell !== 0;
-			cell = cells[cell + 1]
-		) {
+		for (let cell = this.implicitHead; cell !== 0; cell = cells[cell + 1]) {
 			symbolRemap[cells[cell]] = finalSymbols.length + 1;
 			finalSymbols.push(cells[cell]);
 		}
@@ -2109,8 +2096,7 @@ export class ScopeBuilder<TNode> {
 				scopeWords[from + BS_THROUGH_HEAD],
 			);
 			outScopes[to + S_IMPLICIT] =
-				scope === 0 &&
-				scopeWords[from + BS_TYPE] === CODE_GLOBAL
+				scope === 0 && scopeWords[from + BS_TYPE] === CODE_GLOBAL
 					? listFromCellsRemapped(this.implicitHead)
 					: 0;
 		}
@@ -2137,11 +2123,7 @@ export class ScopeBuilder<TNode> {
 			if (defsHead !== 0) {
 				let count = 0;
 
-				for (
-					let cell = defsHead;
-					cell !== 0;
-					cell = cells[cell + 1]
-				) {
+				for (let cell = defsHead; cell !== 0; cell = cells[cell + 1]) {
 					count++;
 				}
 
@@ -2153,11 +2135,7 @@ export class ScopeBuilder<TNode> {
 
 				let at = base + 1;
 
-				for (
-					let cell = defsHead;
-					cell !== 0;
-					cell = cells[cell + 1]
-				) {
+				for (let cell = defsHead; cell !== 0; cell = cells[cell + 1]) {
 					pool.data[at++] = definitionRemap[cells[cell]];
 				}
 			}
@@ -2293,9 +2271,7 @@ export class ScopeBuilder<TNode> {
 
 		const options = this.options;
 		const jsxPragmaId =
-			options.jsxPragma === null
-				? 0
-				: this.intern(options.jsxPragma) + 1;
+			options.jsxPragma === null ? 0 : this.intern(options.jsxPragma) + 1;
 		const jsxFragmentId =
 			options.jsxFragmentName === null
 				? 0

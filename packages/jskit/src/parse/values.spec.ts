@@ -24,9 +24,7 @@ describe("decodeEscapes()", () => {
 	});
 
 	it("decodes the single character escapes", () => {
-		expect(decodeEscapes("\\n\\t\\r\\b\\f\\v", false)).toBe(
-			"\n\t\r\b\f\v",
-		);
+		expect(decodeEscapes("\\n\\t\\r\\b\\f\\v", false)).toBe("\n\t\r\b\f\v");
 	});
 
 	it("decodes a hexadecimal escape", () => {

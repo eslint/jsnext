@@ -39,7 +39,13 @@ export { VISITOR_KEYS } from "./visitor-keys.js";
  * The three phases. `buildAst()` is deliberately absent: it is what the ESLint
  * parser object needs and nothing a caller of `toAST()` does.
  */
-export { decodeTokens, parse, toAST, tokenStartsLine, validate } from "./api.js";
+export {
+	decodeTokens,
+	parse,
+	toAST,
+	tokenStartsLine,
+	validate,
+} from "./api.js";
 export type {
 	ParseOptions,
 	ParseResult,

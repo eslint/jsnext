@@ -8,16 +8,15 @@ Create an ESLint-compatible JavaScript/TypeScript parser that is faster than exi
 
 This parser is designed to only support the latest JavaScript/TypeScript syntax and so does not accept options for which versions to support.
 
-
 ## Public API
 
 - A `parse()` function that accepts a string of JavaScript or TypeScript code to parse. It returns a single `ArrayBuffer` containing three regions:
-  1. a binary-encoded AST structure, read with `AstReader`.
-  2. a binary-encoded list of tokens, read with `TokenReader`.
-  3. a table where each element is the start offset of each line in the text, read with `readLineStarts()`.
+    1. a binary-encoded AST structure, read with `AstReader`.
+    2. a binary-encoded list of tokens, read with `TokenReader`.
+    3. a table where each element is the start offset of each line in the text, read with `readLineStarts()`.
 - A `validate()` function that accepts the return value of `parse()` and an options object. It should return an array of errors (that include message and start offset for each error). The options object contains:
-  - `sourceType` - `"script"`, `"module"` (default), `"commonjs"`.
-  - `dialect`: - `"js"` or `"ts"` (default). Determines whether TypeScript is allowed.
+    - `sourceType` - `"script"`, `"module"` (default), `"commonjs"`.
+    - `dialect`: - `"js"` or `"ts"` (default). Determines whether TypeScript is allowed.
 - A `toAST()` function that accepts the return value of `parse()` and the same options object as `validate()`, and returns an object with `ast` (the ESTree-style AST) and `errors` (the errors returned from `validate()`). This function does both validation and AST creation.
 
 ## Requirements

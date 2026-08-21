@@ -6,7 +6,7 @@ default, and how to decide.
 ## The short version
 
 ```js
-parse(code);                        // no text in the buffer — the default
+parse(code); // no text in the buffer — the default
 parse(code, { embedSource: true }); // text embedded, buffer ~17% larger
 ```
 
@@ -75,11 +75,11 @@ transfer — precisely the crossings after which the text really is gone.
 Every case below leaves the heap that parsed, so the cached string is gone and
 the embedded region is the only text that survives.
 
-| Scenario | Why |
-| -------- | --- |
-| **Worker pool** | A thread `postMessage`s buffers to workers, or workers ship results back. The receiving heap has never seen the string. |
-| **Persistent parse cache** | A build tool or language server writes buffers to disk and reads them back on a later run, in a process with no memory of the file. |
-| **Analysis daemon** | A long-lived server hands ASTs to short-lived clients. The bytes are the whole message; there is no second channel for a string. |
+| Scenario                   | Why                                                                                                                                              |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Worker pool**            | A thread `postMessage`s buffers to workers, or workers ship results back. The receiving heap has never seen the string.                          |
+| **Persistent parse cache** | A build tool or language server writes buffers to disk and reads them back on a later run, in a process with no memory of the file.              |
+| **Analysis daemon**        | A long-lived server hands ASTs to short-lived clients. The bytes are the whole message; there is no second channel for a string.                 |
 | **WASM or native interop** | Linear memory has no access to the JavaScript heap. A buffer with text inside is readable there; one without is a table of offsets into nothing. |
 
 And the case that does not need it, which is most of them: parse, validate,
@@ -110,8 +110,8 @@ every axis that matters once the pair has to go anywhere.
   A buffer can be checked on load. There is no way to ask a loose string
   whether it belongs to the parse you just read off disk.
 - **The units already agree.** Every `start` and `end` is a UTF-16 code-unit
-  offset, and the region is UTF-16 code units, so index *i* in the region is
-  code unit *i* of the program — no translation table, no surrogate
+  offset, and the region is UTF-16 code units, so index _i_ in the region is
+  code unit _i_ of the program — no translation table, no surrogate
   arithmetic. This is also why the region is not UTF-8, which would nearly
   halve it.
 
@@ -123,11 +123,11 @@ because most buffers never need to be.
 Measured on a generated 200 KiB JavaScript module (40,263 nodes, 2,362 KiB
 buffer with the text):
 
-| Cost | Amount | Share |
-| ---- | ------ | ----- |
-| `writeSource()` — a per-character `charCodeAt` loop | 0.500 ms | 3.7% of `parse()` |
-| Region size | 401.2 KiB | 17.0% of the parse buffer |
-| Times read in the parsing process | 0 | — |
+| Cost                                                | Amount    | Share                     |
+| --------------------------------------------------- | --------- | ------------------------- |
+| `writeSource()` — a per-character `charCodeAt` loop | 0.500 ms  | 3.7% of `parse()`         |
+| Region size                                         | 401.2 KiB | 17.0% of the parse buffer |
+| Times read in the parsing process                   | 0         | —                         |
 
 Ratios move with node density: source-heavy files weight the region more,
 node-dense files less. Both numbers are why the default is `false` — a
@@ -166,9 +166,9 @@ buffer that carries no text:
 ```js
 const reader = new AstReader(transferred);
 
-reader.kind(reader.root);  // fine — integers all the way down
-reader.nodeCount;          // fine
-reader.text(reader.root);  // throws, and says how to fix it
+reader.kind(reader.root); // fine — integers all the way down
+reader.nodeCount; // fine
+reader.text(reader.root); // throws, and says how to fix it
 ```
 
 That is the reason for the laziness. Resolving in the constructor would have
