@@ -133,6 +133,18 @@ import {
 	N_WithStatement,
 	NODE_KIND_COUNT,
 } from "./node-kinds.js";
+import {
+	ASCII_LIMIT,
+	CHAR_FLAGS,
+	CH_LINE_SEPARATOR,
+	CH_PARAGRAPH_SEPARATOR,
+	CH_QUOTE_DOUBLE,
+	CH_QUOTE_SINGLE,
+	CH_UNDERSCORE,
+	MASK_NEWLINE,
+	MASK_SPACE,
+	isNonAsciiSpace,
+} from "./chars.js";
 import { AstReader } from "./reader.js";
 import { RegExpValidator } from "./regexp.js";
 import { decodeEscapes } from "./values.js";
@@ -220,6 +232,9 @@ const RESERVED_INITIALS = /* @__PURE__ */ buildReservedInitials();
 
 /**
  * Which node kinds `check()` has a case for, indexed by kind.
+ *
+ * `Identifier` is deliberately absent twice over: the walk checks it inline
+ * before consulting this table, so `check()` never sees one.
  *
  * The walk consults this before calling `check()` at all. Most nodes in a
  * real program — blocks, declarators, expressions with no rule of their own,
@@ -339,7 +354,6 @@ function buildCheckedKinds(): Uint8Array {
 		N_ForInStatement,
 		N_ForOfStatement,
 		N_Literal,
-		N_Identifier,
 		N_YieldExpression,
 		N_AwaitExpression,
 		N_Property,
@@ -356,6 +370,25 @@ function buildCheckedKinds(): Uint8Array {
 	}
 
 	return table;
+}
+
+/**
+ * Determines whether a character is one the `\s` class of a regular
+ * expression matches — WhiteSpace or a LineTerminator — which is what the
+ * whitespace inside a JSX tag name may be.
+ * @param code The character code to classify.
+ * @returns `true` when the character is whitespace.
+ */
+function isJsxNameSpace(code: number): boolean {
+	if (code < ASCII_LIMIT) {
+		return (CHAR_FLAGS[code] & (MASK_SPACE | MASK_NEWLINE)) !== 0;
+	}
+
+	return (
+		code === CH_LINE_SEPARATOR ||
+		code === CH_PARAGRAPH_SEPARATOR ||
+		isNonAsciiSpace(code)
+	);
 }
 
 /**
@@ -710,6 +743,17 @@ class Validator {
 	 */
 	private readonly labels: { name: string; iteration: boolean }[] = [];
 
+	/**
+	 * How much of `labels` the current function can see.
+	 *
+	 * Nothing inside a nested function can leave a statement outside it, so
+	 * a function body starts with no visible labels — but the outer ones
+	 * have to come back when it ends. Rather than splicing the array out and
+	 * pushing it back, which allocates twice per function, entries below
+	 * this index are simply treated as absent.
+	 */
+	private labelFloor = 0;
+
 	/** How many iteration statements enclose the walk. */
 	private iterationDepth = 0;
 
@@ -790,7 +834,7 @@ class Validator {
 	 * scans of the text settle it once for the whole program: the word
 	 * itself, or the `\u` that any escape hiding a letter of it must carry.
 	 */
-	private readonly mentionsArguments: boolean;
+	private mentionsArguments: boolean | null = null;
 
 	/**
 	 * The reader for regular expression patterns, made on first use.
@@ -822,10 +866,6 @@ class Validator {
 		this.ambient = declaration;
 		this.strict = sourceType === "module";
 		this.functionDepth = sourceType === "commonjs" ? 1 : 0;
-		this.mentionsArguments =
-			reader.source.includes("arguments") ||
-			reader.source.includes("\\u");
-
 		// A module reserves `await` everywhere in it, function or no function.
 		this.awaitReserved = sourceType === "module";
 		this.scope = {
@@ -919,8 +959,33 @@ class Validator {
 		 * `check()` does for a kind outside the table is the TypeScript
 		 * report under `dialect: "js"`, which is why that half of the test
 		 * still sends every TypeScript kind through.
+		 *
+		 * Identifiers are nearly half of everything checked, and their whole
+		 * check is one flag test and, for a handful of first letters, a
+		 * keyword probe — so they are handled here instead of paying the
+		 * call and the fifty-arm dispatch. `check()` has no case for them.
 		 */
-		if (
+		if (kind === N_Identifier) {
+			/*
+			 * The word check, with its prefilter unwrapped: every reserved
+			 * word this can find begins with one of six letters or the
+			 * backslash of an escape, so one table lookup on the first
+			 * character spares most identifiers the call entirely.
+			 */
+			if ((reader.flags(node) & NF_IDENTIFIER_NAME) === 0) {
+				const first = reader.source.charCodeAt(reader.start(node));
+
+				if (
+					first < RESERVED_INITIALS.length &&
+					RESERVED_INITIALS[first] !== 0
+				) {
+					this.checkReservedWord(
+						this.keywordAt(node),
+						reader.start(node),
+					);
+				}
+			}
+		} else if (
 			CHECKED_KINDS[kind] !== 0 ||
 			(kind >= TS_FIRST && this.dialect === "js")
 		) {
@@ -954,8 +1019,8 @@ class Validator {
 				const body = reader.field(node, NODE_B);
 				const name = this.identifierName(reader.field(node, NODE_A));
 
-				for (const entry of this.labels) {
-					if (entry.name === name) {
+				for (let i = this.labelFloor; i < this.labels.length; i++) {
+					if (this.labels[i].name === name) {
 						this.report(
 							`Label '${name}' has already been declared.`,
 							reader.start(node),
@@ -1067,10 +1132,12 @@ class Validator {
 				const wasSuperProperty = this.superPropertyAllowed;
 				const wasSuperCall = this.superCallAllowed;
 
-				const outerLabels =
-					kind === N_StaticBlock
-						? this.labels.splice(0, this.labels.length)
-						: null;
+				const previousLabelFloor = this.labelFloor;
+
+				if (kind === N_StaticBlock) {
+					this.labelFloor = this.labels.length;
+				}
+
 				const previousIterationDepth = this.iterationDepth;
 				const previousSwitchDepth = this.switchDepth;
 				const previousFunctionDepth = this.functionDepth;
@@ -1125,8 +1192,8 @@ class Validator {
 
 				this.exitScope();
 
-				if (outerLabels !== null) {
-					this.labels.push(...outerLabels);
+				if (kind === N_StaticBlock) {
+					this.labelFloor = previousLabelFloor;
 					this.iterationDepth = previousIterationDepth;
 					this.switchDepth = previousSwitchDepth;
 					this.functionDepth = previousFunctionDepth;
@@ -1514,10 +1581,13 @@ class Validator {
 
 		/*
 		 * A label names a statement, and nothing inside a nested function can
-		 * leave a statement outside it, so the whole set is put aside for the
-		 * duration along with the loops and switches it sits in.
+		 * leave a statement outside it, so the whole set is put out of view
+		 * for the duration along with the loops and switches it sits in.
 		 */
-		const outerLabels = this.labels.splice(0, this.labels.length);
+		const previousLabelFloor = this.labelFloor;
+
+		this.labelFloor = this.labels.length;
+
 		const previousIterationDepth = this.iterationDepth;
 		const previousSwitchDepth = this.switchDepth;
 
@@ -1651,7 +1721,7 @@ class Validator {
 		this.inParameters = previousParameters;
 		this.inStaticBlock = previousStaticBlock;
 		this.newTargetAllowed = previousNewTarget;
-		this.labels.push(...outerLabels);
+		this.labelFloor = previousLabelFloor;
 		this.iterationDepth = previousIterationDepth;
 		this.switchDepth = previousSwitchDepth;
 		this.ambient = previousAmbient;
@@ -3273,30 +3343,6 @@ class Validator {
 	}
 
 	/**
-	 * Checks one `Identifier` for a word that is reserved where it is written.
-	 *
-	 * This runs on every identifier in the program, so it opens with the
-	 * cheapest test that can rule one out. Every word it looks for begins with
-	 * one of six letters, and one that is written with an escape begins either
-	 * with its own first letter or with the backslash that hides it — so a
-	 * single table lookup on the first character settles the great majority.
-	 * @param node The `Identifier` node index.
-	 * @returns Nothing.
-	 */
-	private checkIdentifierWord(node: number): void {
-		/*
-		 * An `IdentifierName` may be any word at all. `o.await` and
-		 * `({ yield: 1 })` are names rather than references, and the parser is
-		 * the only thing that can tell, so it says so.
-		 */
-		if ((this.reader.flags(node) & NF_IDENTIFIER_NAME) !== 0) {
-			return;
-		}
-
-		this.checkWordAt(node);
-	}
-
-	/**
 	 * Checks a `super` used as the operand of a call or a member access.
 	 *
 	 * Sanctioning the node is what keeps the bare-`super` rule from firing on
@@ -3506,7 +3552,7 @@ class Validator {
 				(flags & (NF_COMPUTED | NF_METHOD)) !== 0 ||
 				accessor === MKIND_GET ||
 				accessor === MKIND_SET ||
-				this.propertyName(property) !== "__proto__"
+				!this.isProtoKey(property)
 			) {
 				continue;
 			}
@@ -3520,6 +3566,40 @@ class Validator {
 
 			sawProto = true;
 		}
+	}
+
+	/**
+	 * Determines whether a property's key spells `__proto__`.
+	 *
+	 * This runs for most properties of most object literals, and building
+	 * the key's text costs a string every time, so it opens with the
+	 * cheapest test that can rule one out: however the name is spelled —
+	 * bare, quoted, or opened with an escape — its first character is an
+	 * underscore, a quote, or a backslash, and almost no other key starts
+	 * with any of those.
+	 * @param property The `Property` node index, known not to be computed.
+	 * @returns `true` when the key names `__proto__`.
+	 */
+	private isProtoKey(property: number): boolean {
+		const reader = this.reader;
+		const key = reader.field(property, NODE_A);
+
+		if (key === 0) {
+			return false;
+		}
+
+		const first = reader.source.charCodeAt(reader.start(key));
+
+		if (
+			first !== CH_UNDERSCORE &&
+			first !== CH_QUOTE_DOUBLE &&
+			first !== CH_QUOTE_SINGLE &&
+			first !== CH_BACKSLASH
+		) {
+			return false;
+		}
+
+		return this.propertyName(property) === "__proto__";
 	}
 
 	//-------------------------------------------------------------------------
@@ -3588,7 +3668,21 @@ class Validator {
 	 * @returns The offending `Identifier`, or `0` if there is none.
 	 */
 	private findArguments(node: number): number {
-		if (node === 0 || !this.mentionsArguments) {
+		if (node === 0) {
+			return 0;
+		}
+
+		/*
+		 * Two scans of the whole source, paid once and only by a program
+		 * that has a class field initializer to search: a text that contains
+		 * neither the word nor an escape that could spell it cannot contain
+		 * what this looks for, and most texts contain neither.
+		 */
+		this.mentionsArguments ??=
+			this.reader.source.includes("arguments") ||
+			this.reader.source.includes("\\u");
+
+		if (!this.mentionsArguments) {
 			return 0;
 		}
 
@@ -3730,20 +3824,67 @@ class Validator {
 		}
 
 		const opening = reader.field(node, NODE_A);
-		const openingName = this.jsxTagName(reader.field(opening, NODE_A));
-		const closingName = this.jsxTagName(reader.field(closing, NODE_A));
+		const openingName = reader.field(opening, NODE_A);
+		const closingName = reader.field(closing, NODE_A);
 
-		if (openingName !== closingName) {
+		/*
+		 * Compared in place rather than as strings: the names match for
+		 * every element in a working file, so this runs once per element
+		 * and the strings would be built only to be discarded. The error
+		 * path builds them, and it alone.
+		 */
+		if (!this.jsxNamesEqual(openingName, closingName)) {
 			this.report(
-				`JSX element <${openingName}> is closed by </${closingName}>.`,
+				`JSX element <${this.jsxTagName(openingName)}> is closed by </${this.jsxTagName(closingName)}>.`,
 				reader.start(closing),
 			);
 		}
 	}
 
 	/**
-	 * Reads a JSX tag name with its internal whitespace removed, so that
-	 * `<A.B>` and `</A . B>` compare equal.
+	 * Compares two JSX tag names as written, ignoring the whitespace between
+	 * their parts, so that `<A.B>` and `</A . B>` compare equal.
+	 * @param a The opening name node index, or `0`.
+	 * @param b The closing name node index, or `0`.
+	 * @returns `true` when the two spell the same name.
+	 */
+	private jsxNamesEqual(a: number, b: number): boolean {
+		if (a === 0 || b === 0) {
+			return a === b;
+		}
+
+		const reader = this.reader;
+		const source = reader.source;
+		const aEnd = reader.end(a);
+		const bEnd = reader.end(b);
+		let i = reader.start(a);
+		let j = reader.start(b);
+
+		for (;;) {
+			while (i < aEnd && isJsxNameSpace(source.charCodeAt(i))) {
+				i++;
+			}
+
+			while (j < bEnd && isJsxNameSpace(source.charCodeAt(j))) {
+				j++;
+			}
+
+			if (i >= aEnd || j >= bEnd) {
+				return i >= aEnd && j >= bEnd;
+			}
+
+			if (source.charCodeAt(i) !== source.charCodeAt(j)) {
+				return false;
+			}
+
+			i++;
+			j++;
+		}
+	}
+
+	/**
+	 * Reads a JSX tag name with its internal whitespace removed, for the
+	 * mismatch message.
 	 * @param name The name node index.
 	 * @returns The tag name as written, without whitespace.
 	 */
@@ -4240,7 +4381,9 @@ class Validator {
 
 		const name = this.identifierName(label);
 
-		for (const entry of this.labels) {
+		for (let i = this.labelFloor; i < this.labels.length; i++) {
+			const entry = this.labels[i];
+
 			if (entry.name !== name) {
 				continue;
 			}
@@ -5070,10 +5213,6 @@ class Validator {
 
 				return;
 			}
-
-			case N_Identifier:
-				this.checkIdentifierWord(node);
-				return;
 
 			/*
 			 * A default value is evaluated as the call sets up the function's
