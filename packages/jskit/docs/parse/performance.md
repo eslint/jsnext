@@ -29,43 +29,44 @@ JavaScript:
 
 | Parser                                     | ops/s | Relative |
 | ------------------------------------------ | ----- | -------- |
-| `meriyah`                                  | 83.6  | 1.24x    |
-| `jskit` — `parse()`                        | 67.3  | 1.00x    |
-| `jskit` — `parse()` + `validate()`         | 41.2  | 0.61x    |
-| `jskit` — `parse()` + `toAST()`            | 34.5  | 0.51x    |
-| `@babel/parser`                            | 27.9  | 0.41x    |
-| `acorn`                                    | 27.1  | 0.40x    |
-| `espree`                                   | 19.7  | 0.29x    |
-| `@typescript-eslint/parser` + TypeScript 6 | 2.6   | 0.04x    |
+| `meriyah`                                  | 70.2  | 1.02x    |
+| `jskit` — `parse()`                        | 68.8  | 1.00x    |
+| `jskit` — `parse()` + `validate()`         | 42.8  | 0.62x    |
+| `jskit` — `parse()` + `toAST()`            | 31.8  | 0.46x    |
+| `@babel/parser`                            | 26.4  | 0.38x    |
+| `acorn`                                    | 26.4  | 0.38x    |
+| `espree`                                   | 21.2  | 0.31x    |
+| `@typescript-eslint/parser` + TypeScript 6 | 2.5   | 0.04x    |
 
 TypeScript (`espree`, `acorn`, and `meriyah` have nothing to say about it):
 
 | Parser                                     | ops/s | Relative |
 | ------------------------------------------ | ----- | -------- |
-| `jskit` — `parse()`                        | 67.9  | 1.00x    |
-| `jskit` — `parse()` + `validate()`         | 47.8  | 0.70x    |
-| `jskit` — `parse()` + `toAST()`            | 24.6  | 0.36x    |
-| `@babel/parser`                            | 23.6  | 0.35x    |
-| `@typescript-eslint/parser` + TypeScript 6 | 2.1   | 0.03x    |
+| `jskit` — `parse()`                        | 68.2  | 1.00x    |
+| `jskit` — `parse()` + `validate()`         | 45.6  | 0.67x    |
+| `@babel/parser`                            | 22.8  | 0.33x    |
+| `jskit` — `parse()` + `toAST()`            | 21.9  | 0.32x    |
+| `@typescript-eslint/parser` + TypeScript 5 | 2.1   | 0.03x    |
 
 JSX (`acorn` has no JSX of its own, so it appears with `acorn-jsx`):
 
 | Parser                                     | ops/s | Relative |
 | ------------------------------------------ | ----- | -------- |
-| `jskit` — `parse()`                        | 74.2  | 1.00x    |
-| `meriyah`                                  | 70.5  | 0.95x    |
-| `jskit` — `parse()` + `validate()`         | 48.1  | 0.65x    |
-| `jskit` — `parse()` + `toAST()`            | 32.1  | 0.43x    |
-| `acorn` + `acorn-jsx`                      | 31.8  | 0.43x    |
-| `@babel/parser`                            | 26.5  | 0.36x    |
-| `espree`                                   | 21.6  | 0.29x    |
-| `@typescript-eslint/parser` + TypeScript 6 | 2.4   | 0.03x    |
+| `jskit` — `parse()`                        | 71.2  | 1.00x    |
+| `meriyah`                                  | 47.2  | 0.66x    |
+| `jskit` — `parse()` + `validate()`         | 42.6  | 0.60x    |
+| `acorn` + `acorn-jsx`                      | 28.7  | 0.40x    |
+| `jskit` — `parse()` + `toAST()`            | 28.1  | 0.39x    |
+| `@babel/parser`                            | 22.4  | 0.31x    |
+| `espree`                                   | 19.1  | 0.27x    |
+| `@typescript-eslint/parser` + TypeScript 6 | 2.3   | 0.03x    |
 
 The JSX rows assume the caller passes `jsx: true` to `parse()`. Without it the
 parser accepts the union of the `.ts` and `.tsx` readings by speculating at
 every `<` in expression position, which costs about fifteen percent on this
 fixture — and used to cost half the parse before exceptions left the
-speculation path.
+speculation path. JSX is where the binary representation pays best: an element
+is many small nodes, and none of them is allocated.
 
 `@babel/parser` returns Babel's own AST rather than ESTree, so its row is
 ahead of where a consumer of an ESTree tree would land — that conversion cost
@@ -79,29 +80,29 @@ JavaScript:
 
 | Parser                                     | ops/s | Relative |
 | ------------------------------------------ | ----- | -------- |
-| `meriyah`                                  | 22.2  | 1.28x    |
-| `jskit` — `eslintParser.parse()`           | 17.3  | 1.00x    |
-| `espree`                                   | 11.1  | 0.64x    |
-| `@babel/eslint-parser`                     | 4.2   | 0.24x    |
-| `@typescript-eslint/parser` + TypeScript 5 | 2.5   | 0.14x    |
+| `meriyah`                                  | 19.5  | 1.20x    |
+| `jskit` — `eslintParser.parse()`           | 16.2  | 1.00x    |
+| `espree`                                   | 11.1  | 0.69x    |
+| `@babel/eslint-parser`                     | 4.1   | 0.25x    |
+| `@typescript-eslint/parser` + TypeScript 5 | 2.4   | 0.15x    |
 
 TypeScript:
 
 | Parser                                     | ops/s | Relative |
 | ------------------------------------------ | ----- | -------- |
-| `jskit` — `eslintParser.parse()`           | 15.5  | 1.00x    |
-| `@babel/eslint-parser`                     | 3.7   | 0.24x    |
-| `@typescript-eslint/parser` + TypeScript 5 | 2.1   | 0.14x    |
+| `jskit` — `eslintParser.parse()`           | 16.2  | 1.00x    |
+| `@babel/eslint-parser`                     | 3.6   | 0.22x    |
+| `@typescript-eslint/parser` + TypeScript 5 | 2.0   | 0.12x    |
 
 JSX:
 
 | Parser                                     | ops/s | Relative |
 | ------------------------------------------ | ----- | -------- |
-| `meriyah`                                  | 17.4  | 1.13x    |
-| `jskit` — `eslintParser.parse()`           | 15.4  | 1.00x    |
-| `espree`                                   | 9.9   | 0.64x    |
-| `@babel/eslint-parser`                     | 3.3   | 0.21x    |
-| `@typescript-eslint/parser` + TypeScript 5 | 2.4   | 0.16x    |
+| `meriyah`                                  | 16.6  | 1.14x    |
+| `jskit` — `eslintParser.parse()`           | 14.6  | 1.00x    |
+| `espree`                                   | 9.0   | 0.62x    |
+| `@babel/eslint-parser`                     | 3.1   | 0.21x    |
+| `@typescript-eslint/parser` + TypeScript 5 | 1.9   | 0.13x    |
 
 Locations are not free for anyone: the ESTree shape wants a fresh
 `{ line, column }` pair for each end of every node and token, and building
@@ -113,26 +114,56 @@ avoids it while producing the shape ESLint expects.
 
 ## Reading the `meriyah` rows
 
-`meriyah` still tops the JavaScript tables and the two ESLint-tier tables it
-appears in; `parse()` passes it on JSX and runs about a quarter behind on
-plain JavaScript. Three things belong beside its numbers before they are
-quoted anywhere:
+`meriyah` is the fastest contender in the ESLint tier and ties `parse()` in
+the JavaScript AST tier; `parse()` leads it by half again on JSX. Four things
+belong beside its numbers before they are quoted anywhere.
 
-- **It parses JavaScript and JSX only.** There is no TypeScript row for it, and
-  a toolchain that has to handle `.ts` still needs a second parser.
-- **It is measured doing slightly less.** `raw` on literals and `start`/`end`
-  on nodes are off by default and are switched on here, because every other
-  contender produces them whether or not they are wanted. What cannot be
-  switched on is the text of a token: its tokens carry the type and both
-  positions but no `value`, which is part of the ESLint-tier job the other
-  rows are doing. Its trees also omit a few properties `acorn` always writes —
-  `expression: false` on a function expression, `id: null` on an arrow — so
-  they are about half a percent smaller.
-- **It produces an ordinary object tree**, which is the thing the binary
-  representation exists to avoid. `parse()` alone is the row to compare it
-  against for tokenizer and grammar work; `toAST()` is where the cost of
-  materializing objects lands, and that is the gap the rest of the toolkit is
-  designed to make optional.
+**It is configured to do the same early-error work as everyone else, and that
+matters.** Meriyah reports most early errors inline as it parses — a `with` in
+strict mode, `break` outside a loop, a getter with a parameter, an octal
+literal in strict code — but the ones that need a binding table sit behind its
+`lexical` option: `let x; let x;`, `var x; let x;`, a duplicate parameter in
+strict code, a duplicate export, a private name no class declares. `acorn` and
+`espree` reject all five and offer no way to turn that off, so the benchmark
+turns `lexical` on. It is not a rounding error — measured on its own it is
+roughly a tenth of meriyah's throughput, and leaving it off is what earlier
+versions of this table did when they showed meriyah about a quarter ahead on
+JavaScript instead of level.
+
+**It parses JavaScript and JSX only.** There is no TypeScript row for it, and a
+toolchain that has to handle `.ts` still needs a second parser.
+
+**Its AST-tier row emits no tokens, and `parse()` cannot do that.** This is the
+one place the two rows are genuinely doing different jobs, and the tier's rule
+allows it: nothing here is asked for tokens _except where a parser has no way
+to leave them out_, which is why the `parse()` row is annotated. The token
+buffer costs `parse()` about a tenth of its throughput. Asking meriyah for the
+same thing costs it far more, because a token there is an object on the heap
+rather than four words in a typed array — see the like-for-like table below.
+
+**It produces an ordinary object tree**, which is the thing the binary
+representation exists to avoid. `parse()` alone is the row to compare it
+against for tokenizer and grammar work; `toAST()` is where the cost of
+materializing objects lands, and that is the gap the rest of the toolkit is
+designed to make optional.
+
+### Like for like
+
+The tier tables answer "how fast is each parser at the job it is built to do".
+They do not answer "how fast are these two at the same job", because no tier
+definition makes `parse()` stop emitting tokens or makes meriyah start. Two
+measurements do, both on the JavaScript fixture, each contender in its own
+process, and interleaved so machine drift falls on both sides equally:
+
+| Same job                                 | Result                                |
+| ---------------------------------------- | ------------------------------------- |
+| tree + tokens (`meriyah` with `onToken`) | `parse()` ~2x faster                  |
+| tree + tokens + every early error        | `parse()` + `validate()` ~1.2x faster |
+
+So the AST-tier standings are a statement about defaults, not about ceilings.
+Meriyah is genuinely fast — level with `parse()` while producing a full object
+tree, which is a real achievement — but the moment it is asked to record what
+it scanned, the binary token buffer pulls ahead.
 
 ## What this is worth in a real lint run
 

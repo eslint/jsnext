@@ -31,15 +31,20 @@
  *   than `parseForESLint()`, because the latter also runs a full scope
  *   analysis. No other contender is asked to do that, and ESLint runs its own
  *   analyzer for the parsers that do not supply one.
- * - `meriyah` is asked for `raw` on literals and for `start` and `end` on
- *   nodes, both of which it omits by default and every other contender in the
- *   tier produces whether or not they are wanted. It is left on its own
- *   defaults otherwise: no `next`, so it accepts the same language `espree`'s
- *   `ecmaVersion: "latest"` does, and no `lexical`, so it does no more
- *   early-error checking than `acorn`. Its ESLint-tier row is annotated
- *   because one part of that job it has no option for: its tokens carry the
- *   type and both positions but not the text, and there is no way to ask for
- *   it.
+ * - `meriyah` is asked for three things it omits by default, because every
+ *   other contender in the tier produces them whether or not they are wanted:
+ *   `raw` on literals, `start` and `end` on nodes, and `lexical`. That last
+ *   one is the one to understand. Meriyah already reports most early errors
+ *   inline — a `with` in strict mode, `break` outside a loop, a getter with a
+ *   parameter — but the ones that need a binding table are behind the option:
+ *   `let x; let x;`, `var x; let x;`, a duplicate parameter in strict code, a
+ *   duplicate export, a private name no class declares. `acorn` and `espree`
+ *   reject all five and offer no way not to, so measuring meriyah without it
+ *   compares a smaller job against a larger one. It keeps its own defaults
+ *   otherwise: no `next`, so it accepts the same language `espree`'s
+ *   `ecmaVersion: "latest"` does. Its ESLint-tier row is still annotated for
+ *   the one part of that job it has no option for: its tokens carry the type
+ *   and both positions but not the text, and there is no way to ask for it.
  * - `@babel/parser` returns Babel's own AST, not ESTree. The conversion cost
  *   that a consumer of an ESTree tree would pay lands on `@babel/eslint-parser`
  *   instead, so the two Babel rows bracket it.
@@ -388,13 +393,20 @@ async function contenders(dialect) {
 		/*
 		 * `meriyah` has no TypeScript, but it does have JSX of its own, so it
 		 * enters both of the dialects that are left. It is the one contender
-		 * that leaves `raw` and node positions off by default, and both are
-		 * asked for: every other parser in the tier produces them whether or
-		 * not they are wanted, and a tree without them is a smaller job than
-		 * the one the rest are doing. `range` is left off in the AST tier,
-		 * because `acorn` and `espree` do not produce it there either.
+		 * that leaves `raw`, node positions, and the binding-table early
+		 * errors off by default, and all three are asked for: every other
+		 * parser in the tier produces them whether or not they are wanted,
+		 * and a tree without them is a smaller job than the one the rest are
+		 * doing. `range` is left off in the AST tier, because `acorn` and
+		 * `espree` do not produce it there either.
 		 */
 		const meriyah = await import("meriyah");
+		const meriyahOptions = {
+			sourceType: "module",
+			raw: true,
+			lexical: true,
+			jsx: dialect === "jsx",
+		};
 
 		list.push(
 			{
@@ -403,9 +415,7 @@ async function contenders(dialect) {
 				tier: AST,
 				run: code =>
 					meriyah.parse(code, {
-						sourceType: "module",
-						raw: true,
-						jsx: dialect === "jsx",
+						...meriyahOptions,
 						ranges: { start: true, end: true },
 					}),
 			},
@@ -423,9 +433,7 @@ async function contenders(dialect) {
 				 */
 				run: code =>
 					meriyah.parse(code, {
-						sourceType: "module",
-						raw: true,
-						jsx: dialect === "jsx",
+						...meriyahOptions,
 						ranges: true,
 						loc: true,
 						onToken: [],
