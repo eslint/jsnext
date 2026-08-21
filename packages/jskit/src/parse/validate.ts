@@ -3619,6 +3619,27 @@ class Validator {
 
 		for (let i = 0; i < size; i++) {
 			const member = reader.listItem(members, i);
+
+			/*
+			 * Not every member of a class body has a key. `StaticBlock` and
+			 * `TSIndexSignature` both hold a *list* in slot A — the block's
+			 * statements and the signature's parameters — and reading that
+			 * list's offset as if it were a node index lands on whichever node
+			 * happens to sit at that index. That is a silent misread rather
+			 * than a crash: it usually names a node of some other kind and is
+			 * skipped below, but a program large enough for the offset to
+			 * reach a `PrivateIdentifier` elsewhere in the file reports a
+			 * duplicate private name that was never written.
+			 */
+			const memberKind = reader.kind(member);
+
+			if (
+				memberKind === N_StaticBlock ||
+				memberKind === N_TSIndexSignature
+			) {
+				continue;
+			}
+
 			const key = reader.field(member, NODE_A);
 
 			if (

@@ -1610,6 +1610,36 @@ describe("private names", () => {
 		expect(messages("x = #y;")).toHaveLength(1);
 		expect(messages("class C { [#x]() {} }")).toHaveLength(1);
 	});
+
+	/*
+	 * A `StaticBlock` holds its statements in the slot every other member
+	 * holds its key in, so collecting the names a class declares has to skip
+	 * it rather than read that list's offset as a node index. Reading it
+	 * lands on whichever node sits at that index, which is only visible once
+	 * a program is large enough for one of them to be a `PrivateIdentifier`
+	 * — three classes here, and the same name is then reported twice in a
+	 * class that declares it once.
+	 */
+	it("does not read a static block as a member's key", () => {
+		const declaration =
+			"class C0 { #p; static { x = 1; } m() { this.#p; } }";
+
+		expect(
+			messages(
+				`${declaration}\n${declaration.replace("C0", "C1")}\n${declaration.replace("C0", "C2")}`,
+			),
+		).toEqual([]);
+	});
+
+	/*
+	 * A `TSIndexSignature` has the same shape problem: its parameters live in
+	 * slot A.
+	 */
+	it("does not read an index signature as a member's key", () => {
+		expect(
+			messages("class C { #p; [key: string]: number; m() { this.#p; } }"),
+		).toEqual([]);
+	});
 });
 
 describe("using declarations", () => {
