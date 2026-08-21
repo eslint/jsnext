@@ -189,7 +189,7 @@ The driver checks one sample. These check ~2,650 real files, and are the
 standard the repo holds to:
 
 ```bash
-npm run conformance --workspace=@eslint/jskit
+npm run test:conformance --workspace=@eslint/jskit
 ```
 
 ```
@@ -200,8 +200,8 @@ files=2886 threw=0 kinds=158 exercised=158 problems=0 unseen=0
 derived=144 declared=158 identical=158 differ=0 undeclared=0
 ```
 
-Then `npm test`, `npm run typecheck`, and `npm run lint`. Also run
-`npm run conformance --workspace=@eslint/jskit` when the node has children;
+Then `npm test`, `npm run lint:types`, and `npm run lint`. Also run
+`npm run test:conformance --workspace=@eslint/jskit` when the node has children;
 it takes a few minutes and is the only check that proves both scope entry
 points agree across the whole corpus.
 

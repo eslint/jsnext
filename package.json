@@ -8,18 +8,20 @@
     "packages/*"
   ],
   "scripts": {
-    "prepare": "npm run build --workspace=@eslint/jskit",
     "build": "npm run build --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
-    "test:affected": "npm run test:affected --workspace=@eslint/jskit --",
-    "test:coverage": "npm run test:coverage --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "lint": "npm run build && eslint .",
-    "lint:fix": "npm run build && eslint . --fix",
     "fmt": "prettier --write .",
     "fmt:check": "prettier --check .",
-    "bench": "npm run bench --workspaces --if-present",
-    "conformance": "npm run conformance --workspaces --if-present"
+    "lint": "npm run lint:js+ts && npm run lint --workspaces --if-present",
+    "lint:fix": "npm run lint:fix:js+ts && npm run lint --workspaces --if-present",
+    "lint:fix:js+ts": "npm run build --workspace=@eslint/jskit && eslint . --fix",
+    "lint:js+ts": "npm run build --workspace=@eslint/jskit && eslint .",
+    "lint:types": "npm run lint:types --workspaces --if-present",
+    "prepare": "npm run build --workspace=@eslint/jskit",
+    "test": "npm run test --workspaces --if-present",
+    "test:affected": "npm run test:affected --workspace=@eslint/jskit --",
+    "test:conformance": "npm run test:conformance --workspaces --if-present",
+    "test:coverage": "npm run test:coverage --workspaces --if-present",
+    "test:performance": "npm run test:performance --workspaces --if-present"
   },
   "gitHooks": {
     "pre-commit": "lint-staged"

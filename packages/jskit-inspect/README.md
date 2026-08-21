@@ -28,11 +28,12 @@ does not open it.
 ## Commands
 
 Run from this directory or with `--workspace=@eslint/jskit-inspect` from the
-repository root. `dev` and `build` build `@eslint/jskit` first, because the
+repository root. `start` and `build` build `@eslint/jskit` first, because the
 app imports its `dist/` bundle.
 
 ```bash
-npm run dev       # start the dev server on http://localhost:3000
-npm run build     # build the static site into dist/
-npm run preview   # serve the built site on http://localhost:3000
+npm start                 # start the dev server on http://localhost:3000
+npm run build             # build the static site into dist/
+npm run start:preview     # serve the built site on http://localhost:3000
+npm run lint:types        # tsc --noEmit
 ```

@@ -105,13 +105,13 @@ jobs:
               run: npm ci
 
             - name: Lint Files
-              run: npx eslint .
+              run: npm run lint:js+ts
 
             - name: Check Formatting
               run: npm run fmt:check
 
-    typecheck:
-        name: Typecheck
+    lint_types:
+        name: Lint Types
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v7
@@ -125,7 +125,7 @@ jobs:
               run: npm ci
 
             - name: Run TypeScript Compiler
-              run: npm run typecheck
+              run: npm run lint:types
 
     # ------------------------------------------------------------------------
     # The affected tests, across the supported Node versions and platforms.
@@ -229,11 +229,11 @@ jobs:
             # has to run both halves. A `scope/` change cannot move a tree.
             - name: Run Full Conformance Suite
               if: contains(needs.changes.outputs.areas, 'all') || contains(needs.changes.outputs.areas, 'parse')
-              run: npm run conformance --workspace=@eslint/jskit
+              run: npm run test:conformance --workspace=@eslint/jskit
 
             - name: Run Scope Conformance Suite
               if: ${{ !(contains(needs.changes.outputs.areas, 'all') || contains(needs.changes.outputs.areas, 'parse')) }}
-              run: npm run conformance:scope --workspace=@eslint/jskit
+              run: npm run test:conformance:scope --workspace=@eslint/jskit
 
     # ------------------------------------------------------------------------
     # The web app consumes the toolkit, so it is built whenever either moves.
@@ -267,7 +267,7 @@ jobs:
         name: CI Success
         needs:
             - verify_files
-            - typecheck
+            - lint_types
             - test
             - coverage
             - conformance

@@ -325,7 +325,7 @@ into a tree throws.
 
 ### Verified against the reference parsers
 
-`npm run conformance` parses every JavaScript and TypeScript file it can find
+`npm run test:conformance` parses every JavaScript and TypeScript file it can find
 under this workspace's `node_modules` with both this parser and the reference
 parser and compares the results structurally — several thousand files, ASTs,
 tokens, and comments alike, with zero differences. JSX has no real-world corpus

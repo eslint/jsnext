@@ -5,13 +5,14 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "predev": "npm run build --workspace=@eslint/jskit",
-    "dev": "astro dev",
-    "prebuild": "npm run build --workspace=@eslint/jskit",
     "build": "astro build",
-    "preview": "astro preview",
-    "pretypecheck": "npm run build --workspace=@eslint/jskit",
-    "typecheck": "tsc --noEmit"
+    "lint": "npm run lint:types",
+    "lint:types": "tsc --noEmit",
+    "prebuild": "npm run build --workspace=@eslint/jskit",
+    "prelint:types": "npm run build --workspace=@eslint/jskit",
+    "prestart": "npm run build --workspace=@eslint/jskit",
+    "start": "astro dev",
+    "start:preview": "astro preview"
   },
   "keywords": [
     "ast",

@@ -7,17 +7,26 @@ One build script, one generator, and eleven checks, split into `parse/` and
 and compare the result against the implementation each one replaces.
 
 Everything here imports `../../dist/jskit.js`, so **the bundle must be built
-first**. `npm run conformance` does that for you; a bare `node scripts/…` uses
+first**. `npm run test:conformance` does that for you; a bare `node scripts/…` uses
 whatever `dist/` currently holds, or fails outright if it is missing.
 
 The control flow analysis has no scripts here, because it has no reference
 implementation to diff against; `tests/flow/` is its contract.
 
 ```bash
-npm run build           # scripts/build.js
-npm run conformance     # every check in the first table, in order
-npm run conformance:262 # the test262 run, which needs a checkout
+npm run build                        # scripts/build.js
+npm run test:conformance             # every check in the first table, in order
+npm run test:conformance:parse       # just the parser half of that table
+npm run test:conformance:scope       # just the scope half
+npm run test:conformance:ecmascript  # the test262 run, which needs a checkout
+npm run test:conformance:typescript  # TypeScript's own suite, which needs a checkout
+npm run test:conformance:eslint      # ESLint's rule tests, which need a checkout
 ```
+
+The three that need a checkout are named for the corpus they read, not for the
+script that reads it: `ecmascript` is test262, `typescript` is
+`microsoft/TypeScript`'s `tests/cases`, and `eslint` is ESLint's own rule
+tests.
 
 ## What each script checks
 
@@ -86,7 +95,7 @@ It reads a checkout rather than a vendored copy, because the suite is around
 
 ```bash
 git clone --depth 1 https://github.com/tc39/test262
-npm run conformance:262 -- ./test262
+npm run test:conformance:ecmascript -- ./test262
 ```
 
 `/test262` at the repository root is the default path and is gitignored, so a
@@ -102,7 +111,7 @@ which is exactly the set this one is interested in.
 git clone --depth 1 --filter=blob:none --sparse \
     https://github.com/microsoft/TypeScript
 cd TypeScript && git sparse-checkout set tests/cases
-npm run conformance:ts -- ./TypeScript
+npm run test:conformance:typescript -- ./TypeScript
 ```
 
 Read its two counts differently. **missed** is a program the reference rejects
@@ -173,7 +182,7 @@ mocha hook swaps the parser on the language object before the tests load.
 git clone --depth 1 --branch v10.8.1 https://github.com/eslint/eslint
 cd eslint && npm install
 cd ../packages/jskit
-npm run conformance:eslint -- ../../eslint
+npm run test:conformance:eslint -- ../../eslint
 ```
 
 ```

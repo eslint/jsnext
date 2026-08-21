@@ -838,7 +838,7 @@ at runtime, so it is also the easiest to skip. Two scripts stop it drifting:
 `conformance-types.mjs` compares the declarations against what the decoder
 emits over the whole corpus, and `derive-shapes.mjs` reads the `fill()` switch
 itself and reports any node whose declared properties disagree with the ones
-assigned. Both run as part of `npm run conformance`. Between them, a new kind
+assigned. Both run as part of `npm run test:conformance`. Between them, a new kind
 with no interface, an interface with a property the decoder never writes, and a
 property whose declared type forbids a `null` the decoder emits are all caught.
 What neither can check is which node types belong in a slot: `this.node(a)`

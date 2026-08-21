@@ -171,11 +171,12 @@ recording what it was built to do.
 ## Development
 
 ```bash
-npm test           # vitest: unit tests in src/, integration tests in tests/
-npm run typecheck  # tsc --noEmit
-npm run build      # esbuild bundle + .d.ts files
-npm run bench      # performance comparisons
-npm run conformance   # differential tests against every reference implementation
+npm test                  # vitest: unit tests in src/, integration tests in tests/
+npm run test:conformance  # differential tests against every reference implementation
+npm run test:performance  # performance comparisons
+npm run test:watch        # vitest in watch mode
+npm run lint:types        # tsc --noEmit
+npm run build             # esbuild bundle + .d.ts files
 ```
 
 `npm test` is the fast check. What actually proves correctness is the

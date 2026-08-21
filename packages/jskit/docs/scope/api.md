@@ -278,7 +278,7 @@ very same tree object the reference analyzer was given, so any difference is a
 difference between the analyzers and nothing else.
 
 ```bash
-npm run conformance
+npm run test:conformance
 ```
 
 ```

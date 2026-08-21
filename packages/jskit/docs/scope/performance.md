@@ -4,7 +4,7 @@ How the analyzer compares to the analyzers it reproduces, and why the ratio
 moves with machine temperature more than the absolute numbers do.
 
 ```bash
-npm run bench
+npm run test:performance
 ```
 
 Analysis alone, with the parse hoisted out of the measured region. Every

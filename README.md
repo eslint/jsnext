@@ -59,19 +59,20 @@ not ship the others.
 ```bash
 npm install
 
-npm test           # every package's unit and integration tests
-npm run typecheck  # tsc --noEmit everywhere
-npm run build      # esbuild bundles + .d.ts files
-npm run lint       # builds first, then lints this repo with its own parser
-npm run conformance   # differential tests against every reference implementation
-npm run bench      # performance comparisons
+npm test                  # every package's unit and integration tests
+npm run test:conformance  # differential tests against every reference implementation
+npm run test:performance  # performance comparisons
+npm run lint              # eslint and tsc: every static check there is
+npm run fmt               # prettier --write .
+npm run build             # esbuild bundles + .d.ts files
 ```
 
 Every script delegates to the workspaces, so any of them can be run for one
 package with `npm run <script> --workspace=@eslint/jskit`.
 
 `eslint.config.js` lints this repository with the toolkit's own parser, which
-is why `npm run lint` builds first.
+is why `npm run lint` builds first. Script names follow
+[ESLint's package.json conventions](https://eslint.org/docs/latest/contribute/package-json-conventions).
 
 ## Conformance is the real test suite
 

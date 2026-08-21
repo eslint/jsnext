@@ -534,5 +534,5 @@ When the parser gains a node kind, decide four things:
    order of whichever reference implementation covers it, and add an explicit
    case if it does not.
 
-Then run `npm run conformance`, which exercises both entry points. Zero
+Then run `npm run test:conformance`, which exercises both entry points. Zero
 mismatches is the standard.

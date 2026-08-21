@@ -4,10 +4,10 @@ An npm workspace holding a fast, ESLint-compatible toolchain for the latest
 JavaScript, TypeScript, and JSX syntax. TypeScript source, bundled with
 `esbuild`, tested with `vitest`.
 
-| Package                  | Name                    | What it does                                                                                                                                                                                                                                                                     |
-| ------------------------ | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/jskit`         | `@eslint/jskit`         | The toolkit: parser, scope analyzer, and control flow analyzer, in one package with one entry point.                                                                                                                                                                             |
-| `packages/jskit-inspect` | `@eslint/jskit-inspect` | Web app (Astro + React) that runs all three in the browser: code in a left-hand editor, AST/scope/flow trees in tabs on the right, with the flow tab offering a Mermaid diagram of one chosen execution unit. Its `dev`/`build`/`typecheck` scripts build `@eslint/jskit` first. |
+| Package                  | Name                    | What it does                                                                                                                                                                                                                                                                        |
+| ------------------------ | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/jskit`         | `@eslint/jskit`         | The toolkit: parser, scope analyzer, and control flow analyzer, in one package with one entry point.                                                                                                                                                                                |
+| `packages/jskit-inspect` | `@eslint/jskit-inspect` | Web app (Astro + React) that runs all three in the browser: code in a left-hand editor, AST/scope/flow trees in tabs on the right, with the flow tab offering a Mermaid diagram of one chosen execution unit. Its `start`/`build`/`lint:types` scripts build `@eslint/jskit` first. |
 
 **The three analyses are directories, not packages.** `parse`, `scope`, and
 `flow` split the source, the tests, the documentation, the scripts, and the
@@ -36,7 +36,7 @@ the scope one is prefixed `SCOPE_H_*`/`SCOPE_HEADER_WORDS` and the flow one
 `FLOW_H_*`/`FLOW_HEADER_WORDS`. They are the only names the three surfaces
 would otherwise collide on, and `export *` would silently drop a collision
 rather than report it — so if you add a constant to one format, check the other
-two for the name first. `npm run typecheck` catches what slips through.
+two for the name first. `npm run lint:types` catches what slips through.
 
 `flow`'s `createGraph()` reads the two binary buffers directly and returns
 a binary control flow graph; `toGraphTree()` is its JSON debugging view and
@@ -118,7 +118,7 @@ changing anything in them:
   not in it is a bug.
 
 [`packages/jskit/scripts/README.md`](./packages/jskit/scripts/README.md)
-covers the ten scripts behind `npm run conformance` and how they divide the
+covers the ten scripts behind `npm run test:conformance` and how they divide the
 work.
 
 Task-specific procedures live in [`.agents/skills/`](./.agents/skills), which
@@ -133,22 +133,38 @@ Run from the repository root; every one delegates to the workspaces, and any of
 them takes `--workspace=@eslint/jskit` to narrow it.
 
 ```bash
-npm test           # vitest, ~3500 tests
-npm run test:coverage # the same run, with a coverage report and its gate
-npm run test:affected -- <area>...  # only the tests those areas can break
-npm run typecheck  # tsc --noEmit
-npm run lint       # builds first, then lints this repo with its own parser
-npm run lint:fix   # the same, applying what is fixable
-npm run fmt        # prettier --write .
-npm run fmt:check  # prettier --check ., which is what CI runs
-npm run build      # esbuild bundles + .d.ts files
-npm run conformance   # differential tests against every reference implementation
-npm run bench      # performance comparisons
+npm test                  # vitest, ~3500 tests
+npm run test:coverage     # the same run, with a coverage report and its gate
+npm run test:affected -- <area>...   # only the tests those areas can break
+npm run test:conformance  # differential tests against every reference implementation
+npm run test:performance  # performance comparisons
+npm run lint              # eslint and tsc: every static check there is
+npm run lint:fix          # the same, applying what is fixable
+npm run lint:js+ts        # the eslint half, which builds the parser first
+npm run lint:types        # the tsc --noEmit half
+npm run fmt               # prettier --write .
+npm run fmt:check         # prettier --check ., which is what CI runs
+npm run build             # esbuild bundles + .d.ts files
 ```
 
+**Script names follow
+[ESLint's package.json conventions](https://eslint.org/docs/latest/contribute/package-json-conventions):**
+every name begins with one of `build`, `fetch`, `release`, `lint`, `fmt`,
+`start`, or `test`, modifiers appear in the order `:fix`, `:check`, target,
+options, `:watch`, and the names are listed alphabetically. That is why type
+checking is `lint:types` rather than `typecheck` — it analyzes without
+executing — why the benchmarks are `test:performance`, and why the web app's
+dev server is `npm start`. Two places bend a SHOULD deliberately, both the way
+ESLint's own repository does: `test` does not run `test:conformance` or
+`test:performance`, since those need a corpus or a clean machine, and `test`
+reports coverage only through `test:coverage`.
+
 **`eslint.config.js` imports `./packages/jskit/dist/jskit.js`,** so linting
-requires a build. `npm run lint` does that for you; a bare `npx eslint .` will
-use a stale bundle, or fail outright if `dist/` is missing.
+requires a build. `npm run lint` and `npm run lint:js+ts` build the toolkit
+first — and only the toolkit, not the web app — so a bare `npx eslint .` is the
+only route that will use a stale bundle, or fail outright if `dist/` is
+missing. The root `prepare` script also builds it on every `npm install`, which
+is what keeps the `pre-commit` hook working on a fresh clone.
 
 The conformance scripts and benchmarks import `dist/` too. Plain `node` cannot
 execute the sources directly, because of those `.js` import specifiers. Build
@@ -400,7 +416,7 @@ untested by every script above.
 
 Two scripts cover it, one per dialect.
 
-`npm run conformance:262 --workspace=@eslint/jskit` is the JavaScript half.
+`npm run test:conformance:ecmascript --workspace=@eslint/jskit` is the JavaScript half.
 test262 states its own verdict in each file's frontmatter, so a `negative`
 block with `phase: parse` is an assertion that the file must be rejected, by
 `parse()` throwing or by `validate()` reporting — the split decides which, and
@@ -408,7 +424,7 @@ the test asserts neither.
 
 ```bash
 git clone --depth 1 https://github.com/tc39/test262
-npm run conformance:262 --workspace=@eslint/jskit
+npm run test:conformance:ecmascript --workspace=@eslint/jskit
 ```
 
 ```
@@ -422,7 +438,7 @@ program it accepts; every early error the corpus tests is now implemented, on
 whichever side of the phase line it falls — 1,317 of them from `parse()` and
 3,093 from `validate()`.
 
-`npm run conformance:ts --workspace=@eslint/jskit` is the TypeScript half.
+`npm run test:conformance:typescript --workspace=@eslint/jskit` is the TypeScript half.
 There is no TypeScript corpus that states its own verdict, so this one is
 differential after all — against `@typescript-eslint/parser`, over TypeScript's
 own test suite, which is mostly negative tests. It pairs with
@@ -434,7 +450,7 @@ exactly the set this one is about.
 git clone --depth 1 --filter=blob:none --sparse \
     https://github.com/microsoft/TypeScript
 cd TypeScript && git sparse-checkout set tests/cases
-npm run conformance:ts --workspace=@eslint/jskit -- ./TypeScript
+npm run test:conformance:typescript --workspace=@eslint/jskit -- ./TypeScript
 ```
 
 ```
@@ -473,7 +489,7 @@ Every run above compares an output — a tree, a token list, a scope graph. None
 of them says whether a _rule_ behaves the same, which is the only thing a user
 of `eslintParser` actually sees.
 
-`npm run conformance:eslint --workspace=@eslint/jskit -- <path-to-eslint>` is
+`npm run test:conformance:eslint --workspace=@eslint/jskit -- <path-to-eslint>` is
 that check: ESLint's own rule tests, some 33,000 assertions over 293 rules, run
 with `eslintParser` in place of `espree` and `parseForESLint()`'s scope graph in
 place of `eslint-scope`'s. It needs a checkout of the ESLint version this
@@ -483,7 +499,7 @@ in it — a generated mocha hook swaps the parser before the tests load.
 ```bash
 git clone --depth 1 --branch v10.8.1 https://github.com/eslint/eslint
 cd eslint && npm install
-npm run conformance:eslint --workspace=@eslint/jskit -- ../eslint
+npm run test:conformance:eslint --workspace=@eslint/jskit -- ../eslint
 ```
 
 ```
@@ -627,7 +643,7 @@ which is why it takes minutes rather than seconds:
 - The TypeScript 7 row in the parser benchmark self-reports as skipped. That is
   expected: `@typescript-eslint/parser` does not accept TypeScript 7 yet.
 
-`npm run bench:chart --workspace=@eslint/jskit` runs the parser benchmark,
+`npm run build:performance-chart --workspace=@eslint/jskit` runs the parser benchmark,
 writes `benchmarks/parse/results.json`, and renders
 `benchmarks/parse/results.svg` from it — a self-contained, theme-aware chart
 meant to be shared. `benchmarks/parse/chart.js` draws the two tiers as separate

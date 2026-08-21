@@ -7,7 +7,7 @@ both return `Program` from it.
 
 The file is hand-written. Nothing at runtime reads it, which means nothing
 would notice it drifting from the decoder, so two scripts hold it in place.
-Both run under `npm run conformance`; see
+Both run under `npm run test:conformance`; see
 [`../../scripts/README.md`](../../scripts/README.md) for how they divide the work.
 
 ## Why not a published type package
@@ -212,7 +212,7 @@ the scaffold for a new entry, leaving only the unions to write. After changing
 anything here, run:
 
 ```bash
-npm run conformance --workspace=@eslint/jskit
+npm run test:conformance --workspace=@eslint/jskit
 ```
 
 `problems=0 unseen=0` and `differ=0` are the standard. `unseen` and `kinds not

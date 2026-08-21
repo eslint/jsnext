@@ -445,7 +445,7 @@ try {
 console.log(
 	failures > 0
 		? `\n${failures} problem(s). See .agents/skills/add-node-type/SKILL.md`
-		: "\nAll checks passed. Now run the corpus checks:\n  npm run conformance --workspace=@eslint/jskit",
+		: "\nAll checks passed. Now run the corpus checks:\n  npm run test:conformance --workspace=@eslint/jskit",
 );
 
 process.exit(failures > 0 ? 1 : 0);

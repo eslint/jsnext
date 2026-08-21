@@ -3,7 +3,7 @@
 How the parser compares to the parsers it aims to replace, and how to read the
 benchmark without being misled by a warm machine.
 
-`npm run bench` measures full AST creation — source text in, complete ESTree
+`npm run test:performance` measures full AST creation — source text in, complete ESTree
 out — against `espree`, `acorn`, and `@typescript-eslint/parser` backed by two
 different TypeScript versions.
 
@@ -81,7 +81,7 @@ representation.
 Benchmark a file of your own with:
 
 ```bash
-npm run bench -- path/to/file.ts
+npm run test:performance -- path/to/file.ts
 ```
 
 Or run one suite on its own, which is the most reliable way to compare two
@@ -91,7 +91,7 @@ numbers:
 node benchmarks/parse/benchmark.js --suite=eslint
 ```
 
-`npm run bench:chart` runs the same benchmark, writes
+`npm run build:performance-chart` runs the same benchmark, writes
 `benchmarks/parse/results.json`, and renders `benchmarks/parse/results.svg`
 from it — a self-contained, theme-aware chart meant to be shared. The chart
 draws the two tiers as separate panels for the reason above, and orders the
