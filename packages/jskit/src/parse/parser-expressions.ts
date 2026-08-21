@@ -33,6 +33,7 @@ import {
 	NF_PARENTHESIZED,
 	NF_PREFIX,
 	NF_READONLY,
+	IDWORD_SHIFT,
 	NF_SHORTHAND,
 	NF_STATIC,
 	NODE_A,
@@ -161,6 +162,7 @@ import {
 	T_protected,
 	T_public,
 	T_readonly,
+	KIND_IDWORD_CODES,
 	T_satisfies,
 	T_set,
 	T_static,
@@ -2198,6 +2200,16 @@ export abstract class ExpressionParser extends TypeParser {
 			const end = this.end;
 
 			this.writer.set(node, NODE_A, end);
+
+			/*
+			 * Legal only as a parameter name, and this is the one gate every
+			 * pattern comes through — so the word code is what lets
+			 * `validate()` catch `var [this] = x` without reading the text.
+			 */
+			this.writer.addFlags(
+				node,
+				KIND_IDWORD_CODES[T_this] << IDWORD_SHIFT,
+			);
 			this.next();
 
 			return this.writer.finish(node, end);

@@ -21,8 +21,10 @@ import {
 	LIT_BOOLEAN,
 	LIT_NULL,
 	LIT_NUMBER,
+	IDWORD_SHIFT,
 	LIT_REGEXP,
 	LIT_STRING,
+	NF_IDENTIFIER_ESCAPED,
 	NF_IDENTIFIER_NAME,
 	NF_LEGACY_OCTAL,
 	NODE_A,
@@ -36,6 +38,7 @@ import { decodeEscapes } from "./values.js";
 import {
 	KEYWORD_FIRST,
 	KEYWORD_LAST,
+	KIND_IDWORD_CODES,
 	KIND_KEYWORD_FLAGS,
 	KW_RESERVED,
 	T_BIGINT,
@@ -349,10 +352,24 @@ export abstract class ParserBase {
 			this.checkEscapedWord(this.tokenizer.start, this.tokenizer.end);
 		}
 
+		const kind = this.tokenizer.kind;
 		const node = this.writer.alloc(N_Identifier, this.tokenizer.start);
 		const end = this.tokenizer.end;
 
 		this.writer.set(node, NODE_A, end);
+
+		/*
+		 * The tokenizer already knows whether this word is a keyword, and
+		 * `validate()` wants that answer back — see `KIND_IDWORD_CODES`. An
+		 * escaped word arrives as a plain identifier instead, so what gets
+		 * recorded for one is that the text cannot be trusted as spelled.
+		 */
+		if (kind !== T_IDENT) {
+			this.writer.addFlags(node, KIND_IDWORD_CODES[kind] << IDWORD_SHIFT);
+		} else if ((this.tokenizer.flags & TF_HAS_ESCAPE) !== 0) {
+			this.writer.addFlags(node, NF_IDENTIFIER_ESCAPED);
+		}
+
 		this.tokenizer.next();
 
 		return this.writer.finish(node, end);
@@ -408,7 +425,11 @@ export abstract class ParserBase {
 
 		this.tokenizer.demoteKeywordToIdentifier();
 
-		return this.parseWordAsIdentifier();
+		/*
+		 * The demote just rewrote the token's kind, so the word's identity is
+		 * handed down rather than read back.
+		 */
+		return this.parseWordAsIdentifier(kind);
 	}
 
 	/**
@@ -417,7 +438,7 @@ export abstract class ParserBase {
 	 * halves of a meta property, which stay keywords.
 	 * @returns The index of the `Identifier` node.
 	 */
-	parseWordAsIdentifier(): number {
+	parseWordAsIdentifier(kind: number = this.tokenizer.kind): number {
 		const node = this.writer.alloc(N_Identifier, this.tokenizer.start);
 		const end = this.tokenizer.end;
 
@@ -432,8 +453,17 @@ export abstract class ParserBase {
 		 * name, a member access, an import or export name, or half of a meta
 		 * property — and a reserved word is allowed to be any of those.
 		 * `validate()` cannot tell that from the tree, so it is recorded.
+		 * The word's identity goes with it, the way `parseIdentifier()`
+		 * records it: a name is also a reference in `({ await })` and
+		 * `export { if }`, and the checks those need read the code back.
 		 */
 		this.writer.addFlags(node, NF_IDENTIFIER_NAME);
+
+		if (kind !== T_IDENT) {
+			this.writer.addFlags(node, KIND_IDWORD_CODES[kind] << IDWORD_SHIFT);
+		} else if ((this.tokenizer.flags & TF_HAS_ESCAPE) !== 0) {
+			this.writer.addFlags(node, NF_IDENTIFIER_ESCAPED);
+		}
 		this.tokenizer.next();
 
 		return this.writer.finish(node, end);

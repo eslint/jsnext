@@ -2682,3 +2682,104 @@ describe("for-in and for-of head annotations", () => {
 		expect(messages("for (const [a, b] of y) {}")).toEqual([]);
 	});
 });
+
+describe("the scope name table", () => {
+	/*
+	 * The validator keys each scope's bindings by source range in a table
+	 * that starts with room for eight names and doubles as it fills. These
+	 * push one scope past the growth point, because the bugs a rehash can
+	 * have are invisible below it.
+	 */
+	const names = Array.from({ length: 20 }, (unused, i) => `name${i}`);
+
+	it("still resolves every export after the table grows", () => {
+		const code = `${names.map(name => `var ${name} = 1;`).join("\n")}\nexport { ${names.join(", ")} };`;
+
+		expect(messages(code, { sourceType: "module" })).toEqual([]);
+	});
+
+	it("still reports a redeclaration recorded before the growth", () => {
+		const code = `${names.map(name => `let ${name} = 1;`).join("\n")}\nlet name0 = 2;`;
+
+		expect(messages(code, { sourceType: "module" })).toEqual([
+			"Identifier 'name0' has already been declared.",
+		]);
+	});
+
+	it("still reports a var against a lexical name after the growth", () => {
+		const code = `${names.map(name => `let ${name} = 1;`).join("\n")}\nvar name19 = 2;`;
+
+		expect(messages(code, { sourceType: "module" })).toEqual([
+			"Identifier 'name19' has already been declared.",
+		]);
+	});
+
+	/*
+	 * A name written with an escape has a `StringValue` the source does not
+	 * spell, so the table stores the decoded string — the one entry kind
+	 * that is not a source range.
+	 */
+	it("collides an escaped spelling with a plain one", () => {
+		expect(
+			messages("let a = 1; let \\u0061 = 2;", { sourceType: "script" }),
+		).toEqual(["Identifier 'a' has already been declared."]);
+	});
+
+	it("collides a plain spelling with an escaped one", () => {
+		expect(
+			messages("let \\u0061 = 1; let a = 2;", { sourceType: "script" }),
+		).toEqual(["Identifier 'a' has already been declared."]);
+	});
+
+	it("resolves an export against an escaped binding", () => {
+		expect(
+			messages("var \\u0061 = 1; export { a };", {
+				sourceType: "module",
+			}),
+		).toEqual([]);
+	});
+
+	it("keeps different names apart however many there are", () => {
+		const code = names.map(name => `let ${name} = 1;`).join("\n");
+
+		expect(messages(code, { sourceType: "module" })).toEqual([]);
+	});
+});
+
+describe("the use strict directive flag", () => {
+	/*
+	 * `validate()` finds the directive through a parser-set flag that shares
+	 * its bit with `NF_ASYNC`. An `async` function opening the program is the
+	 * statement that would be misread if the prologue check trusted the flag
+	 * before the statement's kind.
+	 */
+	it("does not mistake a leading async function for a directive", () => {
+		expect(
+			messages("async function f(a, a) { with (a) {} }", {
+				sourceType: "script",
+			}),
+		).toEqual([]);
+	});
+
+	it("still honors the directive after other directives", () => {
+		expect(
+			messages("'use asm'; 'use strict'; with ({}) {}", {
+				sourceType: "script",
+			}),
+		).toEqual(["Strict mode code may not include a with statement."]);
+	});
+
+	it("ignores a parenthesized impostor", () => {
+		expect(
+			messages("('use strict'); with ({}) {}", { sourceType: "script" }),
+		).toEqual([]);
+	});
+
+	it("ignores an escaped spelling", () => {
+		expect(
+			messages("'use\\u0020strict'; with ({}) {}", {
+				sourceType: "script",
+			}),
+		).toEqual([]);
+	});
+});

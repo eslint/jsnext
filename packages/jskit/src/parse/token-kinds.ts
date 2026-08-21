@@ -770,6 +770,61 @@ export const KIND_KEYWORD_FLAGS = new Uint8Array(KIND_COUNT);
 }
 
 //-----------------------------------------------------------------------------
+// Identifier Word Codes
+//-----------------------------------------------------------------------------
+
+/*
+ * When the parser writes an `Identifier` node for a word the tokenizer
+ * recognized as a keyword, it packs a small code into the node's flags saying
+ * which word that was — see `IDWORD_SHIFT` in `node-kinds.ts`. The code spares
+ * `validate()` re-hashing the text of every identifier to rediscover an answer
+ * the tokenizer already had: whether the name is `yield`, `await`, `this`, a
+ * word strict mode reserves, or a `ReservedWord` outright.
+ *
+ * Only the words `validate()` has a rule about get a code of their own; every
+ * other `ReservedWord` shares `IDWORD_RESERVED`, whose spelling — needed only
+ * for an error message — is still there in the source text. A word written
+ * with an escape never gets a code at all, because the tokenizer reports it as
+ * a plain identifier; the parser marks those `NF_IDENTIFIER_ESCAPED` instead
+ * and `validate()` decodes them the slow way.
+ */
+
+/** The code of a `ReservedWord` with no rule of its own in `validate()`. */
+export const IDWORD_RESERVED = 1;
+
+/**
+ * The keyword kind behind each identifier word code.
+ *
+ * Index `0` (no code) and index `IDWORD_RESERVED` both map to `0`, a value
+ * outside the keyword range, so a reader looking for one particular word can
+ * compare without special-casing either.
+ */
+export const IDWORD_KINDS: number[] = [0, 0];
+
+/**
+ * The identifier word code for each token kind; `0` for every kind that is
+ * not a keyword `validate()` has a rule about.
+ */
+export const KIND_IDWORD_CODES = new Uint8Array(KIND_COUNT);
+
+{
+	for (let kind = KEYWORD_FIRST; kind <= KEYWORD_LAST; kind++) {
+		const flags = KIND_KEYWORD_FLAGS[kind];
+
+		if (
+			(flags & KW_STRICT_RESERVED) !== 0 ||
+			kind === T_await ||
+			kind === T_this
+		) {
+			KIND_IDWORD_CODES[kind] = IDWORD_KINDS.length;
+			IDWORD_KINDS.push(kind);
+		} else if ((flags & KW_RESERVED) !== 0) {
+			KIND_IDWORD_CODES[kind] = IDWORD_RESERVED;
+		}
+	}
+}
+
+//-----------------------------------------------------------------------------
 // Keyword Recognition
 //-----------------------------------------------------------------------------
 

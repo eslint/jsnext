@@ -24,8 +24,15 @@ import { SLOT_DATA, SLOT_DESCRIPTORS, SLOT_LIST } from "./slots.js";
 /** Magic number identifying a parse buffer: "JSPB" in little-endian ASCII. */
 export const PARSE_MAGIC = 0x4250534a;
 
-/** Format version of the parse buffer. */
-export const PARSE_VERSION = 1;
+/**
+ * Format version of the parse buffer.
+ *
+ * Version 2 added the identifier word codes, `NF_IDENTIFIER_ESCAPED`, and
+ * `NF_USE_STRICT` to the node flags word — bits `validate()` now relies on,
+ * which is what makes a version 1 buffer unsafe to validate rather than
+ * merely older.
+ */
+export const PARSE_VERSION = 2;
 
 /** Size of the parse buffer header in bytes. */
 export const PARSE_HEADER_BYTES = 68;

@@ -11,6 +11,14 @@ import { describe, expect, it } from "vitest";
 import {
 	ASSIGN_FIRST,
 	ASSIGN_LAST,
+	IDWORD_KINDS,
+	IDWORD_RESERVED,
+	KEYWORD_FIRST,
+	KEYWORD_LAST,
+	KIND_IDWORD_CODES,
+	KIND_KEYWORD_FLAGS,
+	KW_RESERVED,
+	KW_STRICT_RESERVED,
 	describeKind,
 	hashChar,
 	isAssignmentKind,
@@ -33,6 +41,7 @@ import {
 	T_await,
 	T_class,
 	T_intrinsic,
+	T_this,
 } from "./token-kinds.js";
 
 /**
@@ -128,5 +137,43 @@ describe("isIdentifierNameKind()", () => {
 		expect(isIdentifierNameKind(T_BRACE_OPEN)).toBe(false);
 		expect(isIdentifierNameKind(T_NUMBER)).toBe(false);
 		expect(isIdentifierNameKind(T_PRIVATE_IDENT)).toBe(false);
+	});
+});
+
+describe("identifier word codes", () => {
+	it("fits every code in the four-bit flags field", () => {
+		// See IDWORD_MASK in node-kinds.ts: four bits, so codes 0-15.
+		expect(IDWORD_KINDS.length).toBeLessThanOrEqual(16);
+	});
+
+	it("gives a code of its own to every word with a rule", () => {
+		for (let kind = KEYWORD_FIRST; kind <= KEYWORD_LAST; kind++) {
+			if (
+				(KIND_KEYWORD_FLAGS[kind] & KW_STRICT_RESERVED) !== 0 ||
+				kind === T_await ||
+				kind === T_this
+			) {
+				expect(KIND_IDWORD_CODES[kind]).toBeGreaterThan(
+					IDWORD_RESERVED,
+				);
+				expect(IDWORD_KINDS[KIND_IDWORD_CODES[kind]]).toBe(kind);
+			}
+		}
+	});
+
+	it("marks every other reserved word with the shared code", () => {
+		for (let kind = KEYWORD_FIRST; kind <= KEYWORD_LAST; kind++) {
+			if (
+				(KIND_KEYWORD_FLAGS[kind] & KW_RESERVED) !== 0 &&
+				kind !== T_this
+			) {
+				expect(KIND_IDWORD_CODES[kind]).toBe(IDWORD_RESERVED);
+			}
+		}
+	});
+
+	it("maps the codes no word owns to a kind outside the keyword range", () => {
+		expect(IDWORD_KINDS[0]).toBeLessThan(KEYWORD_FIRST);
+		expect(IDWORD_KINDS[IDWORD_RESERVED]).toBeLessThan(KEYWORD_FIRST);
 	});
 });

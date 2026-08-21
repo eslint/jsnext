@@ -425,7 +425,7 @@ Seven regions, in order, each beginning on a word boundary.
 ```text
 Header (68 bytes, 17 words)
   word 0   magic          0x4250534A  ("JSPB" little-endian)
-  word 1   version        1
+  word 1   version        2
   word 2   flags          bit 0: PARSE_FLAG_SOURCE_EMBEDDED
                           bit 1: PARSE_FLAG_PARENTS
   word 3   root           index of the root node
@@ -568,6 +568,12 @@ Bits 0–22 are independent booleans:
 `NF_SELF_CLOSING` is deliberately an alias of `NF_ASYNC` (bit 0). A JSX opening
 element is never async, so the bit is free on that kind. Reusing bits across
 disjoint kinds is allowed, but it must be documented at the definition.
+`NF_USE_STRICT` reuses the same bit the same way: an `ExpressionStatement`
+already marked as a directive (slot B is `1`) carries it when the directive is
+exactly `"use strict"`, so `validate()` finds the one directive that changes
+its answers without re-reading any prologue's text. The mark is only
+meaningful under the kind check — on any other kind the bit means what that
+kind says it means.
 
 Bits 23 and up hold packed enumerations:
 
@@ -579,6 +585,24 @@ Bits 23 and up hold packed enumerations:
 
 The literal subtypes carried in the third field are `LIT_STRING`, `LIT_NUMBER`,
 `LIT_BOOLEAN`, `LIT_NULL`, `LIT_REGEXP`, `LIT_BIGINT`, and `LIT_JSX_STRING`.
+
+An `Identifier` carries none of those enumerations, so on that one kind the
+same bits hold two things the parser knows and `validate()` would otherwise
+re-derive by hashing the name of every identifier it meets (version 2 of the
+format):
+
+| Field                   | Shift | Width | Values                             |
+| ----------------------- | ----- | ----- | ---------------------------------- |
+| Identifier word code    | 23    | 4     | see `KIND_IDWORD_CODES`            |
+| `NF_IDENTIFIER_ESCAPED` | 27    | 1     | the name contains a unicode escape |
+
+The word code names which keyword the identifier's text spells, when it is one
+`validate()` has a rule about — `yield`, `await`, `this`, the words strict
+mode reserves, and one shared code for every other `ReservedWord`. An escaped
+word never gets a code, because the tokenizer classifies it as a plain
+identifier; the escape bit is what tells `validate()` to decode the text and
+look it up the slow way. Nothing here is new information — both facts fall out
+of the tokenizer's keyword lookup — which is what makes recording them free.
 
 ### The list region
 

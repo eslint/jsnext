@@ -30,6 +30,8 @@ import {
 	NODE_E,
 	NODE_G,
 	NODE_FLAGS,
+	NF_USE_STRICT,
+	NODE_END,
 	NODE_KIND,
 	NODE_START,
 	N_BlockStatement,
@@ -147,6 +149,9 @@ import {
 	isIdentifierNameKind,
 } from "./token-kinds.js";
 
+/** The spelling the `"use strict"` directive must have, quotes aside. */
+const USE_STRICT = "use strict";
+
 /**
  * The complete parser.
  */
@@ -204,6 +209,10 @@ export class Parser extends JsxParser {
 			if (inPrologue) {
 				if (this.isDirective(statement)) {
 					this.writer.set(statement, NODE_B, 1);
+
+					if (this.isUseStrict(statement)) {
+						this.writer.addFlags(statement, NF_USE_STRICT);
+					}
 				} else {
 					inPrologue = false;
 				}
@@ -250,6 +259,34 @@ export class Parser extends JsxParser {
 			this.writer.get(expression, NODE_START) ===
 			this.writer.get(statement, NODE_START)
 		);
+	}
+
+	/**
+	 * Determines whether a directive is the `"use strict"` directive.
+	 *
+	 * The directive is its exact spelling: twelve characters, either quote,
+	 * and no escapes — an escape would put a backslash where a letter is
+	 * compared, so nothing here has to look for one.
+	 * @param statement The directive's `ExpressionStatement` node.
+	 * @returns `true` when the directive is `"use strict"`.
+	 */
+	private isUseStrict(statement: number): boolean {
+		const expression = this.writer.get(statement, NODE_A);
+		const start = this.writer.get(expression, NODE_START);
+
+		if (this.writer.get(expression, NODE_END) - start !== 12) {
+			return false;
+		}
+
+		const source = this.source;
+
+		for (let i = 0; i < 10; i++) {
+			if (source.charCodeAt(start + 1 + i) !== USE_STRICT.charCodeAt(i)) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	//-------------------------------------------------------------------------

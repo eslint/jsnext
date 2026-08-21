@@ -112,6 +112,19 @@ export const NF_COMMA_AFTER_REST = NF_ASYNC;
 export const NF_LEGACY_OCTAL = NF_TAIL;
 
 /**
+ * An `ExpressionStatement` that is exactly the directive `"use strict"` —
+ * that spelling or the single-quoted one, escapes and all other directives
+ * excluded, which is the reading the specification gives the directive
+ * itself.
+ *
+ * Slot B already says the statement sits in a directive prologue; this says
+ * which directive it is, so `validate()` can find the one that matters
+ * without re-reading the text of every prologue. `NF_ASYNC` is a function's
+ * flag and a statement never carries one, so the bit is free here.
+ */
+export const NF_USE_STRICT = NF_ASYNC;
+
+/**
  * An `Identifier` that stands for an `IdentifierName` rather than for a
  * binding or a reference: the `x` in `o.x`, `{ x: 1 }`, `class C { x() {} }`,
  * and `import { x as y }`.
@@ -180,6 +193,30 @@ export const MKIND_NAMES: readonly string[] = [
 	"method",
 	"constructor",
 ];
+
+/*
+ * An `Identifier` carries none of the three enumerations above, so bits 23
+ * and up are free on one — the same per-kind reuse `NF_SELF_CLOSING` and
+ * `MODULE_KIND_SHIFT` rely on.
+ */
+
+/**
+ * Which keyword an `Identifier`'s text spells, as an identifier word code —
+ * see `KIND_IDWORD_CODES` in `token-kinds.ts`. `0` for a name that is no
+ * keyword `validate()` has a rule about, which is nearly all of them.
+ */
+export const IDWORD_SHIFT = 23;
+export const IDWORD_MASK = 15 << IDWORD_SHIFT;
+
+/**
+ * An `Identifier` whose text contains a unicode escape.
+ *
+ * An escaped word reaches the parser as a plain identifier — the tokenizer
+ * skips the keyword table for it — so it never gets a word code. This bit is
+ * what tells `validate()` the text has to be decoded and looked up before it
+ * can be trusted not to spell `yield`.
+ */
+export const NF_IDENTIFIER_ESCAPED = 1 << 27;
 
 //-----------------------------------------------------------------------------
 // Node Kinds

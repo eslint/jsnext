@@ -43,7 +43,11 @@ import {
 	NF_GENERATOR,
 	NF_IN,
 	NF_READONLY,
+	IDWORD_MASK,
+	IDWORD_SHIFT,
+	NF_IDENTIFIER_ESCAPED,
 	NF_IDENTIFIER_NAME,
+	NF_USE_STRICT,
 	NF_INVALID_ESCAPE,
 	NF_LEGACY_OCTAL,
 	NF_METHOD,
@@ -73,6 +77,7 @@ import {
 	N_ExportDefaultDeclaration,
 	N_ExportNamedDeclaration,
 	N_ExportSpecifier,
+	N_ExpressionStatement,
 	N_ForInStatement,
 	N_ForOfStatement,
 	N_ForStatement,
@@ -155,12 +160,15 @@ import {
 	KEYWORD_NAMES,
 	KIND_KEYWORD_FLAGS,
 	KW_RESERVED,
+	IDWORD_KINDS,
+	IDWORD_RESERVED,
 	KW_STRICT_RESERVED,
 	T_ASSIGN,
 	T_ASSIGN_AMPAMP,
 	T_await,
 	T_delete,
 	T_in,
+	T_let,
 	T_this,
 	T_yield,
 	lookupKeyword,
@@ -216,19 +224,6 @@ const CH_BACKSLASH = 0x5c;
  */
 const CH_a = 0x61;
 const CH_e = 0x65;
-
-/** The letter `this` begins with. */
-const CH_t = 0x74;
-
-/**
- * Which characters an identifier that might be a reserved word can start with.
- *
- * The words are `await`, `implements`, `interface`, `let`, `package`,
- * `private`, `protected`, `public`, `static`, and `yield`, so six letters
- * cover all of them — plus the backslash, for a first letter written as an
- * escape. Indexed by character code; anything outside ASCII cannot begin one.
- */
-const RESERVED_INITIALS = /* @__PURE__ */ buildReservedInitials();
 
 /**
  * Which node kinds `check()` has a case for, indexed by kind.
@@ -458,18 +453,337 @@ function isWellFormedUnicode(value: string): boolean {
 	return true;
 }
 
-/**
- * Builds the table of characters a reserved word can start with.
- * @returns The table, indexed by character code.
- */
-function buildReservedInitials(): Uint8Array {
-	const table = new Uint8Array(128);
+/** The bits of a name's info word holding the binding kind, plus one. */
+const NAME_BINDING = 0xff;
 
-	for (const letter of "ailpsy\\") {
-		table[letter.charCodeAt(0)] = 1;
+/** The bit of a name's info word saying a `var` of the name climbs through. */
+const NAME_VAR = 1 << 8;
+
+/**
+ * One scope's bindings, keyed by spelling without making the spellings
+ * strings.
+ *
+ * Two bindings collide when their `StringValue`s are equal, which needs the
+ * characters rather than a string holding them. So a name is stored as where
+ * it sits in the source and compared character by character — the same trick
+ * `lookupKeyword()` plays, turned into an open-addressed table of one scope's
+ * names. The strings this replaces were the validator's largest allocation:
+ * one per binding, made only to be a `Map` key.
+ *
+ * A name written with an escape spells a `StringValue` the source does not.
+ * Those are decoded — hashing already had to — and the slot points into
+ * `spill` instead, marked by a negative start. Real code has almost none.
+ *
+ * A slot is four words: the hash of the decoded characters, the name's start
+ * and end offsets, and an info word. The info's low `NAME_BINDING` bits hold
+ * how the name was introduced, plus one; `NAME_VAR` says a `var` of the name
+ * also passes through this scope; `0` is an empty slot.
+ */
+class NameTable {
+	/** Slot words: hash, start, end, info. */
+	private slots = new Int32Array(8 * 4);
+
+	/** How many slots are occupied. */
+	private used = 0;
+
+	/** Decoded spellings of escaped names; a negative start indexes here. */
+	private spill: string[] | null = null;
+
+	/**
+	 * The slot the last `find()` landed on, or `-1` when it cannot be
+	 * reused. `declare()` always looks a name up before writing it, so the
+	 * write takes the slot the lookup already found instead of probing
+	 * again. Consumed by the write; never valid across any other call.
+	 */
+	private lastSlot = -1;
+
+	/** The text every unescaped name is a range of. */
+	private readonly source: string;
+
+	/**
+	 * Creates an empty table.
+	 * @param source The program text the names point into.
+	 */
+	constructor(source: string) {
+		this.source = source;
 	}
 
-	return table;
+	/**
+	 * Empties the table so another scope can use it.
+	 *
+	 * Allocating the slots is most of what a table costs, and a walk enters
+	 * scopes far more often than it holds two open at once — so an exited
+	 * scope's table is reset and reused rather than left to the collector.
+	 * @returns This table.
+	 */
+	reset(): this {
+		if (this.used !== 0) {
+			this.slots.fill(0);
+			this.used = 0;
+			this.spill = null;
+		}
+
+		this.lastSlot = -1;
+
+		return this;
+	}
+
+	/**
+	 * Looks a name up.
+	 * @param hash The hash of the name's decoded characters.
+	 * @param start Where the name starts in the source.
+	 * @param end Where the name ends in the source.
+	 * @param name The decoded name, when it was written with an escape.
+	 * @returns The name's info word, or `0` when it is not bound here.
+	 */
+	find(
+		hash: number,
+		start: number,
+		end: number,
+		name: string | null,
+	): number {
+		const slot = this.probe(hash, start, end, name);
+
+		this.lastSlot = slot;
+
+		return this.slots[slot + 3];
+	}
+
+	/**
+	 * Records how a name is introduced, keeping any `var` bit it carries.
+	 * @param hash The hash of the name's decoded characters.
+	 * @param start Where the name starts in the source.
+	 * @param end Where the name ends in the source.
+	 * @param name The decoded name, when it was written with an escape.
+	 * @param binding How the name is being introduced.
+	 * @returns Nothing.
+	 */
+	bind(
+		hash: number,
+		start: number,
+		end: number,
+		name: string | null,
+		binding: number,
+	): void {
+		const slot = this.insert(hash, start, end, name);
+
+		this.slots[slot + 3] =
+			(this.slots[slot + 3] & NAME_VAR) | (binding + 1);
+	}
+
+	/**
+	 * Records that a `var` of the name binds here, keeping any binding kind.
+	 * @param hash The hash of the name's decoded characters.
+	 * @param start Where the name starts in the source.
+	 * @param end Where the name ends in the source.
+	 * @param name The decoded name, when it was written with an escape.
+	 * @returns Nothing.
+	 */
+	addVar(
+		hash: number,
+		start: number,
+		end: number,
+		name: string | null,
+	): void {
+		// `insert()` may replace `slots`, so it must run before the read.
+		const slot = this.insert(hash, start, end, name);
+
+		this.slots[slot + 3] |= NAME_VAR;
+	}
+
+	/**
+	 * Determines whether a name, given as a string, is bound here at all.
+	 * @param name The name to look for.
+	 * @returns `true` when any binding or `var` of the name is recorded.
+	 */
+	hasName(name: string): boolean {
+		let hash = 0;
+
+		for (let i = 0; i < name.length; i++) {
+			hash = hashChar(hash, name.charCodeAt(i));
+		}
+
+		return this.slots[this.probe(hash, 0, 0, name) + 3] !== 0;
+	}
+
+	/**
+	 * Finds the slot a name lives in, or the empty slot it would go into.
+	 * @param hash The hash of the name's decoded characters.
+	 * @param start Where the name starts in the source.
+	 * @param end Where the name ends in the source.
+	 * @param name The decoded name, when hashing had to decode one.
+	 * @returns The word offset of the slot.
+	 */
+	private probe(
+		hash: number,
+		start: number,
+		end: number,
+		name: string | null,
+	): number {
+		const slots = this.slots;
+		const mask = slots.length - 4;
+		let slot = (hash << 2) & mask;
+
+		for (;;) {
+			if (slots[slot + 3] === 0) {
+				return slot;
+			}
+
+			if (slots[slot] === hash && this.matches(slot, start, end, name)) {
+				return slot;
+			}
+
+			slot = (slot + 4) & mask;
+		}
+	}
+
+	/**
+	 * Compares a slot's name against the one being probed for.
+	 * @param slot The word offset of the occupied slot.
+	 * @param start Where the probed name starts in the source.
+	 * @param end Where the probed name ends in the source.
+	 * @param name The probed name as a string, when there is one.
+	 * @returns `true` when the two spell the same `StringValue`.
+	 */
+	private matches(
+		slot: number,
+		start: number,
+		end: number,
+		name: string | null,
+	): boolean {
+		const slots = this.slots;
+		const source = this.source;
+		const entryStart = slots[slot + 1];
+
+		if (entryStart < 0) {
+			const spelled = this.spill![~entryStart];
+
+			if (name !== null) {
+				return spelled === name;
+			}
+
+			if (spelled.length !== end - start) {
+				return false;
+			}
+
+			for (let i = 0; i < spelled.length; i++) {
+				if (spelled.charCodeAt(i) !== source.charCodeAt(start + i)) {
+					return false;
+				}
+			}
+
+			return true;
+		}
+
+		const entryEnd = slots[slot + 2];
+
+		if (name !== null) {
+			if (name.length !== entryEnd - entryStart) {
+				return false;
+			}
+
+			for (let i = 0; i < name.length; i++) {
+				if (name.charCodeAt(i) !== source.charCodeAt(entryStart + i)) {
+					return false;
+				}
+			}
+
+			return true;
+		}
+
+		if (entryEnd - entryStart !== end - start) {
+			return false;
+		}
+
+		for (let i = start, j = entryStart; i < end; i++, j++) {
+			if (source.charCodeAt(i) !== source.charCodeAt(j)) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Finds a name's slot, claiming an empty one for it if it has none yet.
+	 * @param hash The hash of the name's decoded characters.
+	 * @param start Where the name starts in the source.
+	 * @param end Where the name ends in the source.
+	 * @param name The decoded name, when it was written with an escape.
+	 * @returns The word offset of the slot.
+	 */
+	private insert(
+		hash: number,
+		start: number,
+		end: number,
+		name: string | null,
+	): number {
+		let slot = this.lastSlot;
+
+		if (slot === -1) {
+			slot = this.probe(hash, start, end, name);
+		} else {
+			this.lastSlot = -1;
+		}
+
+		if (this.slots[slot + 3] !== 0) {
+			return slot;
+		}
+
+		// Grow at three quarters full, before the probe chains stretch.
+		if ((this.used + 1) * 16 > this.slots.length * 3) {
+			this.grow();
+			slot = this.probe(hash, start, end, name);
+		}
+
+		this.used++;
+
+		const slots = this.slots;
+
+		slots[slot] = hash;
+
+		if (name === null) {
+			slots[slot + 1] = start;
+			slots[slot + 2] = end;
+		} else {
+			const spill = (this.spill ??= []);
+
+			slots[slot + 1] = ~spill.length;
+			slots[slot + 2] = 0;
+			spill.push(name);
+		}
+
+		return slot;
+	}
+
+	/**
+	 * Doubles the table, redistributing every occupied slot.
+	 * @returns Nothing.
+	 */
+	private grow(): void {
+		const old = this.slots;
+		const grown = new Int32Array(old.length * 2);
+		const mask = grown.length - 4;
+
+		this.slots = grown;
+
+		for (let i = 0; i < old.length; i += 4) {
+			if (old[i + 3] === 0) {
+				continue;
+			}
+
+			let slot = (old[i] << 2) & mask;
+
+			while (grown[slot + 3] !== 0) {
+				slot = (slot + 4) & mask;
+			}
+
+			grown[slot] = old[i];
+			grown[slot + 1] = old[i + 1];
+			grown[slot + 2] = old[i + 2];
+			grown[slot + 3] = old[i + 3];
+		}
+	}
 }
 
 /**
@@ -477,23 +791,16 @@ function buildReservedInitials(): Uint8Array {
  */
 interface Scope {
 	/**
-	 * Names bound where they are written, mapped to how they were introduced.
+	 * Names bound where they are written, with how each was introduced and
+	 * whether a `var` of it climbs through — see `NameTable`. A lexical
+	 * declaration collides with such a `var` however the two are ordered,
+	 * which is what makes `{ var a; let a; }` and `{ let a; var a; }` alike.
 	 *
 	 * `null` until the first binding: most scopes in a real program — block
 	 * statements, loop bodies, the braces of an `if` — declare nothing, and
-	 * a `Map` allocated for each of them is measurable churn.
+	 * a table allocated for each of them is measurable churn.
 	 */
-	names: Map<string, number> | null;
-
-	/**
-	 * Names `var`-declared in this scope or in any scope below it that a
-	 * `var` climbs out of. A lexical declaration collides with one of these
-	 * however the two are ordered, which is what makes `{ var a; let a; }`
-	 * and `{ let a; var a; }` alike.
-	 *
-	 * `null` until the first one, for the same reason as `names`.
-	 */
-	varNames: Set<string> | null;
+	names: NameTable | null;
 
 	/** Whether `var` declarations stop climbing here. */
 	isFunctionScope: boolean;
@@ -837,6 +1144,18 @@ class Validator {
 	private mentionsArguments: boolean | null = null;
 
 	/**
+	 * The decoded spelling of the name `hashName()` last hashed, when that
+	 * name was written with an escape; `null` for every ordinary name.
+	 */
+	private hashedName: string | null = null;
+
+	/**
+	 * Tables of scopes already exited, kept so later scopes can bind without
+	 * allocating — see `NameTable.reset()`.
+	 */
+	private readonly tablePool: NameTable[] = [];
+
+	/**
 	 * The reader for regular expression patterns, made on first use.
 	 *
 	 * Most programs have no regular expression literal at all, and the one
@@ -870,7 +1189,6 @@ class Validator {
 		this.awaitReserved = sourceType === "module";
 		this.scope = {
 			names: null,
-			varNames: null,
 			isFunctionScope: true,
 			functionsAreLexical: sourceType === "module",
 			parent: null,
@@ -921,14 +1239,22 @@ class Validator {
 		for (let i = 0; i < size; i++) {
 			const statement = this.reader.listItem(body, i);
 
-			// The prologue ends at the first non-directive statement.
-			if (this.reader.field(statement, NODE_B) !== 1) {
+			/*
+			 * The prologue ends at the first non-directive statement. Only
+			 * an `ExpressionStatement` can be a directive, and only after
+			 * that is known is slot B the parser's prologue mark — on any
+			 * other kind the slot is an ordinary child that can happen to
+			 * hold a `1`.
+			 */
+			if (
+				this.reader.kind(statement) !== N_ExpressionStatement ||
+				this.reader.field(statement, NODE_B) !== 1
+			) {
 				return false;
 			}
 
-			const raw = this.reader.text(this.reader.field(statement, NODE_A));
-
-			if (raw === '"use strict"' || raw === "'use strict'") {
+			// The parser flags the one directive that matters here.
+			if ((this.reader.flags(statement) & NF_USE_STRICT) !== 0) {
 				return true;
 			}
 		}
@@ -961,29 +1287,33 @@ class Validator {
 		 * still sends every TypeScript kind through.
 		 *
 		 * Identifiers are nearly half of everything checked, and their whole
-		 * check is one flag test and, for a handful of first letters, a
-		 * keyword probe — so they are handled here instead of paying the
-		 * call and the fifty-arm dispatch. `check()` has no case for them.
+		 * check is one read of the flags — so they are handled here instead
+		 * of paying the call and the fifty-arm dispatch. `check()` has no
+		 * case for them.
 		 */
 		if (kind === N_Identifier) {
 			/*
-			 * The word check, with its prefilter unwrapped: every reserved
-			 * word this can find begins with one of six letters or the
-			 * backslash of an escape, so one table lookup on the first
-			 * character spares most identifiers the call entirely.
+			 * The parser recorded which keyword the name spells — see
+			 * `IDWORD_SHIFT` — so the only identifiers whose text still has
+			 * to be read are the escaped ones, which arrive flagged instead
+			 * of coded.
 			 */
-			if ((reader.flags(node) & NF_IDENTIFIER_NAME) === 0) {
-				const first = reader.source.charCodeAt(reader.start(node));
+			const flags = reader.flags(node);
 
-				if (
-					first < RESERVED_INITIALS.length &&
-					RESERVED_INITIALS[first] !== 0
-				) {
-					this.checkReservedWord(
-						this.keywordAt(node),
-						reader.start(node),
-					);
-				}
+			if (
+				(flags &
+					(NF_IDENTIFIER_NAME |
+						IDWORD_MASK |
+						NF_IDENTIFIER_ESCAPED)) !==
+					0 &&
+				(flags & NF_IDENTIFIER_NAME) === 0
+			) {
+				this.checkReservedWord(
+					(flags & IDWORD_MASK) !== 0
+						? IDWORD_KINDS[(flags & IDWORD_MASK) >>> IDWORD_SHIFT]
+						: this.keywordAt(node),
+					reader.start(node),
+				);
 			}
 		} else if (
 			CHECKED_KINDS[kind] !== 0 ||
@@ -1819,6 +2149,44 @@ class Validator {
 	//-------------------------------------------------------------------------
 
 	/**
+	 * Hashes the characters of a name the way `NameTable` keys names.
+	 *
+	 * The hash is of the name's `StringValue`, so a name written with an
+	 * escape is decoded first. That is the only case that allocates, and the
+	 * decoded string is left in `hashedName` for the table to keep.
+	 * @param start Where the name starts in the source.
+	 * @param end Where the name ends in the source.
+	 * @returns The hash of the name's decoded characters.
+	 */
+	private hashName(start: number, end: number): number {
+		const source = this.reader.source;
+		let hash = 0;
+
+		this.hashedName = null;
+
+		for (let i = start; i < end; i++) {
+			const code = source.charCodeAt(i);
+
+			if (code === CH_BACKSLASH) {
+				const name = decodeEscapes(source.slice(start, end), false);
+
+				this.hashedName = name;
+				hash = 0;
+
+				for (let j = 0; j < name.length; j++) {
+					hash = hashChar(hash, name.charCodeAt(j));
+				}
+
+				return hash;
+			}
+
+			hash = hashChar(hash, code);
+		}
+
+		return hash;
+	}
+
+	/**
 	 * The name an identifier spells, with any escape in it decoded.
 	 *
 	 * An `Identifier` runs to the end of whatever TypeScript hung off it — an
@@ -1839,6 +2207,18 @@ class Validator {
 	}
 
 	/**
+	 * Produces an empty name table, reusing an exited scope's if one is free.
+	 * @returns The table.
+	 */
+	private takeTable(): NameTable {
+		const pool = this.tablePool;
+
+		return pool.length !== 0
+			? pool.pop()!
+			: new NameTable(this.reader.source);
+	}
+
+	/**
 	 * Pushes a new scope.
 	 * @param isFunctionScope Whether `var` declarations stop here.
 	 * @returns Nothing.
@@ -1846,7 +2226,6 @@ class Validator {
 	private enterScope(isFunctionScope: boolean): void {
 		this.scope = {
 			names: null,
-			varNames: null,
 			isFunctionScope,
 			functionsAreLexical: !isFunctionScope,
 			parent: this.scope,
@@ -1858,6 +2237,12 @@ class Validator {
 	 * @returns Nothing.
 	 */
 	private exitScope(): void {
+		const names = this.scope.names;
+
+		if (names !== null) {
+			this.tablePool.push(names.reset());
+		}
+
 		this.scope = this.scope.parent!;
 	}
 
@@ -2720,10 +3105,7 @@ class Validator {
 							continue;
 						}
 
-						if (
-							scope.names?.has(name) === true ||
-							scope.varNames?.has(name) === true
-						) {
+						if (scope.names !== null && scope.names.hasName(name)) {
 							continue;
 						}
 
@@ -2977,8 +3359,12 @@ class Validator {
 		const kind = reader.kind(node);
 
 		switch (kind) {
-			case N_Identifier:
+			case N_Identifier: {
 				this.checkRestrictedName(node, "bound");
+
+				const flags = reader.flags(node);
+				const idword =
+					IDWORD_KINDS[(flags & IDWORD_MASK) >>> IDWORD_SHIFT];
 
 				/*
 				 * `let let` is banned outright, sloppy code included, because
@@ -2986,11 +3372,14 @@ class Validator {
 				 * name it binds is exactly the ambiguity `let` was given a
 				 * lookahead restriction to avoid. `var let` stays legal — a
 				 * `var` never had the problem — and so does `catch (let)`,
-				 * which binds without declaring.
+				 * which binds without declaring. Spelled with an escape it is
+				 * still `let`, which only the decoded text can say.
 				 */
 				if (
 					binding === BINDING_LEXICAL &&
-					this.identifierName(node) === "let"
+					(idword === T_let ||
+						((flags & NF_IDENTIFIER_ESCAPED) !== 0 &&
+							this.identifierName(node) === "let"))
 				) {
 					this.report(
 						"'let' may not be the name a lexical declaration binds.",
@@ -3004,14 +3393,10 @@ class Validator {
 				 * than an argument. Everywhere else it is a name no reference
 				 * could reach, since `this` in the body would still mean the
 				 * receiver. Written with an escape it never arrives at all —
-				 * the tokenizer refuses that outright — so the first letter
-				 * rules out every other name.
+				 * the tokenizer refuses that outright — so the word code
+				 * alone decides.
 				 */
-				if (
-					binding !== BINDING_PARAM &&
-					reader.source.charCodeAt(reader.start(node)) === CH_t &&
-					this.keywordAt(node) === T_this
-				) {
+				if (binding !== BINDING_PARAM && idword === T_this) {
 					this.report(
 						"'this' may not be bound as a name.",
 						reader.start(node),
@@ -3020,6 +3405,7 @@ class Validator {
 
 				this.declare(node, binding);
 				return;
+			}
 
 			case N_ArrayPattern: {
 				const elements = reader.field(node, NODE_A);
@@ -3135,8 +3521,11 @@ class Validator {
 		 * would let `let x: number` and `let x: string` pass for different
 		 * names, and `\u0061` for something other than `a`.
 		 */
-		const name = this.identifierName(identifier);
 		const start = reader.start(identifier);
+		const nameEnd = reader.field(identifier, NODE_A);
+		const end = nameEnd === 0 ? reader.end(identifier) : nameEnd;
+		const hash = this.hashName(start, end);
+		const name = this.hashedName;
 
 		/*
 		 * Nothing checks the word here. Every binding identifier is also
@@ -3146,21 +3535,22 @@ class Validator {
 		 */
 
 		if (binding === BINDING_VAR) {
-			this.declareVar(name, start);
+			this.declareVar(hash, start, end, name);
 			return;
 		}
 
 		const scope = this.scope;
-		const existing = scope.names?.get(name);
+		const info =
+			scope.names === null ? 0 : scope.names.find(hash, start, end, name);
+		const existing = (info & NAME_BINDING) - 1;
 
 		if (
-			existing !== undefined
+			existing !== -1
 				? this.conflicts(existing, binding)
-				: scope.varNames?.has(name) === true &&
-					!this.tolerantOfVar(binding)
+				: (info & NAME_VAR) !== 0 && !this.tolerantOfVar(binding)
 		) {
 			this.report(
-				`Identifier '${name}' has already been declared.`,
+				`Identifier '${name ?? reader.source.slice(start, end)}' has already been declared.`,
 				start,
 			);
 
@@ -3174,39 +3564,56 @@ class Validator {
 		 */
 		if (
 			binding === BINDING_SIGNATURE &&
-			existing !== undefined &&
+			existing !== -1 &&
 			isFunctionBinding(existing)
 		) {
 			return;
 		}
 
-		(scope.names ??= new Map()).set(name, binding);
+		(scope.names ??= this.takeTable()).bind(
+			hash,
+			start,
+			end,
+			name,
+			binding,
+		);
 	}
 
 	/**
 	 * Binds a name that climbs to the nearest function scope, recording it in
 	 * every scope it passes through so that a lexical declaration written
 	 * later in any of them is still caught.
-	 * @param name The name being bound.
-	 * @param start The offset of the identifier.
+	 * @param hash The hash of the name's decoded characters.
+	 * @param start Where the name starts in the source.
+	 * @param end Where the name ends in the source.
+	 * @param name The decoded name, when it was written with an escape.
 	 * @returns Nothing.
 	 */
-	private declareVar(name: string, start: number): void {
+	private declareVar(
+		hash: number,
+		start: number,
+		end: number,
+		name: string | null,
+	): void {
 		let scope = this.scope;
 
 		for (;;) {
-			const existing = scope.names?.get(name);
+			const info =
+				scope.names === null
+					? 0
+					: scope.names.find(hash, start, end, name);
+			const existing = (info & NAME_BINDING) - 1;
 
-			if (existing !== undefined && !this.tolerantOfVar(existing)) {
+			if (existing !== -1 && !this.tolerantOfVar(existing)) {
 				this.report(
-					`Identifier '${name}' has already been declared.`,
+					`Identifier '${name ?? this.reader.source.slice(start, end)}' has already been declared.`,
 					start,
 				);
 
 				return;
 			}
 
-			(scope.varNames ??= new Set()).add(name);
+			(scope.names ??= this.takeTable()).addVar(hash, start, end, name);
 
 			if (scope.isFunctionScope || scope.parent === null) {
 				return;
@@ -3398,18 +3805,19 @@ class Validator {
 	 * @returns Nothing.
 	 */
 	private checkWordAt(node: number): void {
-		const source = this.reader.source;
-		const start = this.reader.start(node);
-		const first = source.charCodeAt(start);
+		const flags = this.reader.flags(node);
 
-		if (
-			first >= RESERVED_INITIALS.length ||
-			RESERVED_INITIALS[first] === 0
-		) {
-			return;
+		if ((flags & IDWORD_MASK) !== 0) {
+			this.checkReservedWord(
+				IDWORD_KINDS[(flags & IDWORD_MASK) >>> IDWORD_SHIFT],
+				this.reader.start(node),
+			);
+		} else if ((flags & NF_IDENTIFIER_ESCAPED) !== 0) {
+			this.checkReservedWord(
+				this.keywordAt(node),
+				this.reader.start(node),
+			);
 		}
-
-		this.checkReservedWord(this.keywordAt(node), start);
 	}
 
 	/**
@@ -3482,15 +3890,22 @@ class Validator {
 			return;
 		}
 
-		const keyword = this.keywordAt(key);
+		const flags = reader.flags(key);
+		const code = (flags & IDWORD_MASK) >>> IDWORD_SHIFT;
+		const keyword =
+			code !== 0
+				? IDWORD_KINDS[code]
+				: (flags & NF_IDENTIFIER_ESCAPED) !== 0
+					? this.keywordAt(key)
+					: 0;
 
 		if (
-			keyword >= KEYWORD_FIRST &&
-			keyword <= KEYWORD_LAST &&
-			(KIND_KEYWORD_FLAGS[keyword] & KW_RESERVED) !== 0
+			code === IDWORD_RESERVED ||
+			(keyword >= KEYWORD_FIRST &&
+				(KIND_KEYWORD_FLAGS[keyword] & KW_RESERVED) !== 0)
 		) {
 			this.report(
-				`Unexpected reserved word '${KEYWORD_NAMES[keyword - KEYWORD_FIRST]}'.`,
+				`Unexpected reserved word '${this.identifierName(key)}'.`,
 				reader.start(key),
 			);
 
