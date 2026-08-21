@@ -18,13 +18,13 @@
   "sideEffects": false,
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nzakas/js2.git",
+    "url": "git+https://github.com/eslint/jsnext.git",
     "directory": "packages/jskit"
   },
   "bugs": {
-    "url": "https://github.com/nzakas/js2/issues"
+    "url": "https://github.com/eslint/jsnext/issues"
   },
-  "homepage": "https://github.com/nzakas/js2/tree/main/packages/jskit#readme",
+  "homepage": "https://github.com/eslint/jsnext/tree/main/packages/jskit#readme",
   "publishConfig": {
     "access": "public",
     "provenance": true
