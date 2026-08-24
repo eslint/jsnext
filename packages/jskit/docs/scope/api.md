@@ -189,6 +189,15 @@ Both entry points take the same options. Every one has a default.
 | `globals`         | `null`     | Names to declare in the global scope.                                                         |
 | `jsxPragma`       | `null`     | Name a JSX element compiles a call to, referenced once per file.                              |
 | `jsxFragmentName` | `null`     | Name a JSX fragment compiles a call to.                                                       |
+| `text`            | none       | The program text, for a parse buffer that cannot otherwise reach it. `analyze()` only.        |
+
+`text` is the fallback for a buffer parsed without `{ source: true }` and then
+read outside the process that parsed it; the buffer consumers — `Scopes`,
+`toScopeManager()`, `toScopeTree()` — take the same option for the same
+reason. It never overrides text the buffer can already reach, a text of the
+wrong length throws, and `analyzeTree()` has no use for it: tree nodes carry
+their own strings. See
+[`embedded-source.md`](../parse/embedded-source.md#the-text-option-the-fallback-for-a-buffer-already-shipped).
 
 ### Supplying globals
 

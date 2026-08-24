@@ -161,6 +161,7 @@ and non-fatal problems can be reported through the same code path.
 | `dialect`     | `"js"`, `"ts"`                       | `"ts"`              |
 | `jsx`         | `true`, `false`                      | `false`             |
 | `declaration` | `true`, `false`                      | `false`             |
+| `text`        | the program text                     | none                |
 
 `sourceType` normally need not be passed, since the buffer records what
 `parse()` was told. Its use is to narrow `"script"` to `"commonjs"` — the two
@@ -174,6 +175,12 @@ declaration there while the same line in a `.ts` is a `const` missing its
 initializer. Nothing in the text says which kind of file it is — TypeScript
 goes by the name — so it has to be told, the same way `dialect` and `jsx` do.
 Anything written under a `declare` is ambient without this being set.
+
+`text` supplies the program for a buffer that cannot otherwise reach it — one
+parsed without `{ source: true }` and then read outside the process that
+parsed it. It is a fallback, never an override, and a text of the wrong
+length throws. See
+[`embedded-source.md`](./embedded-source.md#the-text-option-the-fallback-for-a-buffer-already-shipped).
 
 It currently reports:
 
@@ -207,6 +214,7 @@ is allowed in it:
 | ------------ | ------------------------------------ | ------------------- |
 | `sourceType` | `"script"`, `"module"`, `"commonjs"` | what `parse()` used |
 | `dialect`    | `"js"`, `"ts"`                       | `"ts"`              |
+| `text`       | the program text                     | none                |
 
 `sourceType` follows the same rule as `validate()`'s: the buffer records what
 `parse()` was told, so it is only for narrowing `"script"` to `"commonjs"`,
@@ -215,6 +223,8 @@ which reference parser's shape comes out — under `"js"` the TypeScript-only
 properties are omitted entirely, matching `espree`; under `"ts"` they are
 present and `null` when absent, matching `@typescript-eslint/parser`. `jsx`
 and `declaration` are not options here, because neither changes the tree.
+`text` is the same fallback `validate()` takes, for a buffer that cannot
+otherwise reach its program text.
 
 ## Using it with ESLint
 

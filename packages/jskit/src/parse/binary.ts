@@ -305,6 +305,42 @@ export function cacheSource(buffer: ArrayBufferLike, source: string): void {
 }
 
 /**
+ * Accepts caller-supplied source text for a buffer that cannot otherwise
+ * reach it.
+ *
+ * This is what every consumer's `text` option calls. It is a fallback, not an
+ * override: text the buffer can already reach — cached in this process, or
+ * embedded by `{ source: true }` — always wins, so the same call works
+ * identically in the parsing process and after a transfer. The length check
+ * runs either way, because a `(buffer, text)` pair that has drifted apart
+ * produces plausible wrong names rather than an error anywhere downstream,
+ * and this is the one moment the mismatch is still detectable. The header
+ * records the source length even when it omits the characters, which is what
+ * makes the check possible.
+ * @param buffer The parse buffer the text belongs to.
+ * @param text The exact program text the buffer was parsed from.
+ * @returns Nothing.
+ * @throws {TypeError} When the buffer is not a parse buffer, or the text is
+ *      not the length the buffer was parsed from.
+ */
+export function supplySource(buffer: ArrayBufferLike, text: string): void {
+	const words = parseHeader(buffer);
+
+	if (text.length !== words[PARSE_HEADER_SOURCE_LENGTH]) {
+		throw new TypeError(
+			`The supplied text is ${text.length} code units long, but this buffer was parsed from ${words[PARSE_HEADER_SOURCE_LENGTH]}. \`text\` must be the exact source the buffer was parsed from.`,
+		);
+	}
+
+	if (
+		(buffer as SourceCarrier)[SOURCE_KEY] === undefined &&
+		(words[PARSE_HEADER_FLAGS] & PARSE_FLAG_SOURCE_EMBEDDED) === 0
+	) {
+		cacheSource(buffer, text);
+	}
+}
+
+/**
  * Retrieves the source text stored inside a parse buffer.
  * @param buffer The parse buffer to read from.
  * @param byteOffset The byte offset of the encoded text.
@@ -336,7 +372,7 @@ export function readSource(
 		0
 	) {
 		throw new TypeError(
-			"This parse buffer carries no source text, and none is cached for it in this process. Re-parse with `{ source: true }` before transferring or persisting a buffer whose text will be read elsewhere.",
+			"This parse buffer carries no source text, and none is cached for it in this process. Re-parse with `{ source: true }` before transferring or persisting a buffer whose text will be read elsewhere, or hand the original text to the consumer through its `text` option.",
 		);
 	}
 

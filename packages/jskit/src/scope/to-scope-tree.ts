@@ -140,20 +140,37 @@ export interface ScopeTree {
 }
 
 /**
+ * Options for `toScopeTree()`.
+ */
+export interface ToScopeTreeOptions {
+	/**
+	 * The program text the parse buffer was parsed from, for a buffer that
+	 * cannot otherwise reach it — one parsed without `{ source: true }` and
+	 * then read outside the process that parsed it. A fallback, never an
+	 * override, and unread when `source` is a `Program` node: tree nodes
+	 * carry their own strings.
+	 */
+	text?: string;
+}
+
+/**
  * Renders a scope buffer as a plain, self-contained scope tree.
  * @param scopes The buffer `analyze()` or `analyzeTree()` returned.
  * @param source The parse result the buffer was produced from, or the
  *      `Program` node when the buffer came from `analyzeTree()`.
+ * @param options How the program should be read.
  * @returns The tree, ready for `JSON.stringify`.
  * @throws {TypeError} When the buffer is not a scope buffer, or the source
- *      does not match the path it was written on.
+ *      does not match the path it was written on, or the text does not match
+ *      the source.
  */
 export function toScopeTree(
 	scopes: ArrayBuffer,
 	source: ScopeSource,
+	options: ToScopeTreeOptions = {},
 ): ScopeTree {
 	const buffer = new ScopeBufferReader(scopes);
-	const nodes = resolveNodeSource(source, buffer.treeHandles);
+	const nodes = resolveNodeSource(source, buffer.treeHandles, options.text);
 	const ast = nodes.ast;
 
 	/**
@@ -298,10 +315,8 @@ export function toScopeTree(
 		};
 	}
 
-	const options = readSourceType(buffer);
-
 	return {
-		sourceType: options,
+		sourceType: readSourceType(buffer),
 		root: buffer.scopeCount === 0 ? null : renderScope(0),
 	};
 }

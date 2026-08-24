@@ -9,6 +9,7 @@ import {
 	buildParseBuffer,
 	readLineStarts,
 	readSourceType,
+	supplySource,
 } from "./binary.js";
 import { decodeEntities } from "./entities.js";
 import { LineIndex, type SourceLocation } from "./locations.js";
@@ -81,6 +82,16 @@ export interface ValidateOptions {
 	 * same way `dialect` and `jsx` are.
 	 */
 	declaration?: boolean;
+
+	/**
+	 * The program text the buffer was parsed from, for a buffer that cannot
+	 * otherwise reach it — one parsed without `{ source: true }` and then
+	 * read outside the process that parsed it. A fallback, never an override:
+	 * text the buffer already carries or has cached wins, and a supplied text
+	 * whose length disagrees with the buffer throws rather than letting the
+	 * names drift. See [`docs/embedded-source.md`](../docs/embedded-source.md).
+	 */
+	text?: string;
 }
 
 /**
@@ -146,6 +157,16 @@ export interface ToAstOptions {
 	 * matching `@typescript-eslint/parser`.
 	 */
 	dialect?: "js" | "ts";
+
+	/**
+	 * The program text the buffer was parsed from, for a buffer that cannot
+	 * otherwise reach it — one parsed without `{ source: true }` and then
+	 * read outside the process that parsed it. A fallback, never an override:
+	 * text the buffer already carries or has cached wins, and a supplied text
+	 * whose length disagrees with the buffer throws rather than letting the
+	 * names drift. See [`docs/embedded-source.md`](../docs/embedded-source.md).
+	 */
+	text?: string;
 }
 
 /**
@@ -326,6 +347,10 @@ export function validate(
 	result: ParseResult,
 	options: ValidateOptions = {},
 ): ValidationError[] {
+	if (options.text !== undefined) {
+		supplySource(result, options.text);
+	}
+
 	const problems = validateAst(
 		new AstReader(result),
 		resolveSourceType(result, options.sourceType),
@@ -374,6 +399,10 @@ export function buildAst(
 	options: ToAstOptions,
 	lines: LineIndex | null,
 ): Program {
+	if (options.text !== undefined) {
+		supplySource(result, options.text);
+	}
+
 	const reader = new AstReader(result);
 	const tokenReader = new TokenReader(result);
 	const sourceType = resolveSourceType(result, options.sourceType);

@@ -44,8 +44,15 @@ refused, with a `TypeError` that says so.
 
 ## API
 
-- **`createGraph(ast, scope)`** — builds the graph; returns an `ArrayBuffer` in
-  the binary flow format.
+- **`createGraph(ast, scope, options?)`** — builds the graph; returns an
+  `ArrayBuffer` in the binary flow format. Its one option is `text`, the
+  program the parse buffer cannot otherwise reach — the fallback for a buffer
+  parsed without `{ source: true }` and then read outside the process that
+  parsed it. The walk reads text only to match a `break` or `continue`
+  against its label, so a program without labels analyzes either way;
+  supplying the text makes the result independent of what the program
+  happens to contain. See
+  [`embedded-source.md`](../parse/embedded-source.md#the-text-option-the-fallback-for-a-buffer-already-shipped).
 - **`toGraphTree(flow, ast, scope)`** — renders that buffer as a plain object
   tree with no references to anything outside itself. Each block carries the
   `nodes` it holds along with the writes it performs, so a block that runs

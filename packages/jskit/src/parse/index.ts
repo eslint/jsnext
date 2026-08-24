@@ -14,7 +14,7 @@ export { AstReader, TokenReader } from "./reader.js";
  * property of the result. `AstReader#parent()` is the point-query form of the
  * second one.
  */
-export { readLineStarts, readParents } from "./binary.js";
+export { readLineStarts, readParents, supplySource } from "./binary.js";
 
 /*
  * The shape of everything `toAST()` produces, node by node. Type-only, so a

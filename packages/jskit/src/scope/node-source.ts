@@ -12,7 +12,7 @@
  * That is the cost of one function accepting either representation.
  */
 
-import { AstReader, type ParseResult } from "../parse/index.js";
+import { AstReader, supplySource, type ParseResult } from "../parse/index.js";
 import type { AstAccess } from "./ast-access.js";
 import { BinaryAst } from "./binary-ast.js";
 import { EstreeAst, type EsTreeNode } from "./estree-ast.js";
@@ -83,20 +83,32 @@ function treeNodeSource(root: EsTreeNode): NodeSource<EsTreeNode> {
 /**
  * Resolves whatever the caller supplied as the program into a node source,
  * checking that it matches the path the buffer was written on.
+ *
+ * The text is supplied before the parse buffer is first read, because the
+ * binary adapter resolves the source eagerly. On the tree path it goes
+ * unread: the nodes carry their own strings.
  * @param source The parse result, reader, or `Program` node.
  * @param treeHandles Whether the buffer stores tree handles.
+ * @param text The program text, for a parse buffer that cannot otherwise
+ *      reach it.
  * @returns The node source.
- * @throws {TypeError} When the source does not match the buffer.
+ * @throws {TypeError} When the source does not match the buffer, or the text
+ *      does not match the source.
  */
 export function resolveNodeSource(
 	source: ScopeSource,
 	treeHandles: boolean,
+	text?: string,
 ): NodeSource<unknown> {
 	if (source instanceof AstReader) {
 		if (treeHandles) {
 			throw new TypeError(
 				"This scope buffer came from analyzeTree(); pass the Program node it analyzed.",
 			);
+		}
+
+		if (text !== undefined) {
+			supplySource(source.words.buffer, text);
 		}
 
 		return binaryNodeSource(source);
@@ -107,6 +119,10 @@ export function resolveNodeSource(
 			throw new TypeError(
 				"This scope buffer came from analyzeTree(); pass the Program node it analyzed.",
 			);
+		}
+
+		if (text !== undefined) {
+			supplySource(source, text);
 		}
 
 		return binaryNodeSource(new AstReader(source));

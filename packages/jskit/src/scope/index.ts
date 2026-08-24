@@ -26,7 +26,7 @@
  * not split.
  */
 
-import { AstReader, type ParseResult } from "../parse/index.js";
+import { AstReader, supplySource, type ParseResult } from "../parse/index.js";
 import { BinaryAst } from "./binary-ast.js";
 import { EstreeAst, type EsTreeNode } from "./estree-ast.js";
 import { resolveOptions, type AnalyzeOptions } from "./options.js";
@@ -45,7 +45,7 @@ export { Variable } from "./variable.js";
 export { PatternVisitor } from "./pattern-visitor.js";
 export { Referencer } from "./referencer.js";
 export { Scopes } from "./scopes.js";
-export type { NodeRef } from "./scopes.js";
+export type { NodeRef, ScopesOptions } from "./scopes.js";
 export { toScopeManager } from "./to-scope-manager.js";
 export type { ToScopeManagerOptions } from "./to-scope-manager.js";
 export { toScopeTree } from "./to-scope-tree.js";
@@ -74,6 +74,7 @@ export type {
 	ScopeTreeReference,
 	ScopeTreeScope,
 	ScopeTreeVariable,
+	ToScopeTreeOptions,
 } from "./to-scope-tree.js";
 
 /**
@@ -115,6 +116,10 @@ export function analyze(
 	result: ParseResult,
 	options: AnalyzeOptions = {},
 ): ArrayBuffer {
+	if (options.text !== undefined) {
+		supplySource(result, options.text);
+	}
+
 	const reader = new AstReader(result);
 	const builder = new ScopeBuilder(
 		new BinaryAst(reader),

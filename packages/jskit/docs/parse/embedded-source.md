@@ -12,7 +12,10 @@ parse(code, { source: true }); // text embedded, buffer ~17% larger
 
 **Reading text works either way in the process that parsed.** Turn
 `source` on when the buffer will be read somewhere else: a worker, a
-file, a cache, another process.
+file, a cache, another process. A consumer that receives a text-less buffer
+and has the original program in hand can supply it instead, through the
+`text` option every source-reading entry point takes — see
+[the fallback](#the-text-option-the-fallback-for-a-buffer-already-shipped).
 
 ## Why the buffer needs text at all
 
@@ -118,6 +121,31 @@ every axis that matters once the pair has to go anywhere.
 So embedding is the right way to make a buffer portable. The flag exists
 because most buffers never need to be.
 
+### The `text` option: the fallback for a buffer already shipped
+
+One of those axes can be defended after the fact, and that is what the `text`
+option on every source-reading entry point — `validate()`, `toAST()`,
+`analyze()`, `Scopes`, `toScopeManager()`, `toScopeTree()`, `createGraph()` —
+exists for: the buffer has already crossed without its text, the receiver has
+the program anyway, and re-parsing to set a flag is the only alternative.
+
+```js
+// In the worker, with the buffer and the program both to hand:
+const scopes = analyze(transferred, { text: code });
+```
+
+Every option funnels into `supplySource()`, which makes the pairing as safe
+as a loose string can be made. It is a fallback, never an override — text the
+buffer already carries or has cached wins, so the same call works identically
+before and after a transfer — and it refuses a text whose length disagrees
+with the one the header records, which the header does even when the
+characters themselves were left out. That check is why the pair is merely
+_discouraged_ now rather than unrepresentable: a file's worth of drift is
+caught at the door, and only a same-length different program — a hazard the
+paragraph above still describes correctly — can slip past it. Embedding
+remains the design that cannot be misused; the option is the escape hatch for
+the buffer that already exists.
+
 ## What it costs
 
 Measured on a generated 200 KiB JavaScript module (40,263 nodes, 2,362 KiB
@@ -150,7 +178,8 @@ lookup and before decoding anything:
 ```
 TypeError: This parse buffer carries no source text, and none is cached for it
 in this process. Re-parse with `{ source: true }` before transferring or
-persisting a buffer whose text will be read elsewhere.
+persisting a buffer whose text will be read elsewhere, or hand the original
+text to the consumer through its `text` option.
 ```
 
 The check sits after the cache lookup on purpose. In the parsing process the
@@ -190,5 +219,6 @@ report every node as unreachable. See
 
 - [`architecture.md`](./architecture.md) — the binary format field by field.
 - `PARSE_FLAG_SOURCE_EMBEDDED`, `buildParseBuffer()`, `readSource()`,
-  `cacheSource()` in [`../../src/parse/binary.ts`](../../src/parse/binary.ts).
+  `cacheSource()`, `supplySource()` in
+  [`../../src/parse/binary.ts`](../../src/parse/binary.ts).
 - `AstReader#source` in [`../../src/parse/reader.ts`](../../src/parse/reader.ts).

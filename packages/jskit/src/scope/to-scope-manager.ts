@@ -121,6 +121,15 @@ export interface ToScopeManagerOptions<TNode> {
 	 * all ESLint's own machinery ever needs.
 	 */
 	scopes?: Scopes<TNode>;
+
+	/**
+	 * The program text the parse buffer was parsed from, for a buffer that
+	 * cannot otherwise reach it — one parsed without `{ source: true }` and
+	 * then read outside the process that parsed it. A fallback, never an
+	 * override, and unread when `source` is a `Program` node: tree nodes
+	 * carry their own strings.
+	 */
+	text?: string;
 }
 
 /**
@@ -429,7 +438,7 @@ export function toScopeManager<TSource extends ScopeSource>(
 
 	return rehydrate(
 		buffer,
-		resolveNodeSource(source, buffer.treeHandles),
+		resolveNodeSource(source, buffer.treeHandles, options.text),
 		options.scopes,
 	) as ScopeManager<RehydratedNode<TSource>>;
 }

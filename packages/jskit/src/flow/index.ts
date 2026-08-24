@@ -18,7 +18,7 @@
  *   files.
  */
 
-import { AstReader } from "../parse/index.js";
+import { AstReader, supplySource } from "../parse/index.js";
 import { ScopeBufferReader } from "../scope/index.js";
 import { FlowBuilder } from "./flow-builder.js";
 import { FlowWalker } from "./flow-walker.js";
@@ -37,6 +37,21 @@ export { nodeAtHandle, nodeHandle } from "./handles.js";
 export * from "./flow-buffer.js";
 
 /**
+ * Options for `createGraph()`.
+ */
+export interface CreateGraphOptions {
+	/**
+	 * The program text the parse buffer was parsed from, for a buffer that
+	 * cannot otherwise reach it — one parsed without `{ source: true }` and
+	 * then read outside the process that parsed it. A fallback, never an
+	 * override. The walk reads text only to match labels, so a program
+	 * without them analyzes either way; supplying the text makes the result
+	 * independent of what the program happens to contain.
+	 */
+	text?: string;
+}
+
+/**
  * Builds the control flow graph of a parsed program.
  *
  * The analysis runs on the binary buffers directly, so nothing is decoded
@@ -50,14 +65,21 @@ export * from "./flow-buffer.js";
  * `analyzeTree()` names nodes another way and is refused.
  * @param parsed The parse buffer returned by `parse()`.
  * @param scope The scope buffer returned by `analyze()`.
+ * @param options How the program should be read.
  * @returns The flow buffer.
  * @throws {TypeError} When either buffer is not what its parameter claims,
- *      or the scope buffer was produced by `analyzeTree()`.
+ *      or the scope buffer was produced by `analyzeTree()`, or the text does
+ *      not match the parse buffer.
  */
 export function createGraph(
 	parsed: ArrayBufferLike,
 	scope: ArrayBufferLike,
+	options: CreateGraphOptions = {},
 ): ArrayBuffer {
+	if (options.text !== undefined) {
+		supplySource(parsed, options.text);
+	}
+
 	const reader = new AstReader(parsed);
 	const scopeReader = new ScopeBufferReader(scope);
 

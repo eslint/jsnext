@@ -40,6 +40,7 @@ import {
 	readLineStarts,
 	readParents,
 	readSource,
+	supplySource,
 	writeSource,
 } from "./binary.js";
 import {
@@ -441,6 +442,69 @@ describe("buildParseBuffer()", () => {
 				),
 			).toThrow(/carries no source text/u);
 		});
+	});
+});
+
+describe("supplySource()", () => {
+	/**
+	 * Reads the text back out of a buffer the way every consumer does.
+	 * @param buffer The parse buffer to read.
+	 * @returns The source text.
+	 */
+	function textOf(buffer: ArrayBuffer): string {
+		const view = new Uint32Array(buffer);
+
+		return readSource(
+			buffer,
+			view[PARSE_HEADER_SOURCE_OFFSET],
+			view[PARSE_HEADER_SOURCE_LENGTH],
+		);
+	}
+
+	it("makes a foreign, text-less buffer readable", () => {
+		const source = "const a = 1;";
+		// A copy misses the cache, like a transferred or persisted buffer.
+		const foreign = build({ source, embedSource: false }).slice(0);
+
+		supplySource(foreign, source);
+
+		expect(textOf(foreign)).toBe(source);
+	});
+
+	it("refuses text of a different length than the buffer records", () => {
+		const foreign = build({
+			source: "const a = 1;",
+			embedSource: false,
+		}).slice(0);
+
+		expect(() => supplySource(foreign, "const a = 1")).toThrow(
+			/exact source/u,
+		);
+	});
+
+	it("refuses a buffer that is not a parse buffer", () => {
+		expect(() => supplySource(new ArrayBuffer(64), "a;")).toThrow(
+			/Not a jskit parse buffer/u,
+		);
+	});
+
+	it("never overrides text the buffer embeds", () => {
+		const source = "const a = 1;";
+		const foreign = build({ source, embedSource: true }).slice(0);
+
+		// Same length, different program: the buffer's own text must win.
+		supplySource(foreign, "const b = 2;");
+
+		expect(textOf(foreign)).toBe(source);
+	});
+
+	it("never overrides text cached in the parsing process", () => {
+		const source = "const a = 1;";
+		const buffer = build({ source, embedSource: false });
+
+		supplySource(buffer, "const b = 2;");
+
+		expect(textOf(buffer)).toBe(source);
 	});
 });
 

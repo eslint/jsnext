@@ -85,6 +85,20 @@ export interface NodeRef {
 }
 
 /**
+ * Options for `Scopes`.
+ */
+export interface ScopesOptions {
+	/**
+	 * The program text the parse buffer was parsed from, for a buffer that
+	 * cannot otherwise reach it — one parsed without `{ source: true }` and
+	 * then read outside the process that parsed it. A fallback, never an
+	 * override, and unread when `source` is a `Program` node: tree nodes
+	 * carry their own strings.
+	 */
+	text?: string;
+}
+
+/**
  * Looks scope data up straight out of a scope buffer.
  *
  * @template TNode How one node is represented: an index into the binary AST
@@ -122,12 +136,18 @@ export class Scopes<TNode = number> {
 	 * @param scopes The buffer `analyze()` or `analyzeTree()` returned.
 	 * @param source The parse result the buffer was produced from, or the
 	 *      `Program` node when it came from `analyzeTree()`.
+	 * @param options How the program should be read.
 	 */
-	constructor(scopes: ArrayBuffer, source: ScopeSource) {
+	constructor(
+		scopes: ArrayBuffer,
+		source: ScopeSource,
+		options: ScopesOptions = {},
+	) {
 		this.buffer = new ScopeBufferReader(scopes);
 		this.nodes = resolveNodeSource(
 			source,
 			this.buffer.treeHandles,
+			options.text,
 		) as NodeSource<TNode>;
 	}
 

@@ -54,6 +54,19 @@ export interface AnalyzeOptions {
 
 	/** The name a JSX fragment compiles a call to, referenced when set. */
 	jsxFragmentName?: string | null;
+
+	/**
+	 * The program text the parse buffer was parsed from, for a buffer that
+	 * cannot otherwise reach it — one parsed without `{ source: true }` and
+	 * then read outside the process that parsed it. A fallback, never an
+	 * override: text the buffer already carries or has cached wins, and a
+	 * supplied text whose length disagrees with the buffer throws rather than
+	 * letting the names drift.
+	 *
+	 * Read by `analyze()` alone. `analyzeTree()`'s nodes carry their own
+	 * strings, so it has no text to recover.
+	 */
+	text?: string;
 }
 
 /**
