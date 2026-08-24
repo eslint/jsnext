@@ -443,7 +443,7 @@ describe("Scopes queries by node position", () => {
 		const scopes = new Scopes(buffer, parsed);
 
 		// The decoded tree is what an ESLint rule would be holding.
-		const { ast } = toAST(parse(code, { tokens: true }));
+		const ast = toAST(parse(code, { tokens: true }));
 		const statement = ast.body[0] as unknown as Record<string, never>;
 		const globalUse = (statement.expression as Record<string, never>)
 			.callee as { object: { type: string; start: number; end: number } };

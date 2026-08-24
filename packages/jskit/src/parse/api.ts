@@ -119,14 +119,33 @@ export interface Token {
 }
 
 /**
- * The result of converting a parse result into an ESTree AST.
+ * How a parse result should be decoded into an ESTree AST.
+ *
+ * These are the two interpretation options that change the *tree*. Whether
+ * the program is allowed — the `jsx` and `declaration` questions — never
+ * does, which is why those stay with `validate()` and are not options here:
+ * decoding and validating are separate passes over the same buffer, and
+ * neither runs the other.
  */
-export interface ToAstResult {
-	/** The ESTree `Program` node. */
-	ast: Program;
+export interface ToAstOptions {
+	/**
+	 * Whether the program is a script, an ES module, or a CommonJS module,
+	 * which the `Program` reports as its `sourceType`.
+	 *
+	 * Defaults to whatever `parse()` was told, which the buffer records, so
+	 * this normally need not be given at all. Its use is to narrow `"script"`
+	 * to `"commonjs"`; the two parse identically. Naming the opposite side of
+	 * the module line throws, because the tree was built the other way.
+	 */
+	sourceType?: "script" | "module" | "commonjs";
 
-	/** The problems found while validating. */
-	errors: ValidationError[];
+	/**
+	 * Which reference parser's shape to produce. Under `"js"` the
+	 * TypeScript-only properties are omitted entirely, matching `espree`;
+	 * under `"ts"` — the default — they are present and `null` when absent,
+	 * matching `@typescript-eslint/parser`.
+	 */
+	dialect?: "js" | "ts";
 }
 
 /**
@@ -344,38 +363,25 @@ function locateProblems(
 }
 
 /**
- * The result of building an AST, including the offsets that the public
- * result drops.
- */
-export interface AstBuildResult extends ToAstResult {
-	/** The same problems as `errors`, still carrying their source offsets. */
-	problems: ValidationProblem[];
-}
-
-/**
- * Validates a parse result and converts it into an ESTree AST.
+ * Converts a parse result into an ESTree AST.
  * @param result The value returned by `parse()`.
- * @param options How the program should be interpreted.
+ * @param options How the tree should be decoded.
  * @param lines Where to look up positions, or `null` for no `range`/`loc`.
- * @returns The ESTree AST and any problems found while validating.
+ * @returns The ESTree `Program` node.
  */
 export function buildAst(
 	result: ParseResult,
-	options: ValidateOptions,
+	options: ToAstOptions,
 	lines: LineIndex | null,
-): AstBuildResult {
+): Program {
 	const reader = new AstReader(result);
 	const tokenReader = new TokenReader(result);
 	const sourceType = resolveSourceType(result, options.sourceType);
-	const dialect = options.dialect ?? "ts";
-	const problems = validateAst(
+	const decoder = new AstDecoder(
 		reader,
-		sourceType,
-		dialect,
-		options.jsx ?? false,
-		options.declaration ?? false,
+		(options.dialect ?? "ts") === "ts",
+		lines,
 	);
-	const decoder = new AstDecoder(reader, dialect === "ts", lines);
 	const program = decoder.node(reader.root)!;
 	const { tokens, comments } = decodeTokens(
 		tokenReader,
@@ -393,29 +399,25 @@ export function buildAst(
 	 * is asserted once here. `conformance-types.mjs` is what actually holds
 	 * the two together.
 	 */
-	return {
-		ast: program as unknown as Program,
-		errors: locateProblems(
-			problems,
-			lines ?? new LineIndex(readLineStarts(result)),
-		),
-		problems,
-	};
+	return program as unknown as Program;
 }
 
 /**
- * Validates a parse result and converts it into an ESTree AST.
+ * Converts a parse result into an ESTree AST.
+ *
+ * Decoding is all this does. Nothing here asks whether the program is
+ * *allowed* — that is `validate()`'s job, and the two are separate passes
+ * over the same buffer: run both when the problems matter, either one alone
+ * when they do not.
  * @param result The value returned by `parse()`.
- * @param options How the program should be interpreted.
- * @returns The ESTree AST and any problems found while validating.
+ * @param options How the tree should be decoded.
+ * @returns The ESTree `Program` node.
  */
 export function toAST(
 	result: ParseResult,
-	options: ValidateOptions = {},
-): ToAstResult {
-	const { ast, errors } = buildAst(result, options, null);
-
-	return { ast, errors };
+	options: ToAstOptions = {},
+): Program {
+	return buildAst(result, options, null);
 }
 
 /**

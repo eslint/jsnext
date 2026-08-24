@@ -124,7 +124,7 @@ for (const file of files) {
 		actual = toAST(parse(code, { sourceType: "module", tokens: true }), {
 			sourceType: "module",
 			dialect: "js",
-		}).ast;
+		});
 	} catch {
 		bad++;
 		continue;

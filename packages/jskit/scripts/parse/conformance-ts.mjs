@@ -190,7 +190,7 @@ for (const file of files) {
 		actual = toAST(parse(code, { sourceType: "module", tokens: true }), {
 			sourceType: "module",
 			dialect: "ts",
-		}).ast;
+		});
 	} catch (error) {
 		threw++;
 

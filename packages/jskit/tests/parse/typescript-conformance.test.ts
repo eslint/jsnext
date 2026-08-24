@@ -26,7 +26,7 @@ describe("typescript-eslint conformance", () => {
 			const actual = toAST(parse(code, { tokens: true }), {
 				sourceType: "module",
 				dialect: "ts",
-			}).ast;
+			});
 
 			expect(normalize(asReferenceProgramExtent(actual, code))).toEqual(
 				normalize(expected),
@@ -59,8 +59,7 @@ describe("typescript-eslint conformance for JSX", () => {
 			const actual = toAST(parse(code, { tokens: true }), {
 				sourceType: "module",
 				dialect: "ts",
-				jsx: true,
-			}).ast;
+			});
 
 			expect(normalize(asReferenceProgramExtent(actual, code))).toEqual(
 				normalize(expected),
@@ -71,7 +70,7 @@ describe("typescript-eslint conformance for JSX", () => {
 
 describe("javascript mode output", () => {
 	it("omits TypeScript-only properties", () => {
-		const { ast } = toAST(parse("import a from 'b';", { tokens: true }), {
+		const ast = toAST(parse("import a from 'b';", { tokens: true }), {
 			dialect: "js",
 		});
 		const declaration = (ast.body as Record<string, unknown>[])[0];
@@ -80,7 +79,7 @@ describe("javascript mode output", () => {
 	});
 
 	it("includes TypeScript-only properties in TypeScript mode", () => {
-		const { ast } = toAST(parse("import a from 'b';", { tokens: true }), {
+		const ast = toAST(parse("import a from 'b';", { tokens: true }), {
 			dialect: "ts",
 		});
 		const declaration = (ast.body as Record<string, unknown>[])[0];

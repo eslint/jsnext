@@ -49,7 +49,7 @@ export {
 export type {
 	ParseOptions,
 	ParseResult,
-	ToAstResult,
+	ToAstOptions,
 	Token,
 	ValidateOptions,
 	ValidationError,

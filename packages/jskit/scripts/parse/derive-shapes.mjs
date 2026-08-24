@@ -74,7 +74,7 @@ function treeOf(code) {
 	return toAST(parse(code, { sourceType: "module", tokens: true }), {
 		sourceType: "module",
 		dialect: "ts",
-	}).ast;
+	});
 }
 
 const toAstSource = read("to-ast.ts");

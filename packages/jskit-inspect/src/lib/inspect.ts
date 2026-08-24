@@ -11,15 +11,17 @@ import {
 	toAST,
 	toGraphTree,
 	toScopeTree,
+	validate,
 	type FlowTree,
 	type ParseResult,
 	type ValidationError,
 } from "@eslint/jskit";
 
 /**
- * How the program should be interpreted, shared by `toAST()` and
- * `analyze()`. Parsing itself takes none of these: phase 1 accepts the
- * union of everything JavaScript and TypeScript allow.
+ * How the program should be interpreted, shared by `validate()` and
+ * `analyze()`; `toAST()` takes the two of these that shape the tree. Parsing
+ * itself takes none of them: phase 1 accepts the union of everything
+ * JavaScript and TypeScript allow.
  */
 export interface InspectionOptions {
 	sourceType: "script" | "module" | "commonjs";
@@ -47,7 +49,7 @@ export interface Inspection {
 	/** The fatal syntax error, when the program could not be parsed at all. */
 	parseError: string | null;
 
-	/** The non-fatal problems `validate()` found via `toAST()`. */
+	/** The non-fatal problems `validate()` found. */
 	validationErrors: ValidationError[];
 
 	ast: PaneResult;
@@ -101,11 +103,21 @@ export function inspect(code: string, options: InspectionOptions): Inspection {
 	let astPane: PaneResult;
 	let validationErrors: ValidationError[] = [];
 
+	/*
+	 * Validation and decoding are separate passes over the same buffer, so
+	 * they are run separately here. They share one guard because they share
+	 * their options: anything that makes one throw fails the other the same
+	 * way.
+	 */
 	try {
-		const { ast, errors } = toAST(result, options);
-
-		validationErrors = errors;
-		astPane = { data: ast, error: null };
+		validationErrors = validate(result, options);
+		astPane = {
+			data: toAST(result, {
+				sourceType: options.sourceType,
+				dialect: options.dialect,
+			}),
+			error: null,
+		};
 	} catch (error) {
 		astPane = failed(messageOf(error));
 	}

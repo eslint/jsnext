@@ -17,7 +17,7 @@ This parser is designed to only support the latest JavaScript/TypeScript syntax 
 - A `validate()` function that accepts the return value of `parse()` and an options object. It should return an array of errors (that include message and start offset for each error). The options object contains:
     - `sourceType` - `"script"`, `"module"` (default), `"commonjs"`.
     - `dialect`: - `"js"` or `"ts"` (default). Determines whether TypeScript is allowed.
-- A `toAST()` function that accepts the return value of `parse()` and the same options object as `validate()`, and returns an object with `ast` (the ESTree-style AST) and `errors` (the errors returned from `validate()`). This function does both validation and AST creation.
+- A `toAST()` function that accepts the return value of `parse()` and an options object with `sourceType` and `dialect` (the two `validate()` options that shape the tree), and returns the ESTree-style AST. This function only creates the AST; validation is a separate pass, run by calling `validate()` alongside it.
 
 ## Requirements
 

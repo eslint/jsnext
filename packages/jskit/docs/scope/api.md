@@ -140,7 +140,7 @@ and every ESTree node already answers to that shape.
 ```js
 const result = parse("console.log(missing);", { tokens: true });
 const scopes = new Scopes(analyze(result, { globals: ["console"] }), result);
-const { ast } = toAST(result);
+const ast = toAST(result);
 const node = ast.body[0].expression.callee.object; // the `console` Identifier
 
 scopes.isGlobalReference(node); // true — matched by node.type and node.start

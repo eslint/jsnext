@@ -530,8 +530,10 @@ describe("analyzeTree", () => {
 			analyze(result, { sourceType: "module", dialect: "ts" }),
 			result,
 		);
-		const program = toAST(result, { sourceType: "module", dialect: "ts" })
-			.ast as unknown as EsTreeNode;
+		const program = toAST(result, {
+			sourceType: "module",
+			dialect: "ts",
+		}) as unknown as EsTreeNode;
 		const tree = toScopeManager(
 			analyzeTree(program, { sourceType: "module", dialect: "ts" }),
 			program,

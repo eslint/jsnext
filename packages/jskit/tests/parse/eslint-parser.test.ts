@@ -78,7 +78,7 @@ describe("eslintParser.parse()", () => {
 	});
 
 	it("leaves range and loc off the AST that toAST() returns", () => {
-		const { ast } = toAST(parse("const a = 1;", { tokens: true }));
+		const ast = toAST(parse("const a = 1;", { tokens: true }));
 
 		expect(ast.range).toBeUndefined();
 		expect(ast.loc).toBeUndefined();

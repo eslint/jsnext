@@ -11,10 +11,9 @@ import { parse, toAST, validate } from "../../src/index.js";
  * @returns One `type:value` string per token.
  */
 function types(code: string): string[] {
-	const { ast } = toAST(parse(code, { tokens: true }), {
+	const ast = toAST(parse(code, { tokens: true }), {
 		sourceType: "module",
 		dialect: "js",
-		jsx: true,
 	});
 
 	return (ast.tokens as { type: string; value: string }[]).map(
@@ -28,10 +27,9 @@ function types(code: string): string[] {
  * @returns The expression of the first statement.
  */
 function firstExpression(code: string): Record<string, unknown> {
-	const { ast } = toAST(parse(code, { tokens: true }), {
+	const ast = toAST(parse(code, { tokens: true }), {
 		sourceType: "module",
 		dialect: "js",
-		jsx: true,
 	});
 
 	return (ast.body as Record<string, unknown>[])[0].expression as Record<
@@ -159,7 +157,7 @@ describe("JSX parsing", () => {
 	});
 
 	it("still parses an old-style type assertion when JSX does not fit", () => {
-		const { ast } = toAST(parse("const a = <string>b;", { tokens: true }), {
+		const ast = toAST(parse("const a = <string>b;", { tokens: true }), {
 			dialect: "ts",
 		});
 		const declaration = (ast.body as Record<string, unknown>[])[0];
@@ -201,7 +199,7 @@ describe("JSX parsing", () => {
 		 */
 		const result = parse("<div>text", { tokens: true });
 
-		expect(toAST(result, { dialect: "ts" }).ast.body).toMatchObject([
+		expect(toAST(result, { dialect: "ts" }).body).toMatchObject([
 			{ expression: { type: "TSTypeAssertion" } },
 		]);
 		expect(validate(result, { dialect: "js" })).not.toHaveLength(0);

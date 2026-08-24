@@ -27,39 +27,39 @@ consumer that knows its file type would call them.
 
 JavaScript:
 
-| Parser                                     | ops/s | Relative |
-| ------------------------------------------ | ----- | -------- |
-| `meriyah`                                  | 70.2  | 1.02x    |
-| `jskit` — `parse()`                        | 68.8  | 1.00x    |
-| `jskit` — `parse()` + `validate()`         | 42.8  | 0.62x    |
-| `jskit` — `parse()` + `toAST()`            | 31.8  | 0.46x    |
-| `@babel/parser`                            | 26.4  | 0.38x    |
-| `acorn`                                    | 26.4  | 0.38x    |
-| `espree`                                   | 21.2  | 0.31x    |
-| `@typescript-eslint/parser` + TypeScript 6 | 2.5   | 0.04x    |
+| Parser                                         | ops/s | Relative |
+| ---------------------------------------------- | ----- | -------- |
+| `meriyah`                                      | 70.2  | 1.02x    |
+| `jskit` — `parse()`                            | 68.8  | 1.00x    |
+| `jskit` — `parse()` + `validate()`             | 42.8  | 0.62x    |
+| `jskit` — `parse()` + `validate()` + `toAST()` | 31.8  | 0.46x    |
+| `@babel/parser`                                | 26.4  | 0.38x    |
+| `acorn`                                        | 26.4  | 0.38x    |
+| `espree`                                       | 21.2  | 0.31x    |
+| `@typescript-eslint/parser` + TypeScript 6     | 2.5   | 0.04x    |
 
 TypeScript (`espree`, `acorn`, and `meriyah` have nothing to say about it):
 
-| Parser                                     | ops/s | Relative |
-| ------------------------------------------ | ----- | -------- |
-| `jskit` — `parse()`                        | 68.2  | 1.00x    |
-| `jskit` — `parse()` + `validate()`         | 45.6  | 0.67x    |
-| `@babel/parser`                            | 22.8  | 0.33x    |
-| `jskit` — `parse()` + `toAST()`            | 21.9  | 0.32x    |
-| `@typescript-eslint/parser` + TypeScript 5 | 2.1   | 0.03x    |
+| Parser                                         | ops/s | Relative |
+| ---------------------------------------------- | ----- | -------- |
+| `jskit` — `parse()`                            | 68.2  | 1.00x    |
+| `jskit` — `parse()` + `validate()`             | 45.6  | 0.67x    |
+| `@babel/parser`                                | 22.8  | 0.33x    |
+| `jskit` — `parse()` + `validate()` + `toAST()` | 21.9  | 0.32x    |
+| `@typescript-eslint/parser` + TypeScript 5     | 2.1   | 0.03x    |
 
 JSX (`acorn` has no JSX of its own, so it appears with `acorn-jsx`):
 
-| Parser                                     | ops/s | Relative |
-| ------------------------------------------ | ----- | -------- |
-| `jskit` — `parse()`                        | 71.2  | 1.00x    |
-| `meriyah`                                  | 47.2  | 0.66x    |
-| `jskit` — `parse()` + `validate()`         | 42.6  | 0.60x    |
-| `acorn` + `acorn-jsx`                      | 28.7  | 0.40x    |
-| `jskit` — `parse()` + `toAST()`            | 28.1  | 0.39x    |
-| `@babel/parser`                            | 22.4  | 0.31x    |
-| `espree`                                   | 19.1  | 0.27x    |
-| `@typescript-eslint/parser` + TypeScript 6 | 2.3   | 0.03x    |
+| Parser                                         | ops/s | Relative |
+| ---------------------------------------------- | ----- | -------- |
+| `jskit` — `parse()`                            | 71.2  | 1.00x    |
+| `meriyah`                                      | 47.2  | 0.66x    |
+| `jskit` — `parse()` + `validate()`             | 42.6  | 0.60x    |
+| `acorn` + `acorn-jsx`                          | 28.7  | 0.40x    |
+| `jskit` — `parse()` + `validate()` + `toAST()` | 28.1  | 0.39x    |
+| `@babel/parser`                                | 22.4  | 0.31x    |
+| `espree`                                       | 19.1  | 0.27x    |
+| `@typescript-eslint/parser` + TypeScript 6     | 2.3   | 0.03x    |
 
 The JSX rows assume the caller passes `jsx: true` to `parse()`. Without it the
 parser accepts the union of the `.ts` and `.tsx` readings by speculating at

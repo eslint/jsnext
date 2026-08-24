@@ -70,8 +70,8 @@ new AstReader(result).nodeCount;
 validate(result, { sourceType: "module", dialect: "ts" }); // => []
 validate(result, { dialect: "js" }); // => [{ message: "TypeScript syntax ..." }]
 
-// Phase 3: validation plus an ESTree tree.
-const { ast, errors } = toAST(result, { sourceType: "module", dialect: "ts" });
+// Phase 3: an ESTree tree. Decoding only — validation stays its own pass.
+const ast = toAST(result, { sourceType: "module", dialect: "ts" });
 
 ast.body[0].declarations[0].id.typeAnnotation.type; // "TSTypeAnnotation"
 ```

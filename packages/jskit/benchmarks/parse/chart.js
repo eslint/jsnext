@@ -40,7 +40,7 @@ const ROWS = {
 	ast: [
 		["jskit-parse", "jskit — parse()"],
 		["jskit-validate", "jskit — parse() + validate()"],
-		["jskit-to-ast", "jskit — parse() + toAST()"],
+		["jskit-to-ast", "jskit — parse() + validate() + toAST()"],
 		["babel", "@babel/parser"],
 		["acorn", "acorn"],
 		["meriyah", "meriyah"],

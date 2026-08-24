@@ -50,7 +50,7 @@ into three, and the split is the reason the fast path is fast.
 | -------- | --------------------------- | -------------------------------------- | ------------------- |
 | Parse    | `parse(code)`               | Two `ArrayBuffer`s and a `Uint32Array` | Throws `ParseError` |
 | Validate | `validate(result, options)` | An array of problems                   | Never throws        |
-| Decode   | `toAST(result, options)`    | ESTree objects, plus the problems      | Never throws        |
+| Decode   | `toAST(result, options)`    | ESTree objects                         | Never throws        |
 
 The dividing line between phase 1 and phase 2 is **whether the answer depends
 on context that the text alone does not supply**. `parse()` accepts the union

@@ -40,8 +40,8 @@ validate(result, { dialect: "js" });
 // => [{ message: 'TypeScript syntax is not allowed ...', lineNumber: 1, column: 15 }, ...]
 // (one problem per TypeScript-only node, so the report points at each of them)
 
-// Phase 3: validation plus an ESTree AST.
-const { ast, errors } = toAST(result, { sourceType: "module", dialect: "ts" });
+// Phase 3: an ESTree AST. Decoding only — validation is the separate pass above.
+const ast = toAST(result, { sourceType: "module", dialect: "ts" });
 
 ast.type; // "Program"
 ast.body[0].declarations[0].id.typeAnnotation.type; // "TSTypeAnnotation"
@@ -68,7 +68,7 @@ own.
 different trees:
 
 ```js
-toAST(parse("await.x;", { sourceType: "script", tokens: true })).ast.body[0]
+toAST(parse("await.x;", { sourceType: "script", tokens: true })).body[0]
 	.expression.type;
 // => "MemberExpression" — `await` is an ordinary name in a script
 
@@ -191,10 +191,30 @@ It currently reports:
 
 ### `toAST(result, options)`
 
-Takes the same options as `validate()` and returns `{ ast, errors }`. The
-`Program` node also carries `tokens` and `comments`, which is what ESLint
-reads — so it needs a buffer parsed with `{ tokens: true }`, and throws on one
-that was not.
+Returns the ESTree `Program` node. The `Program` also carries `tokens` and
+`comments`, which is what ESLint reads — so it needs a buffer parsed with
+`{ tokens: true }`, and throws on one that was not.
+
+Decoding is all it does: nothing here checks whether the program is
+_allowed_. Validation is a separate pass over the same buffer, so run
+`validate()` alongside it when the problems matter — neither pass needs the
+other, and skipping the one you don't need is the point of the split.
+
+It takes the two `validate()` options that change the _tree_ rather than what
+is allowed in it:
+
+| Option       | Values                               | Default             |
+| ------------ | ------------------------------------ | ------------------- |
+| `sourceType` | `"script"`, `"module"`, `"commonjs"` | what `parse()` used |
+| `dialect`    | `"js"`, `"ts"`                       | `"ts"`              |
+
+`sourceType` follows the same rule as `validate()`'s: the buffer records what
+`parse()` was told, so it is only for narrowing `"script"` to `"commonjs"`,
+and naming the opposite side of the module line throws. `dialect` decides
+which reference parser's shape comes out — under `"js"` the TypeScript-only
+properties are omitted entirely, matching `espree`; under `"ts"` they are
+present and `null` when absent, matching `@typescript-eslint/parser`. `jsx`
+and `declaration` are not options here, because neither changes the tree.
 
 ## Using it with ESLint
 
@@ -246,10 +266,12 @@ It differs from `toAST()` in five ways, each because ESLint requires it:
 
 - **Nodes, tokens, and comments carry `range` and `loc`.** ESLint refuses an
   AST without them. Everywhere else they are still left off.
-- **Validation problems are thrown, not returned.** ESLint has no notion of a
-  non-fatal parse problem: a file either parses or it doesn't. The first
-  problem becomes a `ParseError`, which ESLint turns into a fatal lint message
-  on the right line — the same thing its own parsers do.
+- **Validation runs, and its first problem is thrown.** `toAST()` does not
+  validate at all, and ESLint has no notion of a non-fatal parse problem: a
+  file either parses or it doesn't. So the parser object runs both passes
+  itself, and the first problem becomes a `ParseError`, which ESLint turns
+  into a fatal lint message on the right line — the same thing its own
+  parsers do.
 - **The dialect comes from the file name.** `.js`, `.cjs`, `.mjs`, and `.jsx`
   are parsed as JavaScript, so TypeScript syntax in them is reported rather
   than quietly accepted; everything else is parsed as TypeScript. Pass an
@@ -331,13 +353,15 @@ friends) are left off entirely, so the output is structurally identical to
 
 ## JSX
 
-JSX is opt-in: pass `jsx: true` to `validate()` or `toAST()`. Both dialects
-support it, and each produces the JSX nodes its reference parser produces.
+JSX is opt-in: pass `jsx: true` to `validate()`. Both dialects support it,
+and each produces the JSX nodes its reference parser produces. `toAST()`
+takes no `jsx` option, because allowing JSX changes nothing about the tree —
+the elements are decoded either way, and `validate()` is what says whether
+they were allowed.
 
 ```js
-const { ast } = toAST(
+const ast = toAST(
 	parse("<ul>{items.map(i => <li key={i}>{i}</li>)}</ul>;", { tokens: true }),
-	{ jsx: true },
 );
 ```
 

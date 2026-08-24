@@ -152,7 +152,7 @@ for (const file of files) {
 			actual = toAST(parse(code, { sourceType, tokens: true }), {
 				sourceType,
 				dialect: "js",
-			}).ast;
+			});
 		} catch (error) {
 			threw++;
 			problems.push([file, sourceType, "THROW", error.message]);

@@ -15,8 +15,10 @@
  * The parser appears three times in the AST tier because its phases are
  * separable, and the gaps between the rows are the point: `parse()` alone
  * produces only the binary buffers, `validate()` adds the context-dependent
- * diagnostics, and `toAST()` materializes an ESTree tree. Only the third row
- * is doing the same job as `espree`, `acorn`, or `@babel/parser`.
+ * diagnostics, and `toAST()` materializes an ESTree tree. The third row runs
+ * all three phases — validation is not part of `toAST()`, and the reference
+ * parsers report early errors — so it is the only row doing the same job as
+ * `espree`, `acorn`, or `@babel/parser`.
  *
  * Fairness notes worth knowing before quoting a number:
  *
@@ -319,6 +321,12 @@ async function contenders(dialect) {
 		jsx: dialect === "jsx",
 	};
 
+	// `toAST()` decodes without validating, so it takes only what shapes the tree.
+	const jskitAstOptions = {
+		sourceType: jskitOptions.sourceType,
+		dialect: jskitOptions.dialect,
+	};
+
 	const list = [
 		{
 			key: "jskit-parse",
@@ -340,10 +348,15 @@ async function contenders(dialect) {
 		},
 		{
 			key: "jskit-to-ast",
-			name: "jskit: parse() + toAST()",
+			name: "jskit: parse() + validate() + toAST()",
 			tier: AST,
-			run: code =>
-				jskit.toAST(jskit.parse(code, jskitTokenOptions), jskitOptions),
+			run: code => {
+				const result = jskit.parse(code, jskitTokenOptions);
+
+				jskit.validate(result, jskitOptions);
+
+				return jskit.toAST(result, jskitAstOptions);
+			},
 		},
 		{
 			key: "jskit-eslint",

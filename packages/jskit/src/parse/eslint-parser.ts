@@ -12,6 +12,8 @@ import { buildAst, parse } from "./api.js";
 import { readLineStarts } from "./binary.js";
 import { ParseError } from "./errors.js";
 import { LineIndex } from "./locations.js";
+import { AstReader } from "./reader.js";
+import { validateAst } from "./validate.js";
 import { VISITOR_KEYS } from "./visitor-keys.js";
 import type { Program } from "./ast-types.js";
 
@@ -169,25 +171,30 @@ function buildProgram(code: string, options: EslintParserOptions): Program {
 			: { sourceType, tokens: true },
 	);
 	const lines = new LineIndex(readLineStarts(result));
-	const { ast, problems } = buildAst(
-		result,
-		{
-			/*
-			 * `ecmaFeatures.globalReturn` asks for the one thing that already
-			 * separates a CommonJS module from a script — a wrapping function,
-			 * and so a legal top-level `return` — so phase 2 is told the
-			 * source is CommonJS. ESLint drops the flag for a module, and so
-			 * does this.
-			 */
-			sourceType:
-				sourceType === "script" && globalReturnFor(options)
-					? "commonjs"
-					: sourceType,
-			dialect: dialectFor(options),
-			jsx: jsxFor(options),
-			declaration: declarationFor(options),
-		},
-		lines,
+
+	/*
+	 * `ecmaFeatures.globalReturn` asks for the one thing that already
+	 * separates a CommonJS module from a script — a wrapping function, and so
+	 * a legal top-level `return` — so phase 2 is told the source is CommonJS.
+	 * ESLint drops the flag for a module, and so does this.
+	 */
+	const resolvedSourceType =
+		sourceType === "script" && globalReturnFor(options)
+			? "commonjs"
+			: sourceType;
+	const dialect = dialectFor(options);
+
+	/*
+	 * `toAST()` deliberately does not validate, so the two passes are run
+	 * here by hand — validation first, because an invalid program throws and
+	 * the tree it would have decoded is never looked at.
+	 */
+	const problems = validateAst(
+		new AstReader(result),
+		resolvedSourceType,
+		dialect,
+		jsxFor(options),
+		declarationFor(options),
 	);
 
 	if (problems.length > 0) {
@@ -201,7 +208,7 @@ function buildProgram(code: string, options: EslintParserOptions): Program {
 		);
 	}
 
-	return ast;
+	return buildAst(result, { sourceType: resolvedSourceType, dialect }, lines);
 }
 
 /**
@@ -233,10 +240,10 @@ export interface EslintParseResult {
  * A parser that can be dropped straight into `languageOptions.parser`.
  *
  * ESLint has no phase for non-fatal problems: a file either parses or it
- * doesn't. So while `toAST()` hands validation problems back to the caller,
- * this throws the first one, which is how ESLint's own parsers behave and
- * what turns the problem into a fatal lint message pointing at the right
- * line.
+ * doesn't. So while the library keeps validation and decoding as separate
+ * passes, this runs both and throws the first problem found, which is how
+ * ESLint's own parsers behave and what turns the problem into a fatal lint
+ * message pointing at the right line.
  *
  * Unlike `toAST()`, the nodes, tokens, and comments produced here carry
  * `range` and `loc`, because ESLint refuses an AST without them.

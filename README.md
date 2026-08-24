@@ -29,7 +29,7 @@ const scope = analyze(result, { sourceType: "module", dialect: "ts" });
 const flow = createGraph(result, scope);
 
 // An ESTree AST is built only if something asks for one.
-const { ast, errors } = toAST(result, { sourceType: "module", dialect: "ts" });
+const ast = toAST(result, { sourceType: "module", dialect: "ts" });
 ```
 
 Scope analysis also works on an AST it did not produce, for compatibility with
