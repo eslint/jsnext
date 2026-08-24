@@ -102,7 +102,7 @@ changing anything in them:
   the invariants that break subtly when violated, and a checklist for adding a
   node kind.
 - [`packages/jskit/docs/parse/embedded-source.md`](./packages/jskit/docs/parse/embedded-source.md)
-  explains `parse()`'s `embedSource` option — why a parse buffer can carry a copy
+  explains `parse()`'s `source` option — why a parse buffer can carry a copy
   of the program text, why it does not by default, and the loud failure that
   makes the default safe.
 - [`packages/jskit/docs/parse/types.md`](./packages/jskit/docs/parse/types.md) documents

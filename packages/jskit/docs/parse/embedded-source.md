@@ -7,11 +7,11 @@ default, and how to decide.
 
 ```js
 parse(code); // no text in the buffer — the default
-parse(code, { embedSource: true }); // text embedded, buffer ~17% larger
+parse(code, { source: true }); // text embedded, buffer ~17% larger
 ```
 
 **Reading text works either way in the process that parsed.** Turn
-`embedSource` on when the buffer will be read somewhere else: a worker, a
+`source` on when the buffer will be read somewhere else: a worker, a
 file, a cache, another process.
 
 ## Why the buffer needs text at all
@@ -149,7 +149,7 @@ lookup and before decoding anything:
 
 ```
 TypeError: This parse buffer carries no source text, and none is cached for it
-in this process. Re-parse with `{ embedSource: true }` before transferring or
+in this process. Re-parse with `{ source: true }` before transferring or
 persisting a buffer whose text will be read elsewhere.
 ```
 

@@ -184,6 +184,9 @@ export interface ParseOptions {
 	 * Whether to copy the source text into the parse buffer, making the buffer
 	 * readable in a process that did not parse it.
 	 *
+	 * Named for what a consumer asks about the buffer — does it carry its
+	 * source? — the same way `tokens` and `parents` are.
+	 *
 	 * Defaults to `false`. Reading text in the parsing process works either
 	 * way, because the original string is cached against the buffer. Turn it
 	 * on when the buffer will be transferred to a worker, written to disk, or
@@ -191,7 +194,7 @@ export interface ParseOptions {
 	 * buffer, so it is not carried unless it is asked for. See
 	 * [`docs/embedded-source.md`](../docs/embedded-source.md).
 	 */
-	embedSource?: boolean;
+	source?: boolean;
 
 	/**
 	 * Whether to store the token records (comments included) in the buffer.
@@ -251,7 +254,7 @@ export function parse(code: string, options: ParseOptions = {}): ParseResult {
 		lineStarts: tokenizer.lineStarts,
 		lineCount: tokenizer.lineCount,
 		source: code,
-		embedSource: options.embedSource ?? false,
+		embedSource: options.source ?? false,
 		parents: options.parents ?? false,
 		sourceType: SOURCE_TYPE_NAMES.indexOf(sourceType),
 	});

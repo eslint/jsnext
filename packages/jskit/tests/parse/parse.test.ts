@@ -408,7 +408,7 @@ describe("parent lookup", () => {
 
 	it("survives a transfer, since the table is in the buffer", () => {
 		const transferred = parse(PROGRAM, {
-			embedSource: true,
+			source: true,
 			parents: true,
 		}).slice(0);
 		const reader = new AstReader(transferred);
@@ -894,7 +894,7 @@ describe("program extent", () => {
 	});
 });
 
-describe("embedSource", () => {
+describe("the source option", () => {
 	/** A program with a name and a string worth reading back. */
 	const CODE = 'const answer = "forty-two";';
 
@@ -911,7 +911,7 @@ describe("embedSource", () => {
 
 	it("leaves the text out by default", () => {
 		const bare = parse(CODE);
-		const embedded = parse(CODE, { embedSource: true });
+		const embedded = parse(CODE, { source: true });
 
 		// Two bytes per code unit, rounded up to keep the buffer word-aligned.
 		expect(embedded.byteLength - bare.byteLength).toBe(
@@ -920,10 +920,7 @@ describe("embedSource", () => {
 	});
 
 	it("reads text off either buffer in the parsing process", () => {
-		for (const result of [
-			parse(CODE),
-			parse(CODE, { embedSource: true }),
-		]) {
+		for (const result of [parse(CODE), parse(CODE, { source: true })]) {
 			const reader = new AstReader(result);
 
 			expect(reader.source).toBe(CODE);
@@ -932,7 +929,7 @@ describe("embedSource", () => {
 	});
 
 	it("survives a transfer when the text was embedded", () => {
-		const result = parse(CODE, { embedSource: true });
+		const result = parse(CODE, { source: true });
 		const reader = new AstReader(asIfTransferred(result));
 
 		expect(reader.source).toBe(CODE);
@@ -943,7 +940,7 @@ describe("embedSource", () => {
 		const reader = new AstReader(asIfTransferred(result));
 
 		expect(() => reader.source).toThrow(/carries no source text/u);
-		expect(() => reader.source).toThrow(/embedSource/u);
+		expect(() => reader.source).toThrow(/source: true/u);
 	});
 
 	it("still walks structure after a transfer without the text", () => {
@@ -963,7 +960,7 @@ describe("embedSource", () => {
 
 	it("produces the same nodes either way", () => {
 		const bare = new AstReader(parse(CODE));
-		const embedded = new AstReader(parse(CODE, { embedSource: true }));
+		const embedded = new AstReader(parse(CODE, { source: true }));
 
 		expect(bare.nodeCount).toBe(embedded.nodeCount);
 
@@ -976,7 +973,7 @@ describe("embedSource", () => {
 
 	it("decodes to the same tree either way", () => {
 		expect(toAST(parse(CODE, { tokens: true })).ast).toEqual(
-			toAST(parse(CODE, { embedSource: true, tokens: true })).ast,
+			toAST(parse(CODE, { source: true, tokens: true })).ast,
 		);
 	});
 

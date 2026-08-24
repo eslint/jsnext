@@ -76,7 +76,7 @@ export class AstReader {
 	 * that carries no text at all. See
 	 * [`docs/embedded-source.md`](../docs/embedded-source.md).
 	 * @returns The source text.
-	 * @throws {TypeError} When the buffer was built without `embedSource` and
+	 * @throws {TypeError} When the buffer was built without `source` and
 	 *      this is not the process that parsed it, so the text is gone.
 	 */
 	get source(): string {

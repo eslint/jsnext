@@ -273,7 +273,8 @@ export class WordBuffer {
  * copy of the package alongside the copy that did the parsing. A buffer
  * would then miss a `WeakMap` living inside the other copy and look exactly
  * like a buffer that arrived from another process — which, with
- * `embedSource` off, means an unreadable one. `Symbol.for()` is shared
+ * the
+ * `source` option off, means an unreadable one. `Symbol.for()` is shared
  * across every copy of the module in the realm, so the cache is as wide as
  * the heap.
  *
@@ -325,7 +326,7 @@ export function readSource(
 	 * The cache reaches exactly as far as the heap that parsed. A miss on a
 	 * buffer with no embedded text means the text is simply gone — which is
 	 * only reachable by transferring or persisting a buffer parsed without
-	 * `embedSource`. Decoding the empty region would hand back a run of NUL
+	 * the `source` option. Decoding the empty region would hand back a run of NUL
 	 * characters and let every name silently come back wrong, so this is the
 	 * one place that has to be loud.
 	 */
@@ -335,7 +336,7 @@ export function readSource(
 		0
 	) {
 		throw new TypeError(
-			"This parse buffer carries no source text, and none is cached for it in this process. Re-parse with `{ embedSource: true }` before transferring or persisting a buffer whose text will be read elsewhere.",
+			"This parse buffer carries no source text, and none is cached for it in this process. Re-parse with `{ source: true }` before transferring or persisting a buffer whose text will be read elsewhere.",
 		);
 	}
 
@@ -600,8 +601,8 @@ export function buildParseBuffer(input: ParseBufferInput): ArrayBuffer {
 	/*
 	 * Cached whether or not the text was embedded: this is what lets a
 	 * consumer in the parsing process read names off a buffer that carries no
-	 * text of its own, which is the whole point of `embedSource` defaulting
-	 * to `false`.
+	 * text of its own, which is the whole point of the `source` option
+	 * defaulting to `false`.
 	 */
 	cacheSource(buffer, source);
 

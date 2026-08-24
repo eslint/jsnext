@@ -157,7 +157,7 @@ quietly break.
 | [`docs/parse/api.md`](./docs/parse/api.md)                         | The three parse phases, their options, errors, JSX, ESLint integration, and reading the buffer.                                 |
 | [`docs/parse/performance.md`](./docs/parse/performance.md)         | How the parser compares to `espree`, `acorn`, `meriyah`, Babel, and `@typescript-eslint/parser`, and how to read the benchmark. |
 | [`docs/parse/architecture.md`](./docs/parse/architecture.md)       | The tokenizer, the parser, and both binary formats field by field.                                                              |
-| [`docs/parse/embedded-source.md`](./docs/parse/embedded-source.md) | The `embedSource` option and why the buffer does not carry the text by default.                                                 |
+| [`docs/parse/embedded-source.md`](./docs/parse/embedded-source.md) | The `source` option and why the buffer does not carry the text by default.                                                      |
 | [`docs/parse/types.md`](./docs/parse/types.md)                     | The hand-written ESTree declarations `toAST()` returns.                                                                         |
 | [`docs/scope/api.md`](./docs/scope/api.md)                         | Both entry points, the three consumers, options, and the scope graph.                                                           |
 | [`docs/scope/performance.md`](./docs/scope/performance.md)         | How the analyzer compares to `eslint-scope` and `@typescript-eslint/scope-manager`.                                             |

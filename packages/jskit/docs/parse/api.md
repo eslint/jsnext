@@ -55,13 +55,13 @@ and each node's parent. `AstReader`, `TokenReader`, `readLineStarts()`, and
 `readParents()` read the regions; each takes the whole buffer and finds its
 own.
 
-| Option        | Default    | Meaning                                                                                     |
-| ------------- | ---------- | ------------------------------------------------------------------------------------------- |
-| `sourceType`  | `"module"` | Whether to read the text as a script, an ES module, or a CommonJS module.                   |
-| `jsx`         | unset      | How a `<` in expression position reads: the `.tsx` way, the `.ts` way, or try both.         |
-| `tokens`      | `false`    | Store the token records (comments included), so `TokenReader` and `toAST()` can read them.  |
-| `embedSource` | `false`    | Copy the source text into the buffer, so it can be read in a process that did not parse it. |
-| `parents`     | `false`    | Derive each node's parent, so a tool can climb from a node to its context.                  |
+| Option       | Default    | Meaning                                                                                     |
+| ------------ | ---------- | ------------------------------------------------------------------------------------------- |
+| `sourceType` | `"module"` | Whether to read the text as a script, an ES module, or a CommonJS module.                   |
+| `jsx`        | unset      | How a `<` in expression position reads: the `.tsx` way, the `.ts` way, or try both.         |
+| `tokens`     | `false`    | Store the token records (comments included), so `TokenReader` and `toAST()` can read them.  |
+| `source`     | `false`    | Copy the source text into the buffer, so it can be read in a process that did not parse it. |
+| `parents`    | `false`    | Derive each node's parent, so a tool can climb from a node to its context.                  |
 
 `sourceType` is the one interpretation question phase 1 cannot leave to phase
 2, because two readings of the same text can both be valid and produce
@@ -112,7 +112,7 @@ it. The ESLint parser object always asks for them, because ESLint's rules read
 tokens as freely as nodes.
 
 Reading text off a buffer works either way in the process that parsed, because
-the original string is cached against the buffer. Turn `embedSource` on when
+the original string is cached against the buffer. Turn `source` on when
 the buffer will be transferred to a worker, written to disk, or otherwise read
 elsewhere — it adds roughly a sixth to the buffer, so it is not carried unless
 it is asked for. Reading text off a transferred buffer that was parsed without
@@ -433,7 +433,7 @@ node has a parent.
 The buffer can carry a copy of the source as UTF-16, which is what lets
 `validate()` and `toAST()` work from the parse result alone anywhere, and makes
 the buffer safe to transfer to a worker. It does not by default; see
-`embedSource` above.
+the `source` option above.
 
 ### Reading the buffer directly
 
