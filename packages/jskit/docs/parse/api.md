@@ -94,9 +94,17 @@ outside the text:
 - **Left unset**, the parser accepts the union: JSX is tried speculatively
   first and the TypeScript readings are the fallback. This accepts everything
   either mode accepts — which is what lets `validate()` be the one to say
-  whether JSX was _allowed_ — but the speculation costs a substantial share of
-  the parse on JSX-heavy files. A caller that knows which kind of file it has
-  should say so.
+  whether JSX was _allowed_ — but the speculation is not free in either
+  direction: it costs a substantial share of the parse on JSX-heavy files,
+  and on files that lean on old-style `<T>expr` assertions each failed JSX
+  attempt scans ahead before it is undone, so the parse goes quadratic. A
+  caller that knows which kind of file it has should say so.
+
+The permissive default and the two explicit settings agree on every program
+that is unambiguous, and `false` is more than a fast path: it is the only way
+to get the `.ts` reading of text that is valid both ways — `<T>x</T>;` is a
+JSX element under the default, because the JSX attempt succeeds, and only
+`jsx: false` reads it the way a `.ts` file does.
 
 Unlike `sourceType`, the choice is not recorded in the buffer: a JSX node
 either is in the tree or is not, and the later phases read the tree rather

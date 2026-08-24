@@ -170,9 +170,12 @@ export interface ParseOptions {
 	 * Left unset, the parser accepts the union: JSX is tried speculatively
 	 * first and the TypeScript readings are the fallback. That accepts
 	 * everything either mode accepts — which is what lets `validate()` be the
-	 * one to say whether JSX was *allowed* — but the speculation costs a
-	 * substantial share of the parse on JSX-heavy files, so a caller that
-	 * knows which kind of file it has should say so.
+	 * one to say whether JSX was *allowed* — but the speculation is not free
+	 * in either direction. On JSX-heavy files it costs a substantial share of
+	 * the parse, and on files that lean on old-style `<T>expr` assertions
+	 * each failed JSX attempt scans ahead before it is undone, so the parse
+	 * goes quadratic — hundreds of times slower on a file of nothing else. A
+	 * caller that knows which kind of file it has should say so.
 	 *
 	 * Unlike `sourceType`, the choice is not recorded in the buffer: a JSX
 	 * node either is in the tree or is not, and the later phases read the
