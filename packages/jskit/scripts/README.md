@@ -1,6 +1,6 @@
 # `@eslint/jskit` scripts
 
-One build script, one generator, and eleven checks, split into `parse/` and
+One build script, two generators, and eleven checks, split into `parse/` and
 `scope/` the same way the source is. The checks are the real test suite:
 `npm test` runs a few thousand hand-written cases, while these run every
 `.js`, `.jsx`, `.ts`, and `.tsx` file in `node_modules` through the analyses
@@ -37,7 +37,7 @@ tests.
 | `parse/conformance-tokens.mjs`      | tokens and comments                | `espree`                            |
 | `parse/conformance-ts.mjs`          | the TypeScript AST                 | `@typescript-eslint/parser`         |
 | `parse/conformance-types.mjs`       | `src/parse/ast-types.ts`           | what the decoder emits              |
-| `parse/derive-shapes.mjs`           | `src/parse/ast-types.ts`           | what the decoder's source says      |
+| `parse/derive-shapes.mjs`           | `src/parse/ast-types.ts`           | what the decoder's schema says      |
 | `parse/conformance-262.mjs`         | accepted or rejected               | what test262 says                   |
 | `parse/conformance-ts-negative.mjs` | accepted or rejected               | `@typescript-eslint/parser`         |
 | `parse/conformance-eslint.mjs`      | how _rules_ behave                 | ESLint's own rule test suite        |
@@ -54,8 +54,14 @@ reference, so a field the format dropped or reordered cannot pass.
 `scope/serialize.mjs` is the shared reduction both of them — and the
 integration tests in `tests/scope/` — compare with.
 
-`parse/generate-unicode-properties.mjs` is the odd one out in the other
-direction: it produces source rather than checking it.
+`parse/generate-to-ast.mjs` produces source rather than checking it: it turns
+the schema in `parse/to-ast-shapes.mjs` into `src/parse/to-ast-decode.ts`,
+one monomorphic decoder per node kind and output variant, and the result is
+committed. `npm run build:to-ast` runs it and formats what it wrote. The
+schema is the file to edit — the header comment in it explains the operation
+vocabulary — and `derive-shapes.mjs` is what holds it to `ast-types.ts`.
+
+`parse/generate-unicode-properties.mjs` is the other generator.
 `src/parse/unicode-properties.ts` holds
 every name `\p{…}` may use, and those names are a fact about the Unicode
 Character Database rather than a decision, so they are derived from test262's
@@ -229,12 +235,13 @@ drifting. They approach it from opposite ends, and both are needed:
   admits — including a `null` where the declaration has none. Its weakness is
   coverage: a property no file in the corpus produces is a property it cannot
   judge, which is why it reports `unseen` separately from `problems`.
-- `parse/derive-shapes.mjs` reads the decoder's **source**, parsing
-  `to-ast.ts` with the parser itself and reading the `fill()` switch directly.
-  Coverage is not a question for it, so it catches the node kind nothing in
-  `node_modules` happens to use.
+- `parse/derive-shapes.mjs` reads the decoder's **schema** —
+  `parse/to-ast-shapes.mjs`, the file `src/parse/to-ast-decode.ts` is
+  generated from — so every property of every kind is compared, in both
+  directions. Coverage is not a question for it, so it catches the node kind
+  nothing in `node_modules` happens to use.
 
-Neither can check which node types belong in a slot. `this.node(a)` says a
+Neither can check which node types belong in a slot. `child("test", "A")` says a
 child goes there, not which children, and observing the corpus only ever yields
 a subset — over the full corpus, `BlockStatement.body` never once holds a
 `StaticBlock` or a `WithStatement`, both of which are perfectly legal. The
@@ -278,7 +285,7 @@ node scripts/scope/conformance-js.mjs ../some-react-app/src 500
 Pointing one at a React codebase is the way to cover JSX with something wider
 than the fixtures.
 
-`parse/derive-shapes.mjs` takes no directory, since it reads source rather
+`parse/derive-shapes.mjs` takes no directory, since it reads the schema rather
 than a corpus. It accepts one flag:
 
 ```bash

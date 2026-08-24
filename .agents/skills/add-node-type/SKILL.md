@@ -48,7 +48,7 @@ Output on a complete node:
   ok    kind name          packages/jskit/src/parse/node-kinds.ts
   ok    slot layout        packages/jskit/src/parse/slots.ts
   ok    parser emits it    packages/jskit/src/parse/parser.ts
-  ok    decoder case       packages/jskit/src/parse/to-ast.ts
+  ok    decoder shape      packages/jskit/scripts/parse/to-ast-shapes.mjs
   ok    type declaration   packages/jskit/src/parse/ast-types.ts
   ok    scope slot names   packages/jskit/src/scope/slot-names.ts
 
@@ -132,19 +132,26 @@ Order matters when a prefix is shared. `export as namespace X` has to be tested
 before the `export *` branch, because both start by looking at what follows
 `export`.
 
-**4. `packages/jskit/src/parse/to-ast.ts`** — a `case` in `fill()` for JavaScript
-and JSX, or in `fillTypeNode()` for TypeScript. Skip this only for a node with
-no properties at all, such as a keyword type:
+**4. `packages/jskit/scripts/parse/to-ast-shapes.mjs`** — an entry in the
+decoder schema, keyed by the type name. The decoder itself is generated from
+this file into `src/parse/to-ast-decode.ts` — one monomorphic function per
+kind and variant — so after editing the schema, regenerate:
 
-```ts
-			case N_TSNamespaceExportDeclaration:
-				node.id = this.node(a);
-				return;
+```bash
+npm run build:to-ast --workspace=@eslint/jskit
 ```
 
-Use `this.addOptional(node, "name", slot)` for a property `dialect: "js"` must
-omit, and `this.addListIfPresent(...)` for a list. A plain assignment inside
-`if (this.typescript)` is the other way to make a property TypeScript-only.
+Skip this only for a node with no properties at all, such as a keyword type:
+
+```js
+	TSNamespaceExportDeclaration: [child("id", "A")],
+```
+
+Use `optChild("name", slot)` for a property `dialect: "js"` must omit when
+absent, and `optChildren(...)` for such a list. Wrapping any spec in
+`ts(...)` is how a property becomes TypeScript-only; the file's header
+comment lists the whole vocabulary. Never edit `to-ast-decode.ts` by hand —
+the generator overwrites it.
 
 **5. `packages/jskit/src/parse/ast-types.ts`** — the interface. Get the scaffold
 from the generator rather than writing it blind:
@@ -231,11 +238,11 @@ points agree across the whole corpus.
   old bundle. Check that the build actually printed its `⚡ Done` line.
 - **Not every kind is allocated with `alloc(N_Foo)`.** The keyword types go
   through `parseKeywordType(N_Foo)`, so grep for the bare constant.
-- **A node with no properties needs no `slots.ts`, `to-ast.ts`, or
+- **A node with no properties needs no `slots.ts`, `to-ast-shapes.mjs`, or
   `slot-names.ts` entry.** The keyword types (`TSStringKeyword` and friends)
-  have only a constant, a name, a parser call, and an interface. They fall
-  through `fillTypeNode()`'s `default:` and come out with just `type`, `start`,
-  and `end`.
+  have only a constant, a name, a parser call, and an interface. With no
+  schema entry they decode through the shared bare decoder and come out with
+  just `type`, `start`, and `end`.
 - **Three kinds are reserved but never emitted** — `TSAbstractKeyword`,
   `TSDeclareKeyword`, `TSExportKeyword`. They have constants and names and
   nothing else, deliberately. Do not "fix" them.

@@ -64,11 +64,11 @@ const SITES = [
 			new RegExp(`\\b${kind}\\b`, "u").test(withoutImports(src)),
 	},
 	{
-		file: "packages/jskit/src/parse/to-ast.ts",
-		label: "decoder case",
+		file: "packages/jskit/scripts/parse/to-ast-shapes.mjs",
+		label: "decoder shape",
 		always: false,
-		note: "only needed when the node carries properties",
-		test: (src, kind) => new RegExp(`case ${kind}:`, "u").test(src),
+		note: "only needed when the node carries properties; regenerate with npm run build:to-ast",
+		test: (src, kind, type) => new RegExp(`^\\t${type}:`, "mu").test(src),
 	},
 	{
 		file: "packages/jskit/src/parse/ast-types.ts",
@@ -304,14 +304,18 @@ const dialect = isTypeScript ? "ts" : "js";
 let result;
 
 try {
-	result = jskit.parse(code, { sourceType });
+	// `tokens: true` because `toAST()` reports tokens on the `Program`.
+	result = jskit.parse(code, { sourceType, tokens: true });
 	console.log("  ok    parse");
 } catch (error) {
 	console.log(`  FAIL  parse: ${error.message}`);
 	process.exit(1);
 }
 
-const { ast, errors } = jskit.toAST(result, { sourceType, dialect });
+// `toAST()` deliberately does not validate; the problems come from
+// `validate()`, its own pass over the same buffer.
+const ast = jskit.toAST(result, { sourceType, dialect });
+const errors = jskit.validate(result, { sourceType, dialect });
 const found = collect(ast, type);
 
 if (found.length === 0) {
@@ -357,9 +361,12 @@ if (errors.length > 0) {
  * TypeScript but accepted in JavaScript is in the wrong partition.
  */
 if (isTypeScript) {
-	const asJs = jskit.toAST(result, { sourceType, dialect: "js" });
+	const asJsProblems = jskit.validate(result, {
+		sourceType,
+		dialect: "js",
+	});
 
-	if (asJs.errors.length === 0) {
+	if (asJsProblems.length === 0) {
 		failures++;
 		console.log(
 			"  FAIL  validate (js): accepted, but a TS kind must be rejected",

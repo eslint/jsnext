@@ -11,10 +11,14 @@ pub mod errors;
 pub mod node_kinds;
 pub mod node_writer;
 pub mod parser;
+pub mod regexp;
 pub mod slots;
 pub mod token_kinds;
 pub mod tokenizer;
+pub mod unicode_properties;
+pub mod validator;
 pub mod values;
 
 pub use api::{parse, ParseOptions, SourceType};
 pub use errors::ParseError;
+pub use validator::{validate_ast, ValidateSourceType, ValidationProblem};

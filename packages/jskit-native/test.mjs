@@ -65,11 +65,39 @@ if (binding === null) {
 		}
 	}
 
+	/**
+	 * Runs `validate()` under the native binding and again under the
+	 * TypeScript implementation, and asserts the problem lists are identical.
+	 * @param buffer The parse buffer to validate.
+	 * @param options The validation options.
+	 * @returns Nothing.
+	 */
+	function assertValidateParity(buffer, options) {
+		const nativeProblems = JSON.stringify(jskit.validate(buffer, options));
+
+		jskit.setNative(null);
+
+		try {
+			const tsProblems = JSON.stringify(jskit.validate(buffer, options));
+
+			assert.strictEqual(nativeProblems, tsProblems);
+		} finally {
+			jskit.setNative(binding);
+		}
+	}
+
 	for (const { file, text } of samples()) {
 		test(`parse parity: ${file}`, () => {
 			assertParity(() =>
 				jskit.parse(text, { tokens: true, parents: true }),
 			);
+		});
+
+		test(`validate parity: ${file}`, () => {
+			const parsed = jskit.parse(text);
+
+			assertValidateParity(parsed, {});
+			assertValidateParity(parsed, { dialect: "js" });
 		});
 
 		test(`analyze parity: ${file}`, () => {

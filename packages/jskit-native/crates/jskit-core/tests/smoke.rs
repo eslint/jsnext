@@ -3,7 +3,7 @@
 //! standalone.
 
 use jskit_core::flow::create_graph;
-use jskit_core::parse::{parse, ParseOptions};
+use jskit_core::parse::{parse, validate_ast, ParseOptions, ValidateSourceType};
 use jskit_core::scope::options::ResolvedOptions;
 use jskit_core::scope::{analyze, words_of};
 
@@ -28,6 +28,36 @@ fn parses_analyzes_and_graphs() {
     let flow_words = words_of(&flow);
 
     assert_eq!(flow_words[0], 0x4746434a, "flow magic");
+}
+
+#[test]
+fn validates_context_dependent_problems() {
+    let source = utf16("let a; let a; return 1; const b = /(/u;");
+    let parsed = parse(&source, &ParseOptions::default()).expect("parses");
+    let parse_words = words_of(&parsed);
+    let problems = validate_ast(
+        &parse_words,
+        &source,
+        ValidateSourceType::Module,
+        false,
+        false,
+        false,
+    );
+
+    let messages: Vec<String> = problems
+        .iter()
+        .map(|problem| String::from_utf16_lossy(&problem.message))
+        .collect();
+
+    assert_eq!(
+        messages,
+        [
+            "Identifier 'a' has already been declared.",
+            "'return' outside of function.",
+            "Unterminated group.",
+        ]
+    );
+    assert_eq!(problems[0].start, 11);
 }
 
 #[test]

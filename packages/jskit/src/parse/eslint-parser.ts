@@ -8,12 +8,10 @@ import {
 	type EsTreeNode,
 	type ScopeManager,
 } from "../scope/index.js";
-import { buildAst, parse } from "./api.js";
+import { buildAst, collectProblems, parse } from "./api.js";
 import { readLineStarts } from "./binary.js";
 import { ParseError } from "./errors.js";
 import { LineIndex } from "./locations.js";
-import { AstReader } from "./reader.js";
-import { validateAst } from "./validate.js";
 import { VISITOR_KEYS } from "./visitor-keys.js";
 import type { Program } from "./ast-types.js";
 
@@ -189,8 +187,8 @@ function buildProgram(code: string, options: EslintParserOptions): Program {
 	 * here by hand — validation first, because an invalid program throws and
 	 * the tree it would have decoded is never looked at.
 	 */
-	const problems = validateAst(
-		new AstReader(result),
+	const problems = collectProblems(
+		result,
 		resolvedSourceType,
 		dialect,
 		jsxFor(options),

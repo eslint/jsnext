@@ -88,7 +88,8 @@ src/
   regexp.ts         the regular expression pattern grammar, for phase 2
   unicode-properties.ts  the names \p{…} may use; generated, do not edit
   reader.ts         readers over the nodes and the tokens
-  to-ast.ts         phase 3
+  to-ast.ts         phase 3: the decode machinery the generated decoders share
+  to-ast-decode.ts  phase 3: the per-kind decoders; generated, do not edit
   locations.ts      offset to line and column
   values.ts         escape and numeric literal decoding
   entities.ts       XHTML named entities for JSX text
@@ -546,7 +547,7 @@ Two slot conventions are worth calling out because they are easy to trip over:
   annotation extends the node's `end` past the name, so the decoder must slice
   to slot A rather than to `end` when reading the name.
 - On several nodes a slot holds a **token kind** rather than a node index — the
-  operator of a `BinaryExpression`, for instance. `AstDecoder.operator()` turns
+  operator of a `BinaryExpression`, for instance. the decoder's `operator()` helper turns
   it back into a spelling through `KEYWORD_NAMES` or `PUNCTUATOR_NAMES`.
 
 ### The flags word
@@ -791,11 +792,18 @@ Problems carry a source offset internally; the public `ValidationError` reports
 
 ## Decoding to ESTree
 
-`AstDecoder` is the only place that creates a JavaScript object per node. Its
-`fill()` method is one large switch over node kinds that writes the
-kind-specific properties.
+The decoder is the only place that creates a JavaScript object per node, and
+it is **generated**: `scripts/parse/to-ast-shapes.mjs` declares each kind's
+properties, and `npm run build:to-ast` turns that schema into
+`src/parse/to-ast-decode.ts` — one function per node kind and output
+variant, each building its whole ESTree node as a single object literal.
+That shape is the speed: one hidden class per kind, no
+property-by-property map transitions, which is the same trade `oxc-parser`
+makes in its generated deserializers. `to-ast.ts` keeps the hand-written
+machinery the generated functions share — the decode state, the dispatch
+through the active table, and the value helpers.
 
-Two options change the output:
+Two options select which of the four generated tables runs:
 
 - `typescript` — in `"js"` mode the TypeScript-only properties are omitted
   entirely, so the result is structurally identical to `espree`'s. In `"ts"`
@@ -804,6 +812,11 @@ Two options change the output:
 - `lines` — when a `LineIndex` is supplied, each node also gets `range` and
   `loc`. Only the ESLint parser object asks for this; `toAST()` passes `null`,
   because its contract is that nodes carry `start` and `end` and nothing else.
+
+The variants are separate generated functions rather than branches so that a
+node's shape never depends on a runtime test; `tests/parse/to-ast-variants.test.ts`
+pins the invariant that holds them together — same tree, plus or minus
+`range` and `loc`.
 
 Both parsers' notion of a `Program`'s extent differs — `espree` trims it to its
 statements, `@typescript-eslint/parser` spans the whole text — and **`espree`'s
@@ -857,8 +870,9 @@ moves. Do not reorder existing words.
 
 To add a node kind: append it in the correct partition (JavaScript, JSX, or
 TypeScript at or above `TS_FIRST`), raise `NODE_KIND_COUNT`, add its name to
-`NODE_KIND_NAMES`, describe its slots in `slots.ts`, add a `fill()` case, and
-declare its interface in `ast-types.ts`. Forgetting the `slots.ts` entry is the
+`NODE_KIND_NAMES`, describe its slots in `slots.ts`, add its entry to the
+decoder schema in `scripts/parse/to-ast-shapes.mjs` and regenerate with
+`npm run build:to-ast`, and declare its interface in `ast-types.ts`. Forgetting the `slots.ts` entry is the
 failure mode to watch for: the node decodes correctly but generic walks
 silently do not descend into it, so validation quietly stops checking that
 subtree and its children come back with no parent.
@@ -866,12 +880,12 @@ subtree and its children come back with no parent.
 The `ast-types.ts` entry is the one thing on that list nothing else depends on
 at runtime, so it is also the easiest to skip. Two scripts stop it drifting:
 `conformance-types.mjs` compares the declarations against what the decoder
-emits over the whole corpus, and `derive-shapes.mjs` reads the `fill()` switch
+emits over the whole corpus, and `derive-shapes.mjs` reads the decoder schema
 itself and reports any node whose declared properties disagree with the ones
-assigned. Both run as part of `npm run test:conformance`. Between them, a new kind
+emitted. Both run as part of `npm run test:conformance`. Between them, a new kind
 with no interface, an interface with a property the decoder never writes, and a
 property whose declared type forbids a `null` the decoder emits are all caught.
-What neither can check is which node types belong in a slot: `this.node(a)`
+What neither can check is which node types belong in a slot: `child("test", "A")`
 says a child goes there, not which children, so the unions in `ast-types.ts`
 are written by hand.
 

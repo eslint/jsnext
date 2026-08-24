@@ -40,12 +40,10 @@ const ROWS = {
 	ast: [
 		["jskit-native-parse", "jskit (native) — parse()"],
 		["jskit-parse", "jskit — parse()"],
+		["jskit-native-validate", "jskit (native) — parse() + validate()"],
 		["jskit-validate", "jskit — parse() + validate()"],
-		[
-			"jskit-native-to-ast",
-			"jskit (native) — parse() + validate() + toAST()",
-		],
-		["jskit-to-ast", "jskit — parse() + validate() + toAST()"],
+		["jskit-native-to-ast", "jskit (native) — parse() + toAST()"],
+		["jskit-to-ast", "jskit — parse() + toAST()"],
 		["oxc-raw", "oxc-parser (raw transfer)"],
 		["oxc", "oxc-parser"],
 		["babel", "@babel/parser"],

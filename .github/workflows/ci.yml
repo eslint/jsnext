@@ -293,6 +293,7 @@ jobs:
               working-directory: packages/jskit-native
               run: |
                   node tools/diff-parse.mjs ../../node_modules 1500 --all-options
+                  node tools/diff-validate.mjs ../../node_modules 1500
                   node tools/diff-analyze.mjs ../../node_modules 1500
                   node tools/diff-graph.mjs ../../node_modules 1500
 

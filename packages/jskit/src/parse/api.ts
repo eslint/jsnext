@@ -15,7 +15,7 @@ import { decodeEntities } from "./entities.js";
 import { LineIndex, type SourceLocation } from "./locations.js";
 import { Parser } from "./parser.js";
 import { AstReader, TokenReader } from "./reader.js";
-import { AstDecoder } from "./to-ast.js";
+import { decodeTree } from "./to-ast.js";
 import type { Program } from "./ast-types.js";
 import {
 	KIND_TOKEN_TYPE,
@@ -362,8 +362,8 @@ export function validate(
 		supplySource(result, options.text);
 	}
 
-	const problems = validateAst(
-		new AstReader(result),
+	const problems = collectProblems(
+		result,
 		resolveSourceType(result, options.sourceType),
 		options.dialect ?? "ts",
 		options.jsx ?? false,
@@ -371,6 +371,47 @@ export function validate(
 	);
 
 	return locateProblems(problems, new LineIndex(readLineStarts(result)));
+}
+
+/**
+ * Runs the validation walk, through whichever implementation is registered.
+ *
+ * The native implementation reports the same problems in the same order, so
+ * when a binding is registered the TypeScript walk never runs. The source
+ * text is resolved here — from the cache or the embedded region — because
+ * the binding cannot reach this process's cache on its own. The source type
+ * arrives already resolved against the buffer, so neither implementation
+ * re-answers that question.
+ * @param result The value returned by `parse()`.
+ * @param sourceType The resolved source type to interpret the buffer as.
+ * @param dialect Whether TypeScript syntax is allowed.
+ * @param jsx Whether JSX syntax is allowed.
+ * @param declaration Whether the whole file is ambient.
+ * @returns Every problem found, in source order, positions unresolved.
+ */
+export function collectProblems(
+	result: ParseResult,
+	sourceType: "script" | "module" | "commonjs",
+	dialect: "js" | "ts",
+	jsx: boolean,
+	declaration: boolean,
+): ValidationProblem[] {
+	if (native !== null) {
+		return native.validate(result, new AstReader(result).source, {
+			sourceType,
+			dialect,
+			jsx,
+			declaration,
+		});
+	}
+
+	return validateAst(
+		new AstReader(result),
+		sourceType,
+		dialect,
+		jsx,
+		declaration,
+	);
 }
 
 /**
@@ -417,12 +458,11 @@ export function buildAst(
 	const reader = new AstReader(result);
 	const tokenReader = new TokenReader(result);
 	const sourceType = resolveSourceType(result, options.sourceType);
-	const decoder = new AstDecoder(
+	const program = decodeTree(
 		reader,
 		(options.dialect ?? "ts") === "ts",
 		lines,
 	);
-	const program = decoder.node(reader.root)!;
 	const { tokens, comments } = decodeTokens(
 		tokenReader,
 		reader.source,

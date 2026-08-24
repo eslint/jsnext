@@ -12,10 +12,10 @@
 #![deny(clippy::all)]
 
 use napi::bindgen_prelude::*;
-use napi::{Env, JsArrayBuffer, JsString};
+use napi::{Env, JsArrayBuffer, JsObject, JsString};
 use napi_derive::napi;
 
-use jskit_core::parse::{ParseError, ParseOptions, SourceType};
+use jskit_core::parse::{ParseError, ParseOptions, SourceType, ValidateSourceType};
 use jskit_core::scope::options::{ResolvedOptions, ScopeSourceType};
 
 /// The options `parse()` accepts, mirroring the TypeScript `ParseOptions`.
@@ -79,6 +79,73 @@ pub fn parse(
         jskit_core::parse::parse(units, &options).map_err(|error| encode_parse_error(&error))?;
 
     Ok(env.create_arraybuffer_with_data(buffer)?.into_raw())
+}
+
+/// The options `validate()` accepts. The buffer's recorded source type is
+/// resolved against the caller's request on the JavaScript side, which also
+/// locates the reported offsets, so what crosses is already settled.
+#[napi(object)]
+#[derive(Default)]
+pub struct NativeValidateOptions {
+    pub source_type: Option<String>,
+    pub dialect: Option<String>,
+    pub jsx: Option<bool>,
+    pub declaration: Option<bool>,
+}
+
+/// Checks a parse result for problems that depend on how the program is
+/// meant to be interpreted.
+///
+/// `result` is the parse buffer `parse()` produced and `text` the exact
+/// source it was parsed from; the JavaScript wrapper recovers the text from
+/// the buffer's cache before calling in. Each problem comes back as
+/// `{ message, start }`, with the message built from UTF-16 units so that a
+/// quoted name keeps even a lone surrogate the program spelled.
+#[napi]
+pub fn validate(
+    env: Env,
+    result: JsArrayBuffer,
+    text: JsString,
+    options: Option<NativeValidateOptions>,
+) -> Result<Vec<JsObject>> {
+    let buffer = result.into_value()?;
+    let words = jskit_core::scope::words_of(&buffer);
+    let utf16 = text.into_utf16()?;
+    let slice = utf16.as_slice();
+    let units = &slice[..slice.len().saturating_sub(1)];
+    let options = options.unwrap_or_default();
+    let source_type = match options.source_type.as_deref() {
+        None | Some("module") => ValidateSourceType::Module,
+        Some("script") => ValidateSourceType::Script,
+        Some("commonjs") => ValidateSourceType::CommonJs,
+        Some(other) => {
+            return Err(Error::new(
+                Status::InvalidArg,
+                format!("Unknown sourceType: {other}"),
+            ))
+        }
+    };
+
+    let problems = jskit_core::parse::validate_ast(
+        &words,
+        units,
+        source_type,
+        options.dialect.as_deref() == Some("js"),
+        options.jsx.unwrap_or(false),
+        options.declaration.unwrap_or(false),
+    );
+
+    let mut located = Vec::with_capacity(problems.len());
+
+    for problem in problems {
+        let mut object = env.create_object()?;
+
+        object.set_named_property("message", env.create_string_utf16(&problem.message)?)?;
+        object.set_named_property("start", problem.start)?;
+        located.push(object);
+    }
+
+    Ok(located)
 }
 
 /// The options `analyze()` accepts, mirroring the TypeScript

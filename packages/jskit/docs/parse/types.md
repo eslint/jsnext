@@ -123,10 +123,10 @@ per-dialect rule is wrong in both directions.
 `TSDeclareFunction.declare` and the `typeParameters?` on the signature nodes are
 declared optional even though those nodes exist only under `dialect: "ts"`,
 where the properties are always present. This is a known imprecision, kept
-because `derive-shapes.mjs` reasons about the decoder's source, where they sit
-behind an `if (this.typescript)` like any other. Optional is weaker than the
-truth but never wrong. Tightening it means teaching the generator which kinds
-are TypeScript-only.
+because `derive-shapes.mjs` reasons about the decoder schema, where they are
+marked `ts(...)` like any other dialect-dependent property. Optional is weaker
+than the truth but never wrong. Tightening it means teaching the comparison
+which kinds are TypeScript-only.
 
 ### Three kinds have no interface
 
@@ -137,19 +137,19 @@ is why 158 kinds are declared out of 161.
 
 ## How it fits together
 
-The decoder builds a node by assigning to a bag of properties, which no
+The decoder builds each node as an object literal whose value expressions no
 discriminated union can describe: TypeScript cannot narrow on a runtime `kind`
-integer and then permit member-specific assignments. So `AstDecoder` works in
-`EsNode` — a plain `Record<string, unknown>` — and the shape is asserted once,
-at the return of `buildAst()` in `api.ts`. That single `as unknown as
-Program` is the entire cost of the arrangement, and the two scripts are what
-make it honest.
+integer and then permit member-specific property types. So the generated
+decoders work in `EsNode` — a plain `Record<string, unknown>` — and the shape
+is asserted once, at the return of `buildAst()` in `api.ts`. That single
+`as unknown as Program` is the entire cost of the arrangement, and the two
+scripts are what make it honest.
 
 ```
-to-ast.ts  ──fill()──▶  EsNode bag  ──one cast──▶  Program
-    │                       │
-    │                       └── conformance-types.mjs reads the output
-    └────────────────────────── derive-shapes.mjs reads this source
+to-ast-shapes.mjs  ──generates──▶  to-ast-decode.ts  ──▶  EsNode  ──one cast──▶  Program
+    │                                                       │
+    │                                                       └── conformance-types.mjs reads the output
+    └───────────────────────────────────────────────────────── derive-shapes.mjs reads this schema
 ```
 
 `export type * from "./ast-types.js"` in `index.ts` puts all 160 on the public
@@ -158,9 +158,9 @@ the minified bundle is unchanged at 129.8kb.
 
 ## What is not checked
 
-**Which node types belong in a slot.** `this.node(a)` says a child goes there,
+**Which node types belong in a slot.** `child("test", "A")` says a child goes there,
 not which children, so no amount of reading the decoder yields a union. Of the
-285 property assignments across both `fill()` switches, 174 (61%) are node or
+285 property specs across the decoder schema, 174 (61%) are node or
 list slots in exactly this position. Another 93 (33%) carry an exact type in
 the expression — a flag test, a pinned literal, a name table, a known helper —
 and the remaining 18 need a human.

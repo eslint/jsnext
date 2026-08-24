@@ -346,17 +346,22 @@ async function contenders(dialect) {
 					jskitOptions,
 				),
 		},
+		/*
+		 * Deliberately no `validate()` in this row: `toAST()` does not
+		 * validate, and neither do the other tree-producing contenders —
+		 * `oxc-parser`'s rows in particular report only what parsing itself
+		 * catches. The `validate()` row above prices that pass separately.
+		 */
 		{
 			key: "jskit-to-ast",
-			name: "jskit: parse() + validate() + toAST()",
+			name: "jskit: parse() + toAST()",
+			note: "full ESTree tree with tokens and comments, no validation",
 			tier: AST,
-			run: code => {
-				const result = jskit.parse(code, jskitTokenOptions);
-
-				jskit.validate(result, jskitOptions);
-
-				return jskit.toAST(result, jskitAstOptions);
-			},
+			run: code =>
+				jskit.toAST(
+					jskit.parse(code, jskitTokenOptions),
+					jskitAstOptions,
+				),
 		},
 		{
 			key: "jskit-eslint",
@@ -375,10 +380,11 @@ async function contenders(dialect) {
 	/*
 	 * The native (Rust) implementation, measured through the Node entry
 	 * point — which is exactly what a Node consumer gets. The binding writes
-	 * byte-identical buffers, so the rows mirror the TypeScript ones: the
-	 * `parse()` row is the Rust code alone, and the `toAST()` row is the
-	 * Rust parse with the TypeScript `validate()` and decoder reading its
-	 * buffer, since neither of those crosses into native code.
+	 * byte-identical buffers and reports identical diagnostics, so the rows
+	 * mirror the TypeScript ones: `parse()` and `validate()` run in Rust,
+	 * while `toAST()` decodes the Rust buffer with the generated TypeScript
+	 * decoder — objects have to be built on the JavaScript side either way,
+	 * which is the same shape `oxc-parser`'s raw transfer takes.
 	 */
 	const nativeBinding = await import("@eslint/jskit-native")
 		.then(loaded => loaded.default)
@@ -401,17 +407,26 @@ async function contenders(dialect) {
 				run: code => jskitNative.parse(code, jskitParseOptions),
 			},
 			{
-				key: "jskit-native-to-ast",
-				name: "jskit (native): parse() + validate() + toAST()",
-				note: "Rust parse; TypeScript validate and decode",
+				key: "jskit-native-validate",
+				name: "jskit (native): parse() + validate()",
+				note: "Rust parse and validate; diagnostics located in TypeScript",
 				tier: AST,
-				run: code => {
-					const result = jskitNative.parse(code, jskitTokenOptions);
-
-					jskitNative.validate(result, jskitOptions);
-
-					return jskitNative.toAST(result, jskitAstOptions);
-				},
+				run: code =>
+					jskitNative.validate(
+						jskitNative.parse(code, jskitParseOptions),
+						jskitOptions,
+					),
+			},
+			{
+				key: "jskit-native-to-ast",
+				name: "jskit (native): parse() + toAST()",
+				note: "Rust parse; generated TypeScript decoder",
+				tier: AST,
+				run: code =>
+					jskitNative.toAST(
+						jskitNative.parse(code, jskitTokenOptions),
+						jskitAstOptions,
+					),
 			},
 			{
 				key: "jskit-native-eslint",

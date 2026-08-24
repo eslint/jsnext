@@ -36,12 +36,43 @@ export interface NativeAnalyzeOptions {
 }
 
 /**
- * What the native binding provides. Each function returns the same
- * `ArrayBuffer` the TypeScript implementation would have produced.
+ * The validation options the binding understands: everything
+ * `ValidateOptions` carries except `text`, which the JavaScript side resolves
+ * before calling in. The source type crosses already resolved against the
+ * buffer, so the binding never re-answers that question.
+ */
+export interface NativeValidateOptions {
+	sourceType?: "script" | "module" | "commonjs";
+	dialect?: "js" | "ts";
+	jsx?: boolean;
+	declaration?: boolean;
+}
+
+/**
+ * A problem the native `validate()` found, before its position is resolved.
+ * The JavaScript side turns the offset into a line and column, exactly as it
+ * does for the TypeScript validator's problems.
+ */
+export interface NativeValidationProblem {
+	message: string;
+	start: number;
+}
+
+/**
+ * What the native binding provides. Each buffer producer returns the same
+ * `ArrayBuffer` the TypeScript implementation would have produced, and
+ * `validate()` the same problems in the same order.
  */
 export interface NativeBinding {
 	/** The native `parse()`; throws an `Error` in the packed form below. */
 	parse(code: string, options?: ParseOptions): ArrayBuffer;
+
+	/** The native `validate()` over a parse buffer and its source text. */
+	validate(
+		result: ArrayBuffer,
+		text: string,
+		options?: NativeValidateOptions,
+	): NativeValidationProblem[];
 
 	/** The native `analyze()` over a parse buffer and its source text. */
 	analyze(

@@ -36,6 +36,7 @@
   "scripts": {
     "build": "node scripts/build.js && tsc -p tsconfig.build.json",
     "build:performance-chart": "npm run build && node benchmarks/parse/benchmark.js --json=benchmarks/parse/results.json && node benchmarks/parse/chart.js benchmarks/parse/results.json benchmarks/parse/results.svg",
+    "build:to-ast": "node scripts/parse/generate-to-ast.mjs && prettier --write src/parse/to-ast-decode.ts",
     "lint": "npm run lint:types",
     "lint:types": "tsc --noEmit",
     "pretest": "npm run build",

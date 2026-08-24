@@ -4,11 +4,11 @@ An npm workspace holding a fast, ESLint-compatible toolchain for the latest
 JavaScript, TypeScript, and JSX syntax. TypeScript source, bundled with
 `esbuild`, tested with `vitest`.
 
-| Package                  | Name                    | What it does                                                                                                                                                                                                                                                                        |
-| ------------------------ | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/jskit`         | `@eslint/jskit`         | The toolkit: parser, scope analyzer, and control flow analyzer, in one package with one entry point.                                                                                                                                                                                |
-| `packages/jskit-native`  | `@eslint/jskit-native`  | The three buffer producers — `parse()`, `analyze()`, `createGraph()` — reimplemented in Rust behind Node-API bindings, writing byte-identical buffers. `@eslint/jskit`'s Node entry uses it when it is built and falls back to TypeScript when it is not. See the section below.    |
-| `packages/jskit-inspect` | `@eslint/jskit-inspect` | Web app (Astro + React) that runs all three in the browser: code in a left-hand editor, AST/scope/flow trees in tabs on the right, with the flow tab offering a Mermaid diagram of one chosen execution unit. Its `start`/`build`/`lint:types` scripts build `@eslint/jskit` first. |
+| Package                  | Name                    | What it does                                                                                                                                                                                                                                                                                                                            |
+| ------------------------ | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/jskit`         | `@eslint/jskit`         | The toolkit: parser, scope analyzer, and control flow analyzer, in one package with one entry point.                                                                                                                                                                                                                                    |
+| `packages/jskit-native`  | `@eslint/jskit-native`  | The three buffer producers — `parse()`, `analyze()`, `createGraph()` — plus `validate()`, reimplemented in Rust behind Node-API bindings, writing byte-identical buffers and reporting identical diagnostics. `@eslint/jskit`'s Node entry uses it when it is built and falls back to TypeScript when it is not. See the section below. |
+| `packages/jskit-inspect` | `@eslint/jskit-inspect` | Web app (Astro + React) that runs all three in the browser: code in a left-hand editor, AST/scope/flow trees in tabs on the right, with the flow tab offering a Mermaid diagram of one chosen execution unit. Its `start`/`build`/`lint:types` scripts build `@eslint/jskit` first.                                                     |
 
 **The three analyses are directories, not packages.** `parse`, `scope`, and
 `flow` split the source, the tests, the documentation, the scripts, and the
@@ -77,13 +77,21 @@ Two consequences worth knowing before you touch it:
 
 ## The native implementation
 
-`packages/jskit-native` is the same three buffer producers in Rust:
-`parse()`, `analyze()`, and `createGraph()` write byte-identical buffers, so
-everything that reads a buffer — `validate()`, `toAST()`, `Scopes`,
+`packages/jskit-native` is the three buffer producers plus the validator in
+Rust: `parse()`, `analyze()`, and `createGraph()` write byte-identical
+buffers, and `validate()` reports the same problems in the same order with
+the same messages — its output is a short list rather than a tree, which is
+what makes it the one non-producer worth carrying across the boundary.
+Everything else that reads a buffer — `toAST()`, `Scopes`,
 `toScopeManager()`, `FlowBufferReader`, the ESLint parser object — is the one
-TypeScript implementation either way. `analyzeTree()` has no native form on
-purpose: it reads the caller's ESTree objects, and crossing the Node-API
-boundary per node costs more than the walk saves.
+TypeScript implementation either way. That is oxc-parser's shape too, and for
+the same reason: ESTree nodes are JavaScript objects, and building millions
+of them through Node-API calls costs far more than building them in
+JavaScript from the buffer, which is why `toAST()`'s speed lives in the
+_generated_ decoder (`src/parse/to-ast-decode.ts`, from
+`scripts/parse/to-ast-shapes.mjs`) rather than in Rust. `analyzeTree()` has
+no native form on purpose: it reads the caller's ESTree objects, and crossing
+the Node-API boundary per node costs more than the walk saves.
 
 How it is wired, and what follows from the wiring:
 
@@ -98,13 +106,17 @@ How it is wired, and what follows from the wiring:
   cleanly when `cargo` is missing, `index.js` exports `null` when no binary
   matches the platform, and every fallback lands on the TypeScript
   implementation. No machine needs Rust to work on this repository.
-- **A change to a buffer producer is a change to both implementations.** The
-  Rust sources mirror the TypeScript sources file by file (`tokenizer.rs`
-  beside `tokenizer.ts`); an edit that changes any produced buffer must be
-  made in both, and the differential runs in
+- **A change to a buffer producer — or to the validator — is a change to
+  both implementations.** The Rust sources mirror the TypeScript sources file
+  by file (`tokenizer.rs` beside `tokenizer.ts`, `validator.rs` beside
+  `validate.ts`); an edit that changes any produced buffer or any diagnostic
+  must be made in both, and the differential runs in
   [`packages/jskit-native/tools/`](./packages/jskit-native/tools/) are what
-  hold them together: each parses the corpus with both implementations and
-  compares raw bytes, and `mismatch=0` is the standard. The parity tests in
+  hold them together: each runs the corpus through both implementations and
+  compares raw bytes — or, for `diff-validate.mjs`, the located problem
+  lists — and `mismatch=0` is the standard. `diff-validate.mjs` is at its
+  strongest over a test262 checkout, the one corpus full of programs that
+  _should_ produce problems. The parity tests in
   `packages/jskit-native/test.mjs` run under `npm test` and skip themselves
   when the binding is not built.
 
@@ -444,7 +456,7 @@ ok=… bad=0                        # tokens and comments vs espree
 files=… ok=… mismatch=0 threw=0   # AST vs @typescript-eslint/parser
 
 problems=0 unseen=0               # ast-types.ts vs the decoder's output
-identical=… differ=0              # ast-types.ts vs the fill() switch
+identical=… differ=0              # ast-types.ts vs the decoder schema
 
 binary files=… ok=… mismatch=0 threw=0   # scopes vs eslint-scope
 tree   files=… ok=… mismatch=0 threw=0
