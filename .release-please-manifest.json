@@ -1,3 +1,4 @@
 {
-  "packages/jskit": "0.0.0"
+  "packages/jskit": "0.0.0",
+  "packages/jskit-native": "0.0.0"
 }

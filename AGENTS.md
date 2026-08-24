@@ -7,6 +7,7 @@ JavaScript, TypeScript, and JSX syntax. TypeScript source, bundled with
 | Package                  | Name                    | What it does                                                                                                                                                                                                                                                                        |
 | ------------------------ | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `packages/jskit`         | `@eslint/jskit`         | The toolkit: parser, scope analyzer, and control flow analyzer, in one package with one entry point.                                                                                                                                                                                |
+| `packages/jskit-native`  | `@eslint/jskit-native`  | The three buffer producers — `parse()`, `analyze()`, `createGraph()` — reimplemented in Rust behind Node-API bindings, writing byte-identical buffers. `@eslint/jskit`'s Node entry uses it when it is built and falls back to TypeScript when it is not. See the section below.    |
 | `packages/jskit-inspect` | `@eslint/jskit-inspect` | Web app (Astro + React) that runs all three in the browser: code in a left-hand editor, AST/scope/flow trees in tabs on the right, with the flow tab offering a Mermaid diagram of one chosen execution unit. Its `start`/`build`/`lint:types` scripts build `@eslint/jskit` first. |
 
 **The three analyses are directories, not packages.** `parse`, `scope`, and
@@ -73,6 +74,39 @@ Two consequences worth knowing before you touch it:
   side effects in `slot-names.ts` or `estree-ast.ts` break it, which is why
   both build their tables in a function called as a `/* @__PURE__ */`
   expression.
+
+## The native implementation
+
+`packages/jskit-native` is the same three buffer producers in Rust:
+`parse()`, `analyze()`, and `createGraph()` write byte-identical buffers, so
+everything that reads a buffer — `validate()`, `toAST()`, `Scopes`,
+`toScopeManager()`, `FlowBufferReader`, the ESLint parser object — is the one
+TypeScript implementation either way. `analyzeTree()` has no native form on
+purpose: it reads the caller's ESTree objects, and crossing the Node-API
+boundary per node costs more than the walk saves.
+
+How it is wired, and what follows from the wiring:
+
+- **The dispatch is `src/parse/native.ts`**, a module-level registration the
+  entry points check. `src/index-node.ts` — bundled as `dist/jskit-node.js`
+  and selected by the `node` condition in the exports map — loads
+  `@eslint/jskit-native` and registers it; the neutral `dist/jskit.js` never
+  loads anything, which is what keeps `node:module` out of the browser
+  bundle. `JSKIT_NATIVE=0` disables the binding for a run, which is how the
+  two implementations are compared.
+- **The native package is optional everywhere.** Its build script exits
+  cleanly when `cargo` is missing, `index.js` exports `null` when no binary
+  matches the platform, and every fallback lands on the TypeScript
+  implementation. No machine needs Rust to work on this repository.
+- **A change to a buffer producer is a change to both implementations.** The
+  Rust sources mirror the TypeScript sources file by file (`tokenizer.rs`
+  beside `tokenizer.ts`); an edit that changes any produced buffer must be
+  made in both, and the differential runs in
+  [`packages/jskit-native/tools/`](./packages/jskit-native/tools/) are what
+  hold them together: each parses the corpus with both implementations and
+  compares raw bytes, and `mismatch=0` is the standard. The parity tests in
+  `packages/jskit-native/test.mjs` run under `npm test` and skip themselves
+  when the binding is not built.
 
 ## Code Conventions
 
@@ -251,10 +285,22 @@ jobs directly would block every merge where one of them correctly skipped.
 ### Releases
 
 `release-please` watches `main`, keeps a release pull request open, and turns
-its merge into a tag and an npm publish. The version lives in
-`.release-please-manifest.json`; `release-please-config.json` lists the one
-public package, since `@eslint/jskit-inspect` is private and is not released.
-There is no JSR configuration and none is wanted.
+its merge into a tag and an npm publish. The versions live in
+`.release-please-manifest.json`; `release-please-config.json` lists the two
+public packages — `@eslint/jskit` and `@eslint/jskit-native` — with the
+`linked-versions` plugin holding their version numbers equal, because the
+binary buffer formats are one contract with two implementations and the exact
+version pin in `@eslint/jskit`'s `optionalDependencies` is what keeps a
+matched pair installed. `@eslint/jskit-inspect` is private and is not
+released. There is no JSR configuration and none is wanted.
+
+A release build compiles the native binary on one runner per supported
+platform — linux x64/arm64 (gnu), macOS x64/arm64, Windows x64 — runs the
+parity tests against that very binary on that very machine, and publishes one
+`@eslint/jskit-native` package carrying all of the binaries; `index.js` picks
+by platform at require time, and a platform with no binary falls back to the
+TypeScript implementation. The native package publishes before `@eslint/jskit`
+so the pinned version exists first.
 
 Publishing goes through npm trusted publishing, which authenticates with the
 workflow's OIDC token, so no npm secret is stored. The one secret the workflow

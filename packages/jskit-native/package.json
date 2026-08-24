@@ -1,0 +1,42 @@
+{
+  "name": "@eslint/jskit-native",
+  "version": "0.0.0",
+  "description": "Native (Rust) implementation of @eslint/jskit's parse(), analyze(), and createGraph(), producing the same binary buffers.",
+  "type": "commonjs",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "*.node"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eslint/jsnext.git",
+    "directory": "packages/jskit-native"
+  },
+  "bugs": {
+    "url": "https://github.com/eslint/jsnext/issues"
+  },
+  "homepage": "https://github.com/eslint/jsnext/tree/main/packages/jskit-native#readme",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test test.mjs"
+  },
+  "keywords": [
+    "parser",
+    "scope",
+    "control-flow",
+    "javascript",
+    "typescript",
+    "eslint",
+    "native",
+    "napi"
+  ],
+  "license": "Apache-2.0",
+  "engines": {
+    "node": "^22.13.0 || >=24"
+  }
+}

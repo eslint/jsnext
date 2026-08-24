@@ -31,6 +31,8 @@ export * from "./slots.js";
  * public surface rather than an implementation detail of `toAST()`.
  */
 export { decodeEscapes, decodeNumber } from "./values.js";
+export { native, nativeParse, setNative } from "./native.js";
+export type { NativeBinding } from "./native.js";
 
 /* Which properties of a node hold its children, for anything walking a tree. */
 export { VISITOR_KEYS } from "./visitor-keys.js";

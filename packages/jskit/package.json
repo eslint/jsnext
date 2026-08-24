@@ -9,6 +9,7 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "node": "./dist/jskit-node.js",
       "import": "./dist/jskit.js"
     }
   },
@@ -28,6 +29,9 @@
   "publishConfig": {
     "access": "public",
     "provenance": true
+  },
+  "optionalDependencies": {
+    "@eslint/jskit-native": "0.0.0"
   },
   "scripts": {
     "build": "node scripts/build.js && tsc -p tsconfig.build.json",

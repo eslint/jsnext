@@ -11,14 +11,15 @@ permissions:
 jobs:
     release-please:
         runs-on: ubuntu-latest
+        outputs:
+            releases_created: ${{ steps.release.outputs.releases_created }}
+            jskit_released: ${{ steps.release.outputs['packages/jskit--release_created'] }}
+            native_released: ${{ steps.release.outputs['packages/jskit-native--release_created'] }}
         permissions:
             # release-please opens and updates the release pull request, and
             # tags the release when that pull request merges.
             contents: write
             pull-requests: write
-            # npm provenance is signed with a GitHub OIDC token, which is also
-            # what npm trusted publishing authenticates with.
-            id-token: write
         steps:
             - uses: googleapis/release-please-action@v4
               id: release
@@ -35,14 +36,79 @@ jobs:
               run: |
                   echo "releases_created: ${{ steps.release.outputs.releases_created }}"
                   echo "packages/jskit--release_created: ${{ steps.release.outputs['packages/jskit--release_created'] }}"
+                  echo "packages/jskit-native--release_created: ${{ steps.release.outputs['packages/jskit-native--release_created'] }}"
 
-            # Everything below runs only on the push that merged the release
-            # pull request, which is the push release-please turns into a tag.
+    # One native binary per platform, each built on a runner of that platform
+    # — nothing is cross-compiled — and each verified before it is uploaded:
+    # the parity tests in packages/jskit-native/test.mjs assert that the
+    # binary produces byte-identical buffers to the TypeScript implementation
+    # on that machine. A binary that was never exercised on its own platform
+    # does not get published.
+    build-native:
+        needs: release-please
+        if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - os: ubuntu-latest
+                      binary: jskit.linux-x64-gnu.node
+                    - os: ubuntu-24.04-arm
+                      binary: jskit.linux-arm64-gnu.node
+                    - os: macos-13
+                      binary: jskit.darwin-x64.node
+                    - os: macos-latest
+                      binary: jskit.darwin-arm64.node
+                    - os: windows-latest
+                      binary: jskit.win32-x64.node
+        runs-on: ${{ matrix.os }}
+        steps:
             - uses: actions/checkout@v7
-              if: ${{ steps.release.outputs.releases_created == 'true' }}
 
             - uses: actions/setup-node@v7
-              if: ${{ steps.release.outputs.releases_created == 'true' }}
+              with:
+                  node-version: lts/*
+
+            # Pinned by commit SHA, not by tag, for the same reason
+            # `dorny/paths-filter` is in ci.yml: a tag can be moved to point
+            # at different code, and this workflow publishes to npm.
+            - name: Install Rust
+              uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+
+            # `npm ci` also runs the root `prepare`, which builds the
+            # toolkit's dist/ — the parity tests load the package through it.
+            - name: Install Packages
+              run: npm ci
+
+            - name: Build the Native Binary
+              run: npm run build --workspace=@eslint/jskit-native
+
+            - name: Verify Parity Against the TypeScript Implementation
+              run: npm test --workspace=@eslint/jskit-native
+
+            - uses: actions/upload-artifact@v7
+              with:
+                  name: ${{ matrix.binary }}
+                  path: packages/jskit-native/${{ matrix.binary }}
+                  if-no-files-found: error
+
+    # The two packages ship together: the buffer formats are one contract
+    # with two implementations, and `@eslint/jskit` pins the exact
+    # `@eslint/jskit-native` version it was released beside (the
+    # linked-versions plugin keeps the two version numbers equal).
+    publish:
+        needs: [release-please, build-native]
+        if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            # npm provenance is signed with a GitHub OIDC token, which is also
+            # what npm trusted publishing authenticates with.
+            id-token: write
+        steps:
+            - uses: actions/checkout@v7
+
+            - uses: actions/setup-node@v7
               with:
                   node-version: lts/*
                   registry-url: "https://registry.npmjs.org"
@@ -50,17 +116,33 @@ jobs:
             # Trusted publishing needs npm 11.5.1 or later, which is newer than
             # what the Node runner ships.
             - name: Update npm
-              if: ${{ steps.release.outputs.releases_created == 'true' }}
               run: npm install -g npm@latest
 
             # This also runs the root `prepare`, which builds the toolkit.
             - name: Install Packages
-              if: ${{ steps.release.outputs.releases_created == 'true' }}
               run: npm ci
 
-            # No `NODE_AUTH_TOKEN`: the package is published through npm trusted
-            # publishing, which authenticates with the OIDC token granted by the
-            # `id-token: write` permission above and requires no stored secret.
+            # Every platform's binary lands beside index.js, so the one
+            # published package carries all of them and the loader picks by
+            # platform at require time.
+            - uses: actions/download-artifact@v8
+              with:
+                  path: packages/jskit-native
+                  merge-multiple: true
+
+            - name: List the Binaries Being Published
+              run: ls -la packages/jskit-native/*.node
+
+            # No `NODE_AUTH_TOKEN`: both packages are published through npm
+            # trusted publishing, which authenticates with the OIDC token
+            # granted by the `id-token: write` permission above and requires
+            # no stored secret. The native package goes first so that the
+            # exact version `@eslint/jskit` pins exists by the time anyone
+            # installs it.
+            - name: Publish @eslint/jskit-native
+              if: ${{ needs.release-please.outputs.native_released == 'true' }}
+              run: npm publish --provenance --workspace=@eslint/jskit-native
+
             - name: Publish @eslint/jskit
-              if: ${{ steps.release.outputs['packages/jskit--release_created'] == 'true' }}
+              if: ${{ needs.release-please.outputs.jskit_released == 'true' }}
               run: npm publish --provenance --workspace=@eslint/jskit

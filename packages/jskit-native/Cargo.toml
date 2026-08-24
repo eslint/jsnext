@@ -1,0 +1,12 @@
+[workspace]
+resolver = "2"
+members = ["crates/jskit-core", "crates/jskit-napi"]
+
+[workspace.package]
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/eslint/jskit"
+
+[profile.release]
+lto = true
+codegen-units = 1

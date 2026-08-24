@@ -33,6 +33,7 @@ import {
 	T_LINE_COMMENT,
 } from "./token-kinds.js";
 import { validateAst, type ValidationProblem } from "./validate.js";
+import { native, nativeParse } from "./native.js";
 import { decodeEscapes } from "./values.js";
 
 /**
@@ -280,6 +281,16 @@ export interface ParseOptions {
  * @throws {ParseError} When the source contains a syntax error.
  */
 export function parse(code: string, options: ParseOptions = {}): ParseResult {
+	/*
+	 * The native implementation writes the same buffer, so when a binding is
+	 * registered — the Node entry point does it when `@eslint/jskit-native`
+	 * is installed and built — the TypeScript parser below never runs. In
+	 * the browser bundle nothing registers and this is one `null` check.
+	 */
+	if (native !== null) {
+		return nativeParse(native, code, options);
+	}
+
 	const sourceType = options.sourceType ?? "module";
 	const parser = new Parser(code, sourceType === "module", options.jsx);
 	const root = parser.parseProgram();

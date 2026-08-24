@@ -13,3 +13,10 @@ packages/jskit/benchmarks/*/results.svg
 
 # What `npm run test:coverage` writes. Regenerable in one command.
 coverage
+
+# Cargo's build directory and the compiled Node-API binary, both produced by
+# `npm run build --workspace=@eslint/jskit-native`. The binary is
+# platform-specific; a machine without Rust runs the TypeScript
+# implementation instead.
+packages/jskit-native/target/
+packages/jskit-native/*.node

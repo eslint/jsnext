@@ -372,6 +372,104 @@ async function contenders(dialect) {
 		},
 	];
 
+	/*
+	 * The native (Rust) implementation, measured through the Node entry
+	 * point — which is exactly what a Node consumer gets. The binding writes
+	 * byte-identical buffers, so the rows mirror the TypeScript ones: the
+	 * `parse()` row is the Rust code alone, and the `toAST()` row is the
+	 * Rust parse with the TypeScript `validate()` and decoder reading its
+	 * buffer, since neither of those crosses into native code.
+	 */
+	const nativeBinding = await import("@eslint/jskit-native")
+		.then(loaded => loaded.default)
+		.catch(() => null);
+
+	if (nativeBinding === null) {
+		console.error(
+			"  (skipping the jskit native rows: @eslint/jskit-native is not " +
+				'built; run "npm run build --workspace=@eslint/jskit-native")',
+		);
+	} else {
+		const jskitNative = await import("../../dist/jskit-node.js");
+
+		list.push(
+			{
+				key: "jskit-native-parse",
+				name: "jskit (native): parse()",
+				note: "Rust; binary AST buffer, no tokens, no ESTree",
+				tier: AST,
+				run: code => jskitNative.parse(code, jskitParseOptions),
+			},
+			{
+				key: "jskit-native-to-ast",
+				name: "jskit (native): parse() + validate() + toAST()",
+				note: "Rust parse; TypeScript validate and decode",
+				tier: AST,
+				run: code => {
+					const result = jskitNative.parse(code, jskitTokenOptions);
+
+					jskitNative.validate(result, jskitOptions);
+
+					return jskitNative.toAST(result, jskitAstOptions);
+				},
+			},
+			{
+				key: "jskit-native-eslint",
+				name: "jskit (native): eslintParser.parse()",
+				tier: ESLINT,
+				run: code =>
+					jskitNative.eslintParser.parse(code, {
+						sourceType: "module",
+						filePath:
+							dialect === "ts" ? "benchmark.ts" : "benchmark.js",
+						ecmaFeatures: { jsx: dialect === "jsx" },
+					}),
+			},
+		);
+	}
+
+	/*
+	 * `oxc-parser` is the other native option: a Rust parser behind Node-API
+	 * bindings. Its default path serializes the whole AST in Rust and
+	 * deserializes it into JavaScript objects, so it lands beside the
+	 * `toAST()` rows; the raw-transfer path hands back a lazy tree over a
+	 * shared buffer without materializing nodes, which is the analogue of
+	 * `parse()` returning a buffer. It reports syntax errors as data rather
+	 * than throwing, and produces no token list, which is why it has no
+	 * ESLint-tier row.
+	 */
+	const oxc = await import("oxc-parser").catch(() => null);
+
+	if (oxc !== null) {
+		const oxcFilename =
+			dialect === "ts"
+				? "benchmark.ts"
+				: dialect === "jsx"
+					? "benchmark.jsx"
+					: "benchmark.js";
+
+		list.push({
+			key: "oxc",
+			name: "oxc-parser",
+			note: "native (Rust); tree deserialized into JS objects",
+			tier: AST,
+			run: code => oxc.parseSync(oxcFilename, code),
+		});
+
+		if (oxc.rawTransferSupported()) {
+			list.push({
+				key: "oxc-raw",
+				name: "oxc-parser (raw transfer)",
+				note: "native (Rust); lazy tree, nodes not materialized",
+				tier: AST,
+				run: code =>
+					oxc.parseSync(oxcFilename, code, {
+						experimentalRawTransfer: true,
+					}),
+			});
+		}
+	}
+
 	// `espree` and `acorn` have nothing to say about TypeScript.
 	if (dialect !== "ts") {
 		const espree = await import("espree");

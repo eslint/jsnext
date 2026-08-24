@@ -18,7 +18,7 @@
  *   files.
  */
 
-import { AstReader, supplySource } from "../parse/index.js";
+import { AstReader, native, supplySource } from "../parse/index.js";
 import { ScopeBufferReader } from "../scope/index.js";
 import { FlowBuilder } from "./flow-builder.js";
 import { FlowWalker } from "./flow-walker.js";
@@ -49,6 +49,20 @@ export interface CreateGraphOptions {
 	 * independent of what the program happens to contain.
 	 */
 	text?: string;
+}
+
+/**
+ * The source text a reader can reach, or `null` when the buffer carries none
+ * and none is cached — the one case the reader reports by throwing.
+ * @param reader The reader over the parse buffer.
+ * @returns The text, or `null`.
+ */
+function sourceOrNull(reader: AstReader): string | null {
+	try {
+		return reader.source;
+	} catch {
+		return null;
+	}
 }
 
 /**
@@ -87,6 +101,25 @@ export function createGraph(
 		throw new TypeError(
 			"The scope buffer stores tree handles; createGraph() needs a buffer from analyze() over the same parse result.",
 		);
+	}
+
+	/*
+	 * The native implementation writes the same buffer, so when a binding is
+	 * registered the TypeScript walk below never runs. The binding needs the
+	 * source text up front, where this walk reads it only to match labels —
+	 * so a buffer whose text is unreachable falls through to the TypeScript
+	 * path, which fails only if the program actually contains labels.
+	 */
+	if (native !== null) {
+		const text = sourceOrNull(reader);
+
+		if (text !== null) {
+			return native.createGraph(
+				parsed as ArrayBuffer,
+				scope as ArrayBuffer,
+				text,
+			);
+		}
 	}
 
 	const builder = new FlowBuilder();

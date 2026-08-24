@@ -38,9 +38,16 @@ import { readFileSync, writeFileSync } from "node:fs";
  */
 const ROWS = {
 	ast: [
+		["jskit-native-parse", "jskit (native) — parse()"],
 		["jskit-parse", "jskit — parse()"],
 		["jskit-validate", "jskit — parse() + validate()"],
+		[
+			"jskit-native-to-ast",
+			"jskit (native) — parse() + validate() + toAST()",
+		],
 		["jskit-to-ast", "jskit — parse() + validate() + toAST()"],
+		["oxc-raw", "oxc-parser (raw transfer)"],
+		["oxc", "oxc-parser"],
 		["babel", "@babel/parser"],
 		["acorn", "acorn"],
 		["meriyah", "meriyah"],
@@ -48,6 +55,7 @@ const ROWS = {
 		["typescript-eslint", "@typescript-eslint/parser"],
 	],
 	eslint: [
+		["jskit-native-eslint", "jskit (native) — eslintParser.parse()"],
 		["jskit-eslint", "jskit — eslintParser.parse()"],
 		["meriyah", "meriyah"],
 		["espree", "espree"],

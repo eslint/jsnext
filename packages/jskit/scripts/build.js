@@ -40,3 +40,17 @@ await build({
 	minify: true,
 	sourcemap: false,
 });
+
+/*
+ * The Node entry differs from the neutral one only in trying to load the
+ * native binding, which needs `node:module`. The binding package stays
+ * external so that its `require()` runs at runtime, where it can miss —
+ * loading falls back to the TypeScript implementation in the same bundle.
+ */
+await build({
+	...shared,
+	entryPoints: ["src/index-node.ts"],
+	platform: "node",
+	external: ["@eslint/jskit-native"],
+	outfile: "dist/jskit-node.js",
+});

@@ -26,7 +26,12 @@
  * not split.
  */
 
-import { AstReader, supplySource, type ParseResult } from "../parse/index.js";
+import {
+	AstReader,
+	native,
+	supplySource,
+	type ParseResult,
+} from "../parse/index.js";
 import { BinaryAst } from "./binary-ast.js";
 import { EstreeAst, type EsTreeNode } from "./estree-ast.js";
 import { resolveOptions, type AnalyzeOptions } from "./options.js";
@@ -121,6 +126,31 @@ export function analyze(
 	}
 
 	const reader = new AstReader(result);
+
+	/*
+	 * The native implementation writes the same buffer, so when a binding is
+	 * registered the TypeScript walk below never runs. The source text is
+	 * resolved here — from the cache or the embedded region, exactly as
+	 * `BinaryAst` would — because the binding cannot reach this process's
+	 * cache on its own.
+	 */
+	if (native !== null) {
+		const resolved = resolveOptions(options);
+
+		return native.analyze(result, reader.source, {
+			sourceType: resolved.sourceType,
+			dialect: resolved.dialect,
+			jsx: resolved.jsx,
+			impliedStrict: resolved.impliedStrict,
+			globalReturn: resolved.globalReturn,
+			ignoreEval: resolved.ignoreEval,
+			globals:
+				resolved.globals === null ? undefined : [...resolved.globals],
+			jsxPragma: resolved.jsxPragma ?? undefined,
+			jsxFragmentName: resolved.jsxFragmentName ?? undefined,
+		});
+	}
+
 	const builder = new ScopeBuilder(
 		new BinaryAst(reader),
 		resolveOptions(options),
