@@ -15,10 +15,11 @@
  * The parser appears three times in the AST tier because its phases are
  * separable, and the gaps between the rows are the point: `parse()` alone
  * produces only the binary buffers, `validate()` adds the context-dependent
- * diagnostics, and `toAST()` materializes an ESTree tree. The third row runs
- * all three phases — validation is not part of `toAST()`, and the reference
- * parsers report early errors — so it is the only row doing the same job as
- * `espree`, `acorn`, or `@babel/parser`.
+ * diagnostics, and `toAST()` materializes an ESTree tree — and only the
+ * tree, since no other contender in the tier builds token lists. Composing
+ * rows prices a pipeline: `parse()` + `validate()` + a token-carrying
+ * `toAST()` is the job `espree` does with `tokens: true`, and the ESLint
+ * tier measures exactly that composition with positions added.
  *
  * Fairness notes worth knowing before quoting a number:
  *
@@ -312,9 +313,6 @@ async function contenders(dialect) {
 	 * what every other contender gets through its own JSX switch.
 	 */
 	const jskitParseOptions = { jsx: dialect === "jsx" };
-
-	// `toAST()` reports tokens and comments, so its parse must store them.
-	const jskitTokenOptions = { ...jskitParseOptions, tokens: true };
 	const jskitOptions = {
 		sourceType: "module",
 		dialect: dialect === "ts" ? "ts" : "js",
@@ -347,19 +345,21 @@ async function contenders(dialect) {
 				),
 		},
 		/*
-		 * Deliberately no `validate()` in this row: `toAST()` does not
-		 * validate, and neither do the other tree-producing contenders —
-		 * `oxc-parser`'s rows in particular report only what parsing itself
-		 * catches. The `validate()` row above prices that pass separately.
+		 * Deliberately no `validate()` and no `tokens` in this row: `toAST()`
+		 * does not validate, and none of the other tree-producing contenders
+		 * validate or materialize token lists here either — `espree` and
+		 * `acorn` build them only when asked, and `oxc-parser` never does.
+		 * The `validate()` row above prices that pass separately, and the
+		 * ESLint tier is where the token lists are part of the job.
 		 */
 		{
 			key: "jskit-to-ast",
 			name: "jskit: parse() + toAST()",
-			note: "full ESTree tree with tokens and comments, no validation",
+			note: "ESTree tree, no tokens, no validation",
 			tier: AST,
 			run: code =>
 				jskit.toAST(
-					jskit.parse(code, jskitTokenOptions),
+					jskit.parse(code, jskitParseOptions),
 					jskitAstOptions,
 				),
 		},
@@ -420,11 +420,11 @@ async function contenders(dialect) {
 			{
 				key: "jskit-native-to-ast",
 				name: "jskit (native): parse() + toAST()",
-				note: "Rust parse; generated TypeScript decoder",
+				note: "Rust parse; generated TypeScript decoder; no tokens",
 				tier: AST,
 				run: code =>
 					jskitNative.toAST(
-						jskitNative.parse(code, jskitTokenOptions),
+						jskitNative.parse(code, jskitParseOptions),
 						jskitAstOptions,
 					),
 			},

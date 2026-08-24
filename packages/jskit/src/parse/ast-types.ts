@@ -356,10 +356,12 @@ export type Statement =
 /**
  * The root node.
  *
- * `@types/estree` gives `comments` and `tokens` as optional, and separates a
- * leading directive out into a `Directive` interface. Neither matches what is
- * emitted: both properties are always set, and a directive is an ordinary
- * `ExpressionStatement` carrying a `directive` property.
+ * `@types/estree` separates a leading directive out into a `Directive`
+ * interface; here a directive is an ordinary `ExpressionStatement` carrying a
+ * `directive` property. `comments` and `tokens` are optional the same way
+ * they are optional there: both are present exactly when the buffer was
+ * parsed with `{ tokens: true }`, and absent otherwise — the shape `espree`
+ * produces on the same choice.
  */
 export interface Program extends NodeBase {
 	type: "Program";
@@ -371,10 +373,10 @@ export interface Program extends NodeBase {
 	sourceType: "script" | "module" | "commonjs";
 
 	/** Every comment in the source, in source order. */
-	comments: Token[];
+	comments?: Token[];
 
 	/** Every token in the source, in source order. */
-	tokens: Token[];
+	tokens?: Token[];
 }
 
 //-----------------------------------------------------------------------------

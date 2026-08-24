@@ -1005,8 +1005,12 @@ describe("the tokens option", () => {
 		expect(() => new TokenReader(parse(CODE))).toThrow(/tokens: true/u);
 	});
 
-	it("makes toAST() refuse rather than report a program with no tokens", () => {
-		expect(() => toAST(parse(CODE))).toThrow(/carries no tokens/u);
+	it("makes toAST() report the tree alone, the way espree does", () => {
+		const ast = toAST(parse(CODE));
+
+		expect(ast.body).toHaveLength(1);
+		expect("tokens" in ast).toBe(false);
+		expect("comments" in ast).toBe(false);
 	});
 
 	it("stores the tokens, comments included, when asked to", () => {

@@ -3,6 +3,8 @@
  */
 
 import {
+	PARSE_FLAG_TOKENS,
+	PARSE_HEADER_FLAGS,
 	SOURCE_TYPE_NAMES,
 	TF_HAS_ESCAPE,
 	TF_NEWLINE_BEFORE,
@@ -11,20 +13,19 @@ import {
 	readSourceType,
 	supplySource,
 } from "./binary.js";
-import { decodeEntities } from "./entities.js";
+import { clearEntityCache, decodeEntities } from "./entities.js";
 import { LineIndex, type SourceLocation } from "./locations.js";
 import { Parser } from "./parser.js";
 import { AstReader, TokenReader } from "./reader.js";
 import { decodeTree } from "./to-ast.js";
 import type { Program } from "./ast-types.js";
 import {
+	KIND_TOKEN_TEXT,
 	KIND_TOKEN_TYPE,
 	TOKEN_TYPE_NAMES,
 	TT_BLOCK_COMMENT,
 	TT_EOF,
-	TT_HASHBANG,
 	TT_IDENTIFIER,
-	TT_LINE_COMMENT,
 	TT_PRIVATE_IDENTIFIER,
 	TT_REGEXP,
 	T_BLOCK_COMMENT,
@@ -456,22 +457,37 @@ export function buildAst(
 	}
 
 	const reader = new AstReader(result);
-	const tokenReader = new TokenReader(result);
 	const sourceType = resolveSourceType(result, options.sourceType);
 	const program = decodeTree(
 		reader,
 		(options.dialect ?? "ts") === "ts",
 		lines,
 	);
-	const { tokens, comments } = decodeTokens(
-		tokenReader,
-		reader.source,
-		lines,
-	);
 
 	program.sourceType = sourceType;
-	program.comments = comments;
-	program.tokens = tokens;
+
+	/*
+	 * The buffer decides whether the tree reports tokens: one parsed with
+	 * `{ tokens: true }` carries the records and the `Program` carries the
+	 * arrays, and one parsed without gets neither property — the shape
+	 * `espree` produces on the same choice. Materializing them is a third or
+	 * so of a decode, which is why a consumer that wants only the tree asks
+	 * `parse()` to skip them rather than asking here.
+	 */
+	if ((reader.words[PARSE_HEADER_FLAGS] & PARSE_FLAG_TOKENS) !== 0) {
+		const { tokens, comments } = decodeTokens(
+			new TokenReader(result),
+			reader.source,
+			lines,
+		);
+
+		program.comments = comments;
+		program.tokens = tokens;
+	}
+
+	// Both passes above resolve JSX entities; the cache holds slices of the
+	// source text, so it must not outlive the decode that filled it.
+	clearEntityCache();
 
 	/*
 	 * The decoder builds a node by assigning to a bag of properties, which no
@@ -540,31 +556,54 @@ export function decodeTokens(
 ): { tokens: Token[]; comments: Token[] } {
 	const tokens: Token[] = [];
 	const comments: Token[] = [];
+	const words = reader.words;
+	const recordWords = reader.recordWords;
+	const last = reader.base + reader.count * recordWords;
 
-	for (let i = 0; i < reader.count; i++) {
-		const kind = reader.kind(i);
+	for (let offset = reader.base; offset < last; offset += recordWords) {
+		const kindAndFlags = words[offset + 2];
+		const kind = kindAndFlags & 0xffff;
+
+		/*
+		 * Every punctuator and keyword spells fixed text — a keyword written
+		 * with escapes is tokenized as a plain identifier — so the common run
+		 * of tokens shares one string per kind and never slices the source.
+		 */
+		const fixed = KIND_TOKEN_TEXT[kind];
+
+		if (fixed.length !== 0) {
+			tokens.push(
+				makeToken(
+					lines,
+					TOKEN_TYPE_NAMES[KIND_TOKEN_TYPE[kind]],
+					fixed,
+					words[offset],
+					words[offset + 1],
+				),
+			);
+			continue;
+		}
+
 		const type = KIND_TOKEN_TYPE[kind];
 
 		if (type === TT_EOF) {
 			continue;
 		}
 
-		const start = reader.start(i);
-		const end = reader.end(i);
+		const start = words[offset];
+		const end = words[offset + 1];
 
 		if (
 			kind === T_LINE_COMMENT ||
 			kind === T_BLOCK_COMMENT ||
 			kind === T_HASHBANG
 		) {
-			const trim =
-				type === TT_LINE_COMMENT || type === TT_HASHBANG ? 2 : 2;
 			comments.push(
 				makeToken(
 					lines,
 					TOKEN_TYPE_NAMES[type],
 					source.slice(
-						start + trim,
+						start + 2,
 						type === TT_BLOCK_COMMENT ? end - 2 : end,
 					),
 					start,
@@ -588,7 +627,7 @@ export function decodeTokens(
 			value = decodeEntities(value);
 		} else if (
 			(type === TT_IDENTIFIER || type === TT_PRIVATE_IDENTIFIER) &&
-			(reader.flags(i) & TF_HAS_ESCAPE) !== 0
+			((kindAndFlags >>> 16) & TF_HAS_ESCAPE) !== 0
 		) {
 			/*
 			 * A name written with unicode escapes is reported by the name it
@@ -607,7 +646,7 @@ export function decodeTokens(
 		);
 
 		if (type === TT_REGEXP) {
-			const patternEnd = reader.extra(i);
+			const patternEnd = words[offset + 3];
 
 			token.regex = {
 				pattern: source.slice(start + 1, patternEnd),

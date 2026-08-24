@@ -264,6 +264,26 @@ const NAMED_ENTITIES: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Texts already resolved during the decode in progress.
+ *
+ * The same text is resolved more than once per tree — a `JSXText` run is
+ * decoded for its node and again for its token, and real JSX repeats the
+ * same few entity-bearing strings — so finished answers are kept until
+ * `clearEntityCache()` ends the decode. The strings are slices of the source
+ * being decoded, which is why the cache must not outlive the call that
+ * filled it: a slice can pin its parent string.
+ */
+const ENTITY_CACHE = /* @__PURE__ */ new Map<string, string>();
+
+/**
+ * Empties the entity cache, releasing the source text it points into.
+ * @returns Nothing.
+ */
+export function clearEntityCache(): void {
+	ENTITY_CACHE.clear();
+}
+
+/**
  * Resolves the entity references in a run of JSX text.
  *
  * JSX resolves `&amp;`, `&#65;`, and `&#x41;`, and leaves anything that does
@@ -274,6 +294,12 @@ const NAMED_ENTITIES: Readonly<Record<string, string>> = {
 export function decodeEntities(raw: string): string {
 	if (raw.indexOf("&") === -1) {
 		return raw;
+	}
+
+	const cached = ENTITY_CACHE.get(raw);
+
+	if (cached !== undefined) {
+		return cached;
 	}
 
 	let result = "";
@@ -323,5 +349,15 @@ export function decodeEntities(raw: string): string {
 		index = end + 1;
 	}
 
-	return result + raw.slice(index);
+	const decoded = result + raw.slice(index);
+
+	// A pathological file could hold thousands of distinct entity texts;
+	// starting over keeps the cache small without a use-count to maintain.
+	if (ENTITY_CACHE.size >= 512) {
+		ENTITY_CACHE.clear();
+	}
+
+	ENTITY_CACHE.set(raw, decoded);
+
+	return decoded;
 }

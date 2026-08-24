@@ -428,6 +428,26 @@ export const TOKEN_TYPE_NAMES: readonly string[] = [
  */
 export const KIND_TOKEN_TYPE = new Uint8Array(KIND_COUNT);
 
+/**
+ * The exact source text of every fixed-spelling kind — the punctuators and
+ * the keywords — and `""` for every kind whose text varies token by token.
+ *
+ * A keyword kind's spelling really is its text: a word written with escapes
+ * is tokenized as `T_IDENT`, never as a keyword kind, so `T_return` can only
+ * ever cover the seven characters `return`. The token decoder leans on this
+ * to hand out one shared string per kind instead of slicing the source for
+ * every punctuator and keyword.
+ */
+export const KIND_TOKEN_TEXT: readonly string[] = /* @__PURE__ */ (() => {
+	const table: string[] = [];
+
+	for (let kind = 0; kind < KIND_COUNT; kind++) {
+		table.push("");
+	}
+
+	return table;
+})();
+
 //-----------------------------------------------------------------------------
 // Parser Classification Tables
 //-----------------------------------------------------------------------------
@@ -473,10 +493,14 @@ export const KIND_KEYWORD_FLAGS = new Uint8Array(KIND_COUNT);
 	// Every punctuator and keyword defaults to its obvious coarse type.
 	for (let kind = PUNCT_FIRST; kind <= PUNCT_LAST; kind++) {
 		KIND_TOKEN_TYPE[kind] = TT_PUNCTUATOR;
+		(KIND_TOKEN_TEXT as string[])[kind] =
+			PUNCTUATOR_NAMES[kind - PUNCT_FIRST];
 	}
 
 	for (let kind = KEYWORD_FIRST; kind <= KEYWORD_LAST; kind++) {
 		KIND_TOKEN_TYPE[kind] = TT_IDENTIFIER;
+		(KIND_TOKEN_TEXT as string[])[kind] =
+			KEYWORD_NAMES[kind - KEYWORD_FIRST];
 	}
 
 	KIND_TOKEN_TYPE[T_IDENT] = TT_IDENTIFIER;

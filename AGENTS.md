@@ -658,6 +658,11 @@ add to it or "fix" an output to match a reference.
 - **`toAST()` nodes carry `start` and `end` but never `range` or `loc`.** Only
   the ESLint parser object adds those, because ESLint refuses an AST without
   them. There is a test pinning this.
+- **`toAST()`'s `Program` carries `tokens` and `comments` exactly when the
+  buffer was parsed with `{ tokens: true }`**, and neither property otherwise —
+  the shape `espree` produces on the same choice. Materializing the lists is a
+  third or so of a decode, so the AST-tier benchmark row leaves them off, the
+  same as every other contender in that tier.
 - In `dialect: "js"` mode the TypeScript-only properties are omitted entirely,
   not set to `null`.
 - Those three facts are also the contract `src/parse/ast-types.ts` encodes,

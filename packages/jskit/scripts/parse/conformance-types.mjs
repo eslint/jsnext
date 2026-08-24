@@ -533,6 +533,19 @@ for (const [type, group] of declared) {
 				continue;
 			}
 
+			/*
+			 * `Program.tokens` and `.comments` are present exactly when the
+			 * parse stored tokens, and every sample here parses with
+			 * `tokens: true`, so the pair would read as required. Their
+			 * optionality is the parse option's, not the tree's.
+			 */
+			if (
+				type === "Program" &&
+				(key === "tokens" || key === "comments")
+			) {
+				continue;
+			}
+
 			const always = ["js", "ts"].every(dialect => {
 				const seen = stats[dialect].get(type);
 

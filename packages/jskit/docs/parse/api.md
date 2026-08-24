@@ -113,11 +113,14 @@ whether the JSX that parsed is _allowed_.
 
 The tokens are roughly a third of the buffer, and the consumers that read only
 the tree — `validate()`, scope analysis, control flow analysis — never look at
-them, so they are only stored when `tokens` asks for them. `TokenReader` — and
-so `toAST()`, whose `Program` reports the token and comment lists — throws on
-a buffer parsed without it, rather than reporting a program with no tokens in
-it. The ESLint parser object always asks for them, because ESLint's rules read
-tokens as freely as nodes.
+them, so they are only stored when `tokens` asks for them. `TokenReader`
+throws on a buffer parsed without it, rather than reporting a program with no
+tokens in it. `toAST()` follows the buffer instead: its `Program` carries the
+token and comment lists exactly when the records are there, and neither
+property otherwise — the shape `espree` produces on the same choice, and the
+reason a consumer that wants only the tree skips both the storing and the
+materializing by leaving `tokens` off. The ESLint parser object always asks
+for them, because ESLint's rules read tokens as freely as nodes.
 
 Reading text off a buffer works either way in the process that parsed, because
 the original string is cached against the buffer. Turn `source` on when
@@ -198,9 +201,12 @@ It currently reports:
 
 ### `toAST(result, options)`
 
-Returns the ESTree `Program` node. The `Program` also carries `tokens` and
-`comments`, which is what ESLint reads — so it needs a buffer parsed with
-`{ tokens: true }`, and throws on one that was not.
+Returns the ESTree `Program` node. When the buffer was parsed with
+`{ tokens: true }`, the `Program` also carries `tokens` and `comments` —
+which is what ESLint reads. On a buffer parsed without them it carries
+neither property and reports the tree alone, which is the smaller job to ask
+for when tokens are not wanted: materializing them is a third or so of a
+decode.
 
 Decoding is all it does: nothing here checks whether the program is
 _allowed_. Validation is a separate pass over the same buffer, so run

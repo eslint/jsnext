@@ -159,13 +159,19 @@ function addProgramExtras(shape) {
 			node.type === "FunctionDeclaration" && node.id?.name === "buildAst",
 	)[0];
 
-	const assignments = find(
-		buildAst,
-		node =>
-			node.type === "AssignmentExpression" &&
-			node.left.type === "MemberExpression" &&
-			node.left.object.name === "program" &&
-			!node.left.computed,
+	const isProgramAssignment = node =>
+		node.type === "AssignmentExpression" &&
+		node.left.type === "MemberExpression" &&
+		node.left.object.name === "program" &&
+		!node.left.computed;
+	const assignments = find(buildAst, isProgramAssignment);
+
+	// An assignment behind a condition — the token and comment lists, which
+	// only a token-carrying buffer gets — declares an optional property.
+	const conditional = new Set(
+		find(buildAst, node => node.type === "IfStatement").flatMap(branch =>
+			find(branch, isProgramAssignment),
+		),
 	);
 
 	for (const assignment of assignments) {
@@ -176,7 +182,10 @@ function addProgramExtras(shape) {
 			continue;
 		}
 
-		shape.set(name, { optional: false, kind: "unknown" });
+		shape.set(name, {
+			optional: conditional.has(assignment),
+			kind: "unknown",
+		});
 	}
 
 	return shape;

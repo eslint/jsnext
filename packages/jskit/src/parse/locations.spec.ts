@@ -123,5 +123,41 @@ describe("LineIndex", () => {
 				end: { line: 2, column: 3 },
 			});
 		});
+
+		it("agrees with position() for every pair, in any lookup order", () => {
+			/*
+			 * `location()` searches for `end` only below `start`'s line and
+			 * leaves the cursor where `start` put it, so it has to be checked
+			 * against the definition — two independent `position()` calls —
+			 * across every pair, not just the ascending order the decoder
+			 * happens to use. Lines of length 0, 1, and 2 put line starts on
+			 * adjacent offsets, which is where an off-by-one would live.
+			 */
+			const jagged = new Uint32Array([0, 1, 2, 4, 4, 5, 8]);
+			const oracle = new LineIndex(jagged);
+			const pairs = [];
+
+			for (let start = 0; start <= 9; start++) {
+				for (let end = start; end <= 9; end++) {
+					pairs.push([start, end]);
+				}
+			}
+
+			// Shuffle deterministically so the cursor sees hostile orders.
+			for (let i = pairs.length - 1; i > 0; i--) {
+				const j = (i * 31) % (i + 1);
+
+				[pairs[i], pairs[j]] = [pairs[j], pairs[i]];
+			}
+
+			const index = new LineIndex(jagged);
+
+			for (const [start, end] of pairs) {
+				expect(index.location(start, end)).toEqual({
+					start: oracle.position(start),
+					end: oracle.position(end),
+				});
+			}
+		});
 	});
 });

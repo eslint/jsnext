@@ -113,11 +113,45 @@ export class LineIndex {
 
 	/**
 	 * Converts a pair of offsets into an ESTree location.
+	 *
+	 * The `end` lookup deliberately leaves the cursor alone. Nodes are decoded
+	 * in pre-order and tokens in source order, so the `start` offsets arrive
+	 * ascending and keep the cursor hot — but a parent node's `end` sits far
+	 * ahead of the next node's `start`, so letting it move the cursor would
+	 * turn nearly every later lookup into a miss. Instead `end` searches only
+	 * the lines from `start`'s downward, which is also what makes the common
+	 * single-line range two comparisons in total.
 	 * @param start The 0-based offset where the range begins.
-	 * @param end The 0-based offset where the range ends.
+	 * @param end The 0-based offset where the range ends; never before
+	 *      `start`.
 	 * @returns The positions of both offsets.
 	 */
 	location(start: number, end: number): SourceLocation {
-		return { start: this.position(start), end: this.position(end) };
+		const starts = this.lineStarts;
+		const startIndex = this.lineIndex(start);
+		let low = startIndex;
+
+		if (startIndex + 1 < starts.length && end >= starts[startIndex + 1]) {
+			let high = starts.length - 1;
+
+			// Binary search for the last line start at or before the offset.
+			while (low < high) {
+				const middle = (low + high + 1) >> 1;
+
+				if (starts[middle] <= end) {
+					low = middle;
+				} else {
+					high = middle - 1;
+				}
+			}
+		}
+
+		return {
+			start: {
+				line: startIndex + 1,
+				column: start - starts[startIndex],
+			},
+			end: { line: low + 1, column: end - starts[low] },
+		};
 	}
 }
