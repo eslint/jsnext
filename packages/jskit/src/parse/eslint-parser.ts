@@ -158,9 +158,15 @@ function buildProgram(code: string, options: EslintParserOptions): Program {
 	 * enabled" — a far better diagnostic than the type-assertion parse error
 	 * the strict reading would produce.
 	 */
+	/*
+	 * `tokens: true` because ESLint reads tokens as freely as nodes: the
+	 * `Program` this hands back must carry the full token and comment lists.
+	 */
 	const result = parse(
 		code,
-		jsxFor(options) ? { sourceType, jsx: true } : { sourceType },
+		jsxFor(options)
+			? { sourceType, jsx: true, tokens: true }
+			: { sourceType, tokens: true },
 	);
 	const lines = new LineIndex(readLineStarts(result));
 	const { ast, problems } = buildAst(

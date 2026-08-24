@@ -310,6 +310,9 @@ async function contenders(dialect) {
 	 * what every other contender gets through its own JSX switch.
 	 */
 	const jskitParseOptions = { jsx: dialect === "jsx" };
+
+	// `toAST()` reports tokens and comments, so its parse must store them.
+	const jskitTokenOptions = { ...jskitParseOptions, tokens: true };
 	const jskitOptions = {
 		sourceType: "module",
 		dialect: dialect === "ts" ? "ts" : "js",
@@ -320,7 +323,7 @@ async function contenders(dialect) {
 		{
 			key: "jskit-parse",
 			name: "jskit: parse()",
-			note: "binary AST and token buffers, no ESTree",
+			note: "binary AST buffer, no tokens, no ESTree",
 			tier: AST,
 			run: code => jskit.parse(code, jskitParseOptions),
 		},
@@ -340,7 +343,7 @@ async function contenders(dialect) {
 			name: "jskit: parse() + toAST()",
 			tier: AST,
 			run: code =>
-				jskit.toAST(jskit.parse(code, jskitParseOptions), jskitOptions),
+				jskit.toAST(jskit.parse(code, jskitTokenOptions), jskitOptions),
 		},
 		{
 			key: "jskit-eslint",

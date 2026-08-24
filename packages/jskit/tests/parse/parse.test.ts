@@ -22,6 +22,7 @@ import {
 	SLOT_TABLE,
 	toAST,
 	TokenReader,
+	validate,
 } from "../../src/index.js";
 
 describe("regular expressions after an automatic semicolon", () => {
@@ -31,7 +32,9 @@ describe("regular expressions after an automatic semicolon", () => {
 	 * @returns One `type:value` string per token.
 	 */
 	function tokens(code: string): string[] {
-		const { ast } = toAST(parse(code, { sourceType: "script" }));
+		const { ast } = toAST(
+			parse(code, { sourceType: "script", tokens: true }),
+		);
 
 		return (ast.tokens as { type: string; value: string }[]).map(
 			token => `${token.type}:${token.value}`,
@@ -84,7 +87,7 @@ describe("a line break inside a class body", () => {
 	 * @returns One entry per member.
 	 */
 	function members(code: string): string[] {
-		const { ast } = toAST(parse(code), { dialect: "js" });
+		const { ast } = toAST(parse(code, { tokens: true }), { dialect: "js" });
 		const body = (
 			ast.body as { body: { body: Record<string, never>[] } }[]
 		)[0].body.body;
@@ -197,7 +200,7 @@ describe("the `in` operator in a `for` head", () => {
 	});
 
 	it("still reads a bare `in` in the init as a for-in head", () => {
-		const { ast } = toAST(parse("for (a in b);"));
+		const { ast } = toAST(parse("for (a in b);", { tokens: true }));
 
 		expect((ast.body as { type: string }[])[0].type).toBe("ForInStatement");
 	});
@@ -205,7 +208,7 @@ describe("the `in` operator in a `for` head", () => {
 
 describe("parse()", () => {
 	it("returns one buffer holding everything the parse produced", () => {
-		const result = parse("var a = 1;");
+		const result = parse("var a = 1;", { tokens: true });
 
 		expect(result).toBeInstanceOf(ArrayBuffer);
 		expect(new AstReader(result).nodeCount).toBeGreaterThan(1);
@@ -233,7 +236,7 @@ describe("parse()", () => {
 	});
 
 	it("includes comments in the token region", () => {
-		const result = parse("// one\na; /* two */");
+		const result = parse("// one\na; /* two */", { tokens: true });
 		const reader = new TokenReader(result);
 
 		expect(reader.count).toBeGreaterThan(3);
@@ -711,7 +714,9 @@ describe("syntax errors", () => {
 
 describe("toAST()", () => {
 	it("attaches tokens and comments to the program", () => {
-		const { ast } = toAST(parse("// hi\na;"), { dialect: "js" });
+		const { ast } = toAST(parse("// hi\na;", { tokens: true }), {
+			dialect: "js",
+		});
 
 		expect(ast.sourceType).toBe("module");
 		expect(ast.comments).toHaveLength(1);
@@ -719,29 +724,37 @@ describe("toAST()", () => {
 	});
 
 	it("reports the requested source type", () => {
-		const { ast } = toAST(parse("a;", { sourceType: "script" }));
+		const { ast } = toAST(
+			parse("a;", { sourceType: "script", tokens: true }),
+		);
 
 		expect(ast.sourceType).toBe("script");
 	});
 
 	it("takes the source type from the buffer when none is given", () => {
-		expect(toAST(parse("a;")).ast.sourceType).toBe("module");
+		expect(toAST(parse("a;", { tokens: true })).ast.sourceType).toBe(
+			"module",
+		);
 		expect(
-			toAST(parse("a;", { sourceType: "commonjs" })).ast.sourceType,
+			toAST(parse("a;", { sourceType: "commonjs", tokens: true })).ast
+				.sourceType,
 		).toBe("commonjs");
 	});
 
 	it("narrows script to commonjs, which parse the same way", () => {
-		const { ast } = toAST(parse("a;", { sourceType: "script" }), {
-			sourceType: "commonjs",
-		});
+		const { ast } = toAST(
+			parse("a;", { sourceType: "script", tokens: true }),
+			{
+				sourceType: "commonjs",
+			},
+		);
 
 		expect(ast.sourceType).toBe("commonjs");
 	});
 
 	it("refuses a source type the buffer was not parsed as", () => {
 		expect(() =>
-			toAST(parse("a;", { sourceType: "module" }), {
+			toAST(parse("a;", { sourceType: "module", tokens: true }), {
 				sourceType: "script",
 			}),
 		).toThrow(/cannot be read as "script"/u);
@@ -749,7 +762,7 @@ describe("toAST()", () => {
 
 	it("returns validation errors alongside the AST", () => {
 		const { ast, errors } = toAST(
-			parse("import a from 'b';", { sourceType: "script" }),
+			parse("import a from 'b';", { sourceType: "script", tokens: true }),
 		);
 
 		expect(ast.type).toBe("Program");
@@ -764,7 +777,7 @@ describe("template literal types", () => {
 	 * @returns The aliased type node.
 	 */
 	function aliasedType(code: string): Record<string, never> {
-		const { ast } = toAST(parse(code));
+		const { ast } = toAST(parse(code, { tokens: true }));
 
 		return (
 			ast.body[0] as unknown as { typeAnnotation: Record<string, never> }
@@ -844,7 +857,7 @@ describe("program extent", () => {
 		code: string,
 		dialect: "js" | "ts",
 	): [number | undefined, number | undefined] {
-		const { ast } = toAST(parse(code), { dialect });
+		const { ast } = toAST(parse(code, { tokens: true }), { dialect });
 
 		return [ast.start, ast.end];
 	}
@@ -962,8 +975,8 @@ describe("embedSource", () => {
 	});
 
 	it("decodes to the same tree either way", () => {
-		expect(toAST(parse(CODE)).ast).toEqual(
-			toAST(parse(CODE, { embedSource: true })).ast,
+		expect(toAST(parse(CODE, { tokens: true })).ast).toEqual(
+			toAST(parse(CODE, { embedSource: true, tokens: true })).ast,
 		);
 	});
 
@@ -989,6 +1002,38 @@ describe("embedSource", () => {
 					Record<symbol, string | undefined>
 			)[key],
 		).toBeUndefined();
+	});
+});
+
+describe("the tokens option", () => {
+	const CODE = "// hi\nconst a = 1;";
+
+	it("stores no tokens unless asked to", () => {
+		expect(() => new TokenReader(parse(CODE))).toThrow(
+			/carries no tokens/u,
+		);
+		expect(() => new TokenReader(parse(CODE))).toThrow(/tokens: true/u);
+	});
+
+	it("makes toAST() refuse rather than report a program with no tokens", () => {
+		expect(() => toAST(parse(CODE))).toThrow(/carries no tokens/u);
+	});
+
+	it("stores the tokens, comments included, when asked to", () => {
+		const { ast } = toAST(parse(CODE, { tokens: true }));
+
+		expect((ast.tokens as unknown[]).length).toBeGreaterThan(0);
+		expect(ast.comments as unknown[]).toHaveLength(1);
+	});
+
+	it("leaves the buffer smaller without them", () => {
+		expect(parse(CODE).byteLength).toBeLessThan(
+			parse(CODE, { tokens: true }).byteLength,
+		);
+	});
+
+	it("still validates a buffer that carries none", () => {
+		expect(validate(parse("export const a: number = 1;"))).toEqual([]);
 	});
 });
 
@@ -1094,7 +1139,9 @@ describe("the jsx option", () => {
 	 * @returns The type of the initializer's node.
 	 */
 	function initializerType(code: string, jsx?: boolean): string {
-		const { ast } = toAST(parse(code, { jsx }), { dialect: "ts" });
+		const { ast } = toAST(parse(code, { jsx, tokens: true }), {
+			dialect: "ts",
+		});
 		const declaration = ast.body[0] as {
 			declarations: { init: { type: string } }[];
 		};

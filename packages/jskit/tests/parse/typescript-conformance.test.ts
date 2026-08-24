@@ -23,7 +23,7 @@ describe("typescript-eslint conformance", () => {
 				range: true,
 				loc: false,
 			});
-			const actual = toAST(parse(code), {
+			const actual = toAST(parse(code, { tokens: true }), {
 				sourceType: "module",
 				dialect: "ts",
 			}).ast;
@@ -56,7 +56,7 @@ describe("typescript-eslint conformance for JSX", () => {
 				loc: false,
 				jsx: true,
 			});
-			const actual = toAST(parse(code), {
+			const actual = toAST(parse(code, { tokens: true }), {
 				sourceType: "module",
 				dialect: "ts",
 				jsx: true,
@@ -71,14 +71,18 @@ describe("typescript-eslint conformance for JSX", () => {
 
 describe("javascript mode output", () => {
 	it("omits TypeScript-only properties", () => {
-		const { ast } = toAST(parse("import a from 'b';"), { dialect: "js" });
+		const { ast } = toAST(parse("import a from 'b';", { tokens: true }), {
+			dialect: "js",
+		});
 		const declaration = (ast.body as Record<string, unknown>[])[0];
 
 		expect(declaration.importKind).toBeUndefined();
 	});
 
 	it("includes TypeScript-only properties in TypeScript mode", () => {
-		const { ast } = toAST(parse("import a from 'b';"), { dialect: "ts" });
+		const { ast } = toAST(parse("import a from 'b';", { tokens: true }), {
+			dialect: "ts",
+		});
 		const declaration = (ast.body as Record<string, unknown>[])[0];
 
 		expect(declaration.importKind).toBe("value");

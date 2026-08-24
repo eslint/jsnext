@@ -37,9 +37,9 @@ import { decodeEscapes } from "./values.js";
 /**
  * Everything parsing produced, in one buffer.
  *
- * The encoded AST, the encoded token stream (comments included), the offset
- * each line begins at, and — when `embedSource` asked for it — a copy of the
- * source text all live in a single `ArrayBuffer`, so a parse result is one
+ * The encoded AST, the offset each line begins at, and — when the options
+ * asked for them — the encoded token stream (comments included) and a copy of
+ * the source text all live in a single `ArrayBuffer`, so a parse result is one
  * value to hold, one value to transfer, and one value to persist. Its layout
  * is `binary.ts`; `AstReader`, `TokenReader`, and `readLineStarts()` are how
  * the regions are read.
@@ -194,6 +194,21 @@ export interface ParseOptions {
 	embedSource?: boolean;
 
 	/**
+	 * Whether to store the token records (comments included) in the buffer.
+	 *
+	 * Defaults to `false`. The tokens are roughly a third of the buffer, and
+	 * the consumers that read only the tree — `validate()`, scope analysis,
+	 * control flow analysis — never look at them. Turn it on when the tokens
+	 * will be read back: `toAST()` reports them on the `Program`, and the
+	 * ESLint parser object always asks for them, because ESLint's rules read
+	 * tokens as freely as nodes.
+	 *
+	 * `TokenReader` — and so `toAST()` — throws on a buffer parsed without
+	 * it, rather than reporting a program with no tokens in it.
+	 */
+	tokens?: boolean;
+
+	/**
 	 * Whether to derive the parent of every node and store it in the buffer.
 	 *
 	 * Defaults to `false`. Deriving it is a pass over every node record, which
@@ -232,6 +247,7 @@ export function parse(code: string, options: ParseOptions = {}): ParseResult {
 		root,
 		tokens: tokenizer.records,
 		tokenCount: tokenizer.count,
+		storeTokens: options.tokens ?? false,
 		lineStarts: tokenizer.lineStarts,
 		lineCount: tokenizer.lineCount,
 		source: code,

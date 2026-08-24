@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
 	PARSE_FLAG_PARENTS,
 	PARSE_FLAG_SOURCE_EMBEDDED,
+	PARSE_FLAG_TOKENS,
 	PARSE_HEADER_BYTES,
 	PARSE_HEADER_FLAGS,
 	SOURCE_TYPE_COMMONJS,
@@ -158,6 +159,9 @@ interface BuildOptions {
 	/** Whether to derive the parent table. */
 	parents?: boolean;
 
+	/** Whether to copy the token records into the buffer. */
+	storeTokens?: boolean;
+
 	/** Which reading of the text to record, encoded. */
 	sourceType?: number;
 }
@@ -176,6 +180,7 @@ function build(options: BuildOptions = {}): ArrayBuffer {
 		source = "a;",
 		embedSource = true,
 		parents = true,
+		storeTokens = true,
 		sourceType = SOURCE_TYPE_MODULE,
 	} = options;
 	const nodes = new WordBuffer(64);
@@ -206,6 +211,7 @@ function build(options: BuildOptions = {}): ArrayBuffer {
 		source,
 		embedSource,
 		parents,
+		storeTokens,
 		sourceType,
 	});
 }
@@ -318,6 +324,7 @@ describe("buildParseBuffer()", () => {
 			source: "",
 			embedSource: false,
 			parents: false,
+			storeTokens: true,
 			sourceType: SOURCE_TYPE_MODULE,
 		});
 
@@ -639,6 +646,38 @@ describe("the parent region", () => {
 			withTable[PARSE_HEADER_LIST_OFFSET] -
 				without[PARSE_HEADER_LIST_OFFSET],
 		).toBe(8 * 4);
+	});
+});
+
+describe("the token region", () => {
+	it("is recorded in the header flags when it is there", () => {
+		const view = new Uint32Array(build({ storeTokens: true }));
+
+		expect(view[PARSE_HEADER_FLAGS] & PARSE_FLAG_TOKENS).toBe(
+			PARSE_FLAG_TOKENS,
+		);
+	});
+
+	it("takes no space at all when it is not asked for", () => {
+		const tokenValues = [1, 2, 3, 4, 5, 6, 7, 8];
+		const withTokens = new Uint32Array(build({ tokenValues }));
+		const without = new Uint32Array(
+			build({ tokenValues, storeTokens: false }),
+		);
+
+		expect(without[PARSE_HEADER_FLAGS] & PARSE_FLAG_TOKENS).toBe(0);
+
+		// The region is empty, so the line region starts where it starts.
+		expect(without[PARSE_HEADER_LINES_OFFSET]).toBe(
+			without[PARSE_HEADER_TOKENS_OFFSET],
+		);
+		expect(
+			withTokens[PARSE_HEADER_LINES_OFFSET] -
+				without[PARSE_HEADER_LINES_OFFSET],
+		).toBe(2 * TOKEN_BYTES);
+
+		// The count still describes the program; only the records are gone.
+		expect(without[PARSE_HEADER_TOKEN_COUNT]).toBe(2);
 	});
 });
 

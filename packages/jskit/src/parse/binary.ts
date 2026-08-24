@@ -78,6 +78,17 @@ export const PARSE_FLAG_SOURCE_EMBEDDED = 1;
 export const PARSE_FLAG_PARENTS = 1 << 1;
 
 /**
+ * `PARSE_HEADER_FLAGS` bit: the buffer carries the token records.
+ *
+ * When it is clear, the token region has zero length. The tokens are roughly
+ * a third of the buffer and the consumers that read only the tree — scope
+ * analysis, control flow analysis — never look at them, so they are only
+ * there when they were asked for. Bit 4 rather than bit 2, because bits 2
+ * and 3 hold the source type below.
+ */
+export const PARSE_FLAG_TOKENS = 1 << 4;
+
+/**
  * `PARSE_HEADER_FLAGS` field: which source type the text was read as.
  *
  * Two readings of the same text can both be valid and differ, and the parser
@@ -476,6 +487,9 @@ export interface ParseBufferInput {
 	/** The number of tokens written. */
 	tokenCount: number;
 
+	/** Whether to copy the token records into the buffer. */
+	storeTokens: boolean;
+
 	/** The offset at which each line begins. */
 	lineStarts: Uint32Array;
 
@@ -502,11 +516,11 @@ export interface ParseBufferInput {
  *      offsets, and — when asked for — the source text.
  */
 export function buildParseBuffer(input: ParseBufferInput): ArrayBuffer {
-	const { source, embedSource, parents } = input;
+	const { source, embedSource, parents, storeTokens } = input;
 	const nodesBytes = input.nodeCount * NODE_BYTES;
 	const parentBytes = parents ? input.nodeCount * 4 : 0;
 	const listBytes = input.lists.length * 4;
-	const tokenBytes = input.tokenCount * TOKEN_BYTES;
+	const tokenBytes = storeTokens ? input.tokenCount * TOKEN_BYTES : 0;
 	const lineBytes = input.lineCount * 4;
 	const sourceBytes = embedSource ? alignWords(source.length * 2) : 0;
 
@@ -525,6 +539,7 @@ export function buildParseBuffer(input: ParseBufferInput): ArrayBuffer {
 	view[PARSE_HEADER_FLAGS] =
 		(embedSource ? PARSE_FLAG_SOURCE_EMBEDDED : 0) |
 		(parents ? PARSE_FLAG_PARENTS : 0) |
+		(storeTokens ? PARSE_FLAG_TOKENS : 0) |
 		(input.sourceType << PARSE_SOURCE_TYPE_SHIFT);
 	view[PARSE_HEADER_ROOT] = input.root;
 	view[PARSE_HEADER_NODE_COUNT] = input.nodeCount;
@@ -533,6 +548,11 @@ export function buildParseBuffer(input: ParseBufferInput): ArrayBuffer {
 	view[PARSE_HEADER_PARENTS_OFFSET] = parentsOffset;
 	view[PARSE_HEADER_LIST_COUNT] = input.lists.length;
 	view[PARSE_HEADER_LIST_OFFSET] = listOffset;
+	/*
+	 * The count is recorded either way, like the source length below: it
+	 * describes the program, not the region. The flag is what says whether
+	 * the records are actually here.
+	 */
 	view[PARSE_HEADER_TOKEN_COUNT] = input.tokenCount;
 	view[PARSE_HEADER_TOKEN_BYTES] = TOKEN_BYTES;
 	view[PARSE_HEADER_TOKENS_OFFSET] = tokensOffset;
@@ -559,7 +579,14 @@ export function buildParseBuffer(input: ParseBufferInput): ArrayBuffer {
 	}
 
 	view.set(input.lists.words.subarray(0, input.lists.length), listOffset / 4);
-	view.set(input.tokens.words.subarray(0, tokenBytes / 4), tokensOffset / 4);
+
+	if (storeTokens) {
+		view.set(
+			input.tokens.words.subarray(0, tokenBytes / 4),
+			tokensOffset / 4,
+		);
+	}
+
 	view.set(input.lineStarts.subarray(0, input.lineCount), linesOffset / 4);
 
 	if (embedSource) {

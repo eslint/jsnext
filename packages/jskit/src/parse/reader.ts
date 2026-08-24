@@ -7,6 +7,8 @@
  */
 
 import {
+	PARSE_FLAG_TOKENS,
+	PARSE_HEADER_FLAGS,
 	PARSE_HEADER_LIST_OFFSET,
 	PARSE_HEADER_NODES_OFFSET,
 	PARSE_HEADER_NODE_BYTES,
@@ -220,11 +222,24 @@ export class TokenReader {
 
 	/**
 	 * Creates a reader over a parse buffer.
-	 * @param buffer The buffer returned by `parse()`.
-	 * @throws {TypeError} When the buffer is not a parse buffer.
+	 * @param buffer The buffer returned by `parse()` with `{ tokens: true }`.
+	 * @throws {TypeError} When the buffer is not a parse buffer, or was parsed
+	 *      without `tokens`.
 	 */
 	constructor(buffer: ArrayBufferLike) {
 		this.words = parseHeader(buffer);
+
+		/*
+		 * The absent region is zero-length, so reading past it would decode a
+		 * run of zero words as `count` copies of the same nonsense token. This
+		 * is the same reason `readParents()` and `readSource()` refuse a
+		 * buffer whose region was never asked for.
+		 */
+		if ((this.words[PARSE_HEADER_FLAGS] & PARSE_FLAG_TOKENS) === 0) {
+			throw new TypeError(
+				"This parse buffer carries no tokens. Re-parse with `{ tokens: true }` to ask for them.",
+			);
+		}
 
 		this.count = this.words[PARSE_HEADER_TOKEN_COUNT];
 		this.recordWords = this.words[PARSE_HEADER_TOKEN_BYTES] / 4;

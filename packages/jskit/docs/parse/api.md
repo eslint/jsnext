@@ -22,7 +22,7 @@ import {
 const code = `const greeting: string = "hello";`;
 
 // Phase 1: source text -> one binary buffer. Throws on syntax errors.
-const result = parse(code);
+const result = parse(code, { tokens: true });
 
 result; // ArrayBuffer: the AST, the tokens, and the line offsets
 new AstReader(result); // the binary AST
@@ -49,9 +49,9 @@ ast.body[0].declarations[0].id.typeAnnotation.type; // "TSTypeAnnotation"
 
 ### `parse(code, options?)`
 
-Returns one `ArrayBuffer` holding the encoded AST, the encoded token stream,
-the offset of every line, and — when asked for — a copy of the source text and
-each node's parent. `AstReader`, `TokenReader`, `readLineStarts()`, and
+Returns one `ArrayBuffer` holding the encoded AST, the offset of every line,
+and — when asked for — the encoded token stream, a copy of the source text,
+and each node's parent. `AstReader`, `TokenReader`, `readLineStarts()`, and
 `readParents()` read the regions; each takes the whole buffer and finds its
 own.
 
@@ -59,6 +59,7 @@ own.
 | ------------- | ---------- | ------------------------------------------------------------------------------------------- |
 | `sourceType`  | `"module"` | Whether to read the text as a script, an ES module, or a CommonJS module.                   |
 | `jsx`         | unset      | How a `<` in expression position reads: the `.tsx` way, the `.ts` way, or try both.         |
+| `tokens`      | `false`    | Store the token records (comments included), so `TokenReader` and `toAST()` can read them.  |
 | `embedSource` | `false`    | Copy the source text into the buffer, so it can be read in a process that did not parse it. |
 | `parents`     | `false`    | Derive each node's parent, so a tool can climb from a node to its context.                  |
 
@@ -67,7 +68,8 @@ own.
 different trees:
 
 ```js
-toAST(parse("await.x;", { sourceType: "script" })).ast.body[0].expression.type;
+toAST(parse("await.x;", { sourceType: "script", tokens: true })).ast.body[0]
+	.expression.type;
 // => "MemberExpression" — `await` is an ordinary name in a script
 
 parse("await.x;", { sourceType: "module" });
@@ -100,6 +102,14 @@ Unlike `sourceType`, the choice is not recorded in the buffer: a JSX node
 either is in the tree or is not, and the later phases read the tree rather
 than re-deciding. `validate()`'s own `jsx` option is unchanged — it still says
 whether the JSX that parsed is _allowed_.
+
+The tokens are roughly a third of the buffer, and the consumers that read only
+the tree — `validate()`, scope analysis, control flow analysis — never look at
+them, so they are only stored when `tokens` asks for them. `TokenReader` — and
+so `toAST()`, whose `Program` reports the token and comment lists — throws on
+a buffer parsed without it, rather than reporting a program with no tokens in
+it. The ESLint parser object always asks for them, because ESLint's rules read
+tokens as freely as nodes.
 
 Reading text off a buffer works either way in the process that parsed, because
 the original string is cached against the buffer. Turn `embedSource` on when
@@ -174,7 +184,9 @@ It currently reports:
 ### `toAST(result, options)`
 
 Takes the same options as `validate()` and returns `{ ast, errors }`. The
-`Program` node also carries `tokens` and `comments`, which is what ESLint reads.
+`Program` node also carries `tokens` and `comments`, which is what ESLint
+reads — so it needs a buffer parsed with `{ tokens: true }`, and throws on one
+that was not.
 
 ## Using it with ESLint
 
@@ -316,7 +328,7 @@ support it, and each produces the JSX nodes its reference parser produces.
 
 ```js
 const { ast } = toAST(
-	parse("<ul>{items.map(i => <li key={i}>{i}</li>)}</ul>;"),
+	parse("<ul>{items.map(i => <li key={i}>{i}</li>)}</ul>;", { tokens: true }),
 	{ jsx: true },
 );
 ```

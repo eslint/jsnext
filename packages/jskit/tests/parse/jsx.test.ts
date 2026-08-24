@@ -11,7 +11,7 @@ import { parse, toAST, validate } from "../../src/index.js";
  * @returns One `type:value` string per token.
  */
 function types(code: string): string[] {
-	const { ast } = toAST(parse(code), {
+	const { ast } = toAST(parse(code, { tokens: true }), {
 		sourceType: "module",
 		dialect: "js",
 		jsx: true,
@@ -28,7 +28,7 @@ function types(code: string): string[] {
  * @returns The expression of the first statement.
  */
 function firstExpression(code: string): Record<string, unknown> {
-	const { ast } = toAST(parse(code), {
+	const { ast } = toAST(parse(code, { tokens: true }), {
 		sourceType: "module",
 		dialect: "js",
 		jsx: true,
@@ -159,7 +159,7 @@ describe("JSX parsing", () => {
 	});
 
 	it("still parses an old-style type assertion when JSX does not fit", () => {
-		const { ast } = toAST(parse("const a = <string>b;"), {
+		const { ast } = toAST(parse("const a = <string>b;", { tokens: true }), {
 			dialect: "ts",
 		});
 		const declaration = (ast.body as Record<string, unknown>[])[0];
@@ -199,7 +199,7 @@ describe("JSX parsing", () => {
 		 * good type assertion, so that is what it becomes. Asking for the
 		 * JavaScript dialect is what turns it back into a reported problem.
 		 */
-		const result = parse("<div>text");
+		const result = parse("<div>text", { tokens: true });
 
 		expect(toAST(result, { dialect: "ts" }).ast.body).toMatchObject([
 			{ expression: { type: "TSTypeAssertion" } },

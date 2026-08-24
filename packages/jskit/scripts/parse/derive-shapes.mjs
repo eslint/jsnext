@@ -71,7 +71,7 @@ function read(name) {
  * @throws {ParseError} When the source cannot be parsed.
  */
 function treeOf(code) {
-	return toAST(parse(code, { sourceType: "module" }), {
+	return toAST(parse(code, { sourceType: "module", tokens: true }), {
 		sourceType: "module",
 		dialect: "ts",
 	}).ast;

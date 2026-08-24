@@ -184,9 +184,9 @@ Neither is answerable from the character stream alone. Because the parser asks
 for each token at the moment it knows the answer, the scanner never has to
 guess and never has to be corrected.
 
-Every token the scanner produces is appended to the token region as it is
-scanned, including comments. That is why the token stream in the result
-contains trivia that the parser itself skipped over.
+Every token the scanner produces is appended to the token records as it is
+scanned, including comments. That is why the token stream in a result that
+kept its tokens contains trivia that the parser itself skipped over.
 
 ### The context stack
 
@@ -346,8 +346,8 @@ try {
 `writer.mark()` captures the node count, list length, and scratch length;
 `rewind()` restores all three and zero-fills the abandoned node region so that
 stale words can never be read back. `tokenizer.restore()` also discards any
-token records written during the attempt, so speculation leaves no trace in the
-token region.
+token records written during the attempt, so speculation leaves no trace in
+the token records.
 
 Speculation is not free, so the parser avoids it where a cheap test will do.
 `nextCanStartParameterList()` rejects most `(` in one token before the more
@@ -428,6 +428,8 @@ Header (68 bytes, 17 words)
   word 1   version        2
   word 2   flags          bit 0: PARSE_FLAG_SOURCE_EMBEDDED
                           bit 1: PARSE_FLAG_PARENTS
+                          bits 2-3: the source type
+                          bit 4: PARSE_FLAG_TOKENS
   word 3   root           index of the root node
   word 4   nodeCount      index slots: the reserved node 0, the tree, and the
                           records that are not in it
@@ -447,7 +449,7 @@ Header (68 bytes, 17 words)
 Node region     nodeCount * 48 bytes
 Parent region   nodeCount * 4 bytes, or absent when parents were not asked for
 List region     listCount * 4 bytes
-Token region    tokenCount * 16 bytes
+Token region    tokenCount * 16 bytes, or absent when tokens were not asked for
 Line region     lineCount * 4 bytes
 Source region   sourceLength * 2 bytes, padded up to a word boundary,
                 or absent entirely when the source is not embedded
@@ -457,9 +459,9 @@ The parent table has no count of its own: it is one word per node, so
 `nodeCount` sizes it. Like the source text, it is present only when it was
 asked for, and the flag in word 2 is what says so.
 
-`sourceLength` describes the _program_, not the region: it is recorded whether
-or not the text is present, and the flag in word 2 is what says whether the
-characters are actually there.
+`sourceLength` and `tokenCount` describe the _program_, not their regions:
+each is recorded whether or not its region is present, and the flags in word 2
+are what say whether the bytes are actually there.
 
 The line region is the offset at which each line begins, one word per line.
 `readLineStarts()` returns it as a `Uint32Array` view onto the buffer rather
@@ -467,7 +469,11 @@ than a copy, which is what `LineIndex` is built over.
 
 ### Token records
 
-Fixed 16-byte records, `tokenCount` of them.
+Fixed 16-byte records, `tokenCount` of them. The region is only there when
+`parse()` was given `{ tokens: true }`; the consumers that read only the tree
+never look at it, so it is not carried unless it was asked for, and
+`TokenReader` refuses a buffer parsed without it the same way `readParents()`
+does.
 
 ```text
 Record (16 bytes, 4 words), repeated `tokenCount` times

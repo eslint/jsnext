@@ -19,7 +19,7 @@ import { TokenReader } from "./reader.js";
  * @returns The token reader.
  */
 function tokensOf(code: string): TokenReader {
-	return new TokenReader(parse(code));
+	return new TokenReader(parse(code, { tokens: true }));
 }
 
 describe("tokenStartsLine()", () => {

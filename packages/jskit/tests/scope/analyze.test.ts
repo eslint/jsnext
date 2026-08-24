@@ -525,7 +525,7 @@ describe("analyzeTree", () => {
 	it("agrees with the binary path on the same program", () => {
 		const code =
 			"import a from 'm'; export const b = a; class C extends a { m() { return b; } }";
-		const result = parse(code);
+		const result = parse(code, { tokens: true });
 		const binary = toScopeManager(
 			analyze(result, { sourceType: "module", dialect: "ts" }),
 			result,

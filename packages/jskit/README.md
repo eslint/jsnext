@@ -12,7 +12,7 @@ Three analyses ship in one package, in the order a tool uses them:
 
 | Analysis  | Entry points                       | What it produces                                                                                                                      |
 | --------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| **Parse** | `parse()`, `validate()`, `toAST()` | One `ArrayBuffer` holding a binary AST, a binary token stream, and every line offset — plus an ESTree tree on request.                |
+| **Parse** | `parse()`, `validate()`, `toAST()` | One `ArrayBuffer` holding a binary AST, every line offset, and — on request — a binary token stream, plus an ESTree tree on request.  |
 | **Scope** | `analyze()`, `analyzeTree()`       | One `ArrayBuffer` of scopes, symbols, references, and definitions, reproducing `eslint-scope` and `@typescript-eslint/scope-manager`. |
 | **Flow**  | `createGraph()`                    | One `ArrayBuffer` holding a basic-block control flow graph for every execution unit in the program.                                   |
 
@@ -60,7 +60,8 @@ tree; everything that is merely _not allowed here_ is reported by `validate()`;
 ```js
 import { parse, validate, toAST, AstReader } from "@eslint/jskit";
 
-const result = parse(`const greeting: string = "hello";`);
+// `tokens: true` stores the token records, which `toAST()` reports below.
+const result = parse(`const greeting: string = "hello";`, { tokens: true });
 
 // Phase 1 output: one ArrayBuffer. Read it directly, if that is all you need.
 new AstReader(result).nodeCount;

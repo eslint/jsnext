@@ -84,7 +84,8 @@ export function inspect(code: string, options: InspectionOptions): Inspection {
 	let result: ParseResult;
 
 	try {
-		result = parse(code, { sourceType: options.sourceType });
+		// `tokens: true` because the AST pane's `toAST()` reports them.
+		result = parse(code, { sourceType: options.sourceType, tokens: true });
 	} catch (error) {
 		const message = messageOf(error);
 

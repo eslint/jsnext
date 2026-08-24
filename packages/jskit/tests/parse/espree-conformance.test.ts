@@ -29,7 +29,7 @@ describe("espree conformance", () => {
 				comment: true,
 				range: true,
 			});
-			const actual = toAST(parse(code), {
+			const actual = toAST(parse(code, { tokens: true }), {
 				sourceType: "module",
 				dialect: "js",
 			}).ast;
@@ -71,10 +71,13 @@ describe("espree conformance in sloppy code", () => {
 				comment: true,
 				range: true,
 			});
-			const actual = toAST(parse(code, { sourceType: "script" }), {
-				sourceType: "script",
-				dialect: "js",
-			}).ast;
+			const actual = toAST(
+				parse(code, { sourceType: "script", tokens: true }),
+				{
+					sourceType: "script",
+					dialect: "js",
+				},
+			).ast;
 
 			expect(normalize(actual)).toEqual(normalize(expected));
 			expect(normalizeTokens(actual.tokens as never)).toEqual(
@@ -99,7 +102,7 @@ describe("espree conformance for JSX", () => {
 				comment: true,
 				range: true,
 			});
-			const actual = toAST(parse(code), {
+			const actual = toAST(parse(code, { tokens: true }), {
 				sourceType: "module",
 				dialect: "js",
 				jsx: true,
@@ -120,7 +123,7 @@ describe("espree token types", () => {
 	 * @returns One `type:value` string per token.
 	 */
 	function types(code: string): string[] {
-		const { ast } = toAST(parse(code), {
+		const { ast } = toAST(parse(code, { tokens: true }), {
 			sourceType: "module",
 			dialect: "js",
 		});
