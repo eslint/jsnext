@@ -45,6 +45,7 @@ export { Variable } from "./variable.js";
 export { PatternVisitor } from "./pattern-visitor.js";
 export { Referencer } from "./referencer.js";
 export { Scopes } from "./scopes.js";
+export type { NodeRef } from "./scopes.js";
 export { toScopeManager } from "./to-scope-manager.js";
 export type { ToScopeManagerOptions } from "./to-scope-manager.js";
 export { toScopeTree } from "./to-scope-tree.js";

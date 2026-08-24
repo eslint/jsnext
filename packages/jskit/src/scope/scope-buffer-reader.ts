@@ -296,6 +296,34 @@ export class ScopeBufferReader {
 		);
 	}
 
+	/**
+	 * Every node handle the indexes above store: the nodes that opened
+	 * scopes, the nodes that declare symbols, and the identifiers that
+	 * references were recorded at. These are exactly the nodes the point
+	 * queries can say anything about — every one is in the program's tree by
+	 * construction — which is what makes them worth finding by position.
+	 * @returns The distinct handles, in no particular order.
+	 */
+	storedHandles(): number[] {
+		const seen = new Set<number>();
+		const sections: [number, number][] = [
+			[SCOPE_H_NODE_SCOPE_BASE, SCOPE_H_NODE_SCOPE_COUNT],
+			[SCOPE_H_DECLARED_BASE, SCOPE_H_DECLARED_COUNT],
+			[SCOPE_H_IDENT_REF_BASE, SCOPE_H_IDENT_REF_COUNT],
+		];
+
+		for (const [baseWord, countWord] of sections) {
+			const base = this.words[baseWord];
+			const count = this.words[countWord];
+
+			for (let i = 0; i < count; i++) {
+				seen.add(this.words[base + i * 2]);
+			}
+		}
+
+		return [...seen];
+	}
+
 	//-------------------------------------------------------------------------
 	// Strings
 	//-------------------------------------------------------------------------

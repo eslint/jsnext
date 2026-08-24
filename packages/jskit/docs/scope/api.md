@@ -130,6 +130,31 @@ scopes.markSymbolAsUsed(symbol);
 scopes.isSymbolUsed(symbol); // true
 ```
 
+A query that takes a node takes it either as the representation the buffer
+was analyzed over — an index on the binary path, the tree's own object on the
+tree path — or as a **`NodeRef`**, a `{ type, start, end? }` position. The
+latter is what lets a consumer holding only decoded ESTree nodes ask about a
+node it has no buffer index for: an ESLint rule receives nodes, not buffers,
+and every ESTree node already answers to that shape.
+
+```js
+const result = parse("console.log(missing);", { tokens: true });
+const scopes = new Scopes(analyze(result, { globals: ["console"] }), result);
+const { ast } = toAST(result);
+const node = ast.body[0].expression.callee.object; // the `console` Identifier
+
+scopes.isGlobalReference(node); // true — matched by node.type and node.start
+scopes.isGlobalReference({ type: "Identifier", start: 0 }); // the same match
+```
+
+Resolution indexes only the nodes the buffer stores something about — the
+nodes that opened scopes, the declaring nodes, and the referenced
+identifiers — so a position naming any other node answers the way a node with
+nothing recorded does: `getScope()` is `null`, `getDeclaredSymbols()` is
+empty, `isGlobalReference()` is `false`. `type` is what tells apart the nodes
+that share a start, the way `function f() {}` and the `Program` both begin at
+offset zero; `end` narrows the match further when it is given.
+
 A read-write such as `x += 1` counts as both a read and a write, so the two
 counts do not sum to `getReferences(symbol).length`.
 

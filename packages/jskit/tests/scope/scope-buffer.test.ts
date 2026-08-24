@@ -16,6 +16,7 @@ import {
 	analyzeTree,
 	parse,
 	Scopes,
+	toAST,
 	toScopeManager,
 	toScopeTree,
 	type EsTreeNode,
@@ -431,6 +432,114 @@ describe("Scopes", () => {
 
 		expect(scopes.referenceIdentifier(reference)).toBe(identifier);
 		expect(scopes.isGlobalReference(identifier)).toBe(false);
+	});
+});
+
+describe("Scopes queries by node position", () => {
+	it("answers isGlobalReference from a { type, start } alone", () => {
+		const code =
+			"console.log(missing); function f(console) { console.log(1); }";
+		const { parsed, buffer } = analyzed(code, { globals: ["console"] });
+		const scopes = new Scopes(buffer, parsed);
+
+		// The decoded tree is what an ESLint rule would be holding.
+		const { ast } = toAST(parse(code, { tokens: true }));
+		const statement = ast.body[0] as unknown as Record<string, never>;
+		const globalUse = (statement.expression as Record<string, never>)
+			.callee as { object: { type: string; start: number; end: number } };
+
+		expect(scopes.isGlobalReference(globalUse.object)).toBe(true);
+
+		// The same name shadowed by a parameter, at its own position.
+		const shadowedStart = code.indexOf("console.log(1)");
+
+		expect(
+			scopes.isGlobalReference({
+				type: "Identifier",
+				start: shadowedStart,
+				end: shadowedStart + "console".length,
+			}),
+		).toBe(false);
+
+		// A position the buffer stores nothing for.
+		expect(scopes.isGlobalReference({ type: "Identifier", start: 7 })).toBe(
+			false,
+		);
+	});
+
+	it("resolves scopes, declarations, and references by position", () => {
+		const code = "function f() {} const a = 1, b = a;";
+		const { parsed, buffer } = analyzed(code);
+		const scopes = new Scopes(buffer, parsed);
+
+		/*
+		 * `Program` and `function f() {}` both start at offset 0, so the type
+		 * is what tells the two scope openers apart.
+		 */
+		const programScope = scopes.getScope(
+			{ type: "Program", start: 0 },
+			true,
+		)!;
+		const functionScope = scopes.getScope({
+			type: "FunctionDeclaration",
+			start: 0,
+		})!;
+
+		expect(scopes.scopeType(programScope)).toBe("module");
+		expect(scopes.scopeType(functionScope)).toBe("function");
+		expect(scopes.getScope({ type: "Identifier", start: 9 })).toBe(null);
+
+		const declared = scopes.getDeclaredSymbols({
+			type: "VariableDeclaration",
+			start: code.indexOf("const"),
+		});
+
+		expect(declared.map(id => scopes.symbolName(id))).toEqual(["a", "b"]);
+
+		const reference = scopes.resolveReference({
+			type: "Identifier",
+			start: code.lastIndexOf("a"),
+		})!;
+
+		expect(scopes.referenceName(reference)).toBe("a");
+		expect(scopes.referenceResolved(reference)).toBe(declared[0]);
+	});
+
+	it("checks the end when the position carries one", () => {
+		const code = "let a = 1; a;";
+		const { parsed, buffer } = analyzed(code);
+		const scopes = new Scopes(buffer, parsed);
+		const start = code.indexOf("a;");
+
+		expect(
+			scopes.resolveReference({ type: "Identifier", start, end: 12 }),
+		).not.toBe(null);
+		expect(
+			scopes.resolveReference({ type: "Identifier", start, end: 13 }),
+		).toBe(null);
+	});
+
+	it("resolves a position against a tree-path buffer too", () => {
+		const code = "let a = 1; a;";
+		const tree = espree.parse(code, {
+			ecmaVersion: "latest",
+			sourceType: "module",
+			range: true,
+		}) as unknown as EsTreeNode;
+		const buffer = analyzeTree(tree, { sourceType: "module" });
+		const scopes = new Scopes<EsTreeNode>(buffer, tree);
+
+		/*
+		 * A fresh object rather than the tree's own node, which is what a
+		 * consumer that re-decoded the program would be holding.
+		 */
+		const reference = scopes.resolveReference({
+			type: "Identifier",
+			start: code.indexOf("a;"),
+		})!;
+
+		expect(reference).not.toBe(null);
+		expect(scopes.referenceName(reference)).toBe("a");
 	});
 });
 
