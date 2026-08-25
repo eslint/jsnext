@@ -1,5 +1,5 @@
 /**
- * @fileoverview The whole app: a code editor on the left, and the three
+ * @fileoverview The whole app: a code editor on the left, and the four
  * analyses of what it contains on the right. Everything runs in the
  * browser; there is no server round trip.
  */
@@ -119,7 +119,7 @@ export default function Inspector(): ReactNode {
 				<div className="flex items-baseline gap-3">
 					<h1 className="text-base font-semibold">jskit-inspect</h1>
 					<p className="text-muted-foreground hidden text-sm sm:block">
-						parse · scope · flow
+						parse · scope · flow · types
 					</p>
 				</div>
 				<div className="flex flex-wrap items-center gap-4 text-sm">
@@ -194,6 +194,7 @@ export default function Inspector(): ReactNode {
 								<TabsTrigger value="flow">
 									Control flow
 								</TabsTrigger>
+								<TabsTrigger value="types">Types</TabsTrigger>
 							</TabsList>
 						</div>
 						{inspection.validationErrors.length > 0 && (
@@ -314,6 +315,16 @@ export default function Inspector(): ReactNode {
 									)}
 								</TabsContent>
 							</Tabs>
+						</TabsContent>
+						<TabsContent
+							value="types"
+							className="min-h-0 overflow-auto"
+						>
+							<Pane
+								data={inspection.types.data}
+								error={inspection.types.error}
+								rootLabel="types"
+							/>
 						</TabsContent>
 					</Tabs>
 				</section>

@@ -17,11 +17,11 @@ concurrency:
 
 jobs:
     # ------------------------------------------------------------------------
-    # Which of the three analyses can this diff have broken?
+    # Which of the four analyses can this diff have broken?
     #
     # The filters below name the areas a file belongs to. They do not encode
-    # the cascade — `scope/` reads what `parse/` produced and `flow/` reads
-    # what both produced, so a `parse/` change has to run all three — because
+    # the cascade — `scope/` reads what `parse/` produced, and `flow/` and
+    # `types/` read what both produced, so a `parse/` change runs them all — because
     # that is a fact about the source layout rather than about CI, and it lives
     # in `packages/jskit/scripts/test-affected.mjs`. This job hands that script
     # the areas the diff touched and lets it expand them.
@@ -60,6 +60,10 @@ jobs:
                         - 'packages/jskit/src/flow/**'
                         - 'packages/jskit/tests/flow/**'
                         - '!**/*.md'
+                      types:
+                        - 'packages/jskit/src/types/**'
+                        - 'packages/jskit/tests/types/**'
+                        - '!**/*.md'
                       all:
                         - '**'
                         - '!**/*.md'
@@ -74,6 +78,8 @@ jobs:
                         - '!packages/jskit/tests/scope/**'
                         - '!packages/jskit/src/flow/**'
                         - '!packages/jskit/tests/flow/**'
+                        - '!packages/jskit/src/types/**'
+                        - '!packages/jskit/tests/types/**'
                         - '!packages/jskit-inspect/**'
                         - '!packages/jskit-native/**'
 
@@ -220,14 +226,16 @@ jobs:
                   retention-days: 7
 
     # ------------------------------------------------------------------------
-    # The differential corpus: every file in `node_modules` parsed and scoped,
-    # compared against the implementation each analysis replaces. `flow/` has
-    # no reference implementation, so a flow-only change skips this entirely.
+    # The differential corpus: every file in `node_modules` parsed, scoped,
+    # and typed, compared against a reference — the implementation each of
+    # those analyses replaces, or, for `types/`, the TypeScript checker's
+    # verdict on each claim. `flow/` has no reference implementation, so
+    # changes to it alone skip this entirely.
     # ------------------------------------------------------------------------
     conformance:
         name: Conformance
         needs: changes
-        if: contains(needs.changes.outputs.areas, 'all') || contains(needs.changes.outputs.areas, 'parse') || contains(needs.changes.outputs.areas, 'scope')
+        if: contains(needs.changes.outputs.areas, 'all') || contains(needs.changes.outputs.areas, 'parse') || contains(needs.changes.outputs.areas, 'scope') || contains(needs.changes.outputs.areas, 'types')
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v7
@@ -240,15 +248,22 @@ jobs:
             - name: Install Packages
               run: npm ci
 
-            # A `parse/` change moves the trees the scope analyzer reads, so it
-            # has to run both halves. A `scope/` change cannot move a tree.
+            # A `parse/` change moves the trees every later analysis reads, so
+            # it has to run everything. A `scope/` change cannot move a tree,
+            # but the type analysis reads the scope buffer, so it runs the
+            # scope and types halves. A `types/` change reaches nothing
+            # upstream and runs its own half alone.
             - name: Run Full Conformance Suite
               if: contains(needs.changes.outputs.areas, 'all') || contains(needs.changes.outputs.areas, 'parse')
               run: npm run test:conformance --workspace=@eslint/jskit
 
             - name: Run Scope Conformance Suite
-              if: ${{ !(contains(needs.changes.outputs.areas, 'all') || contains(needs.changes.outputs.areas, 'parse')) }}
+              if: ${{ !(contains(needs.changes.outputs.areas, 'all') || contains(needs.changes.outputs.areas, 'parse')) && contains(needs.changes.outputs.areas, 'scope') }}
               run: npm run test:conformance:scope --workspace=@eslint/jskit
+
+            - name: Run Types Conformance Suite
+              if: ${{ !(contains(needs.changes.outputs.areas, 'all') || contains(needs.changes.outputs.areas, 'parse')) }}
+              run: npm run test:conformance:types --workspace=@eslint/jskit
 
     # ------------------------------------------------------------------------
     # The native implementation must write byte-identical buffers, and the
@@ -296,6 +311,7 @@ jobs:
                   node tools/diff-validate.mjs ../../node_modules 1500
                   node tools/diff-analyze.mjs ../../node_modules 1500
                   node tools/diff-graph.mjs ../../node_modules 1500
+                  node tools/diff-types.mjs ../../node_modules 1500
 
     # ------------------------------------------------------------------------
     # The web app consumes the toolkit, so it is built whenever either moves.

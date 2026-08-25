@@ -1,10 +1,12 @@
 # `@eslint/jskit` scripts
 
-One build script, two generators, and eleven checks, split into `parse/` and
-`scope/` the same way the source is. The checks are the real test suite:
-`npm test` runs a few thousand hand-written cases, while these run every
-`.js`, `.jsx`, `.ts`, and `.tsx` file in `node_modules` through the analyses
-and compare the result against the implementation each one replaces.
+One build script, two generators, and twelve checks, split into `parse/`,
+`scope/`, and `types/` the same way the source is. The checks are the real
+test suite: `npm test` runs a few thousand hand-written cases, while these run
+every `.js`, `.jsx`, `.ts`, and `.tsx` file in `node_modules` through the
+analyses and compare the result against a reference — the implementation each
+analysis replaces, or, for the type analysis, the TypeScript checker's verdict
+on each claim.
 
 Everything here imports `../../dist/jskit.js`, so **the bundle must be built
 first**. `npm run test:conformance` does that for you; a bare `node scripts/…` uses
@@ -16,8 +18,9 @@ implementation to diff against; `tests/flow/` is its contract.
 ```bash
 npm run build                        # scripts/build.js
 npm run test:conformance             # every check in the first table, in order
-npm run test:conformance:parse       # just the parser half of that table
-npm run test:conformance:scope       # just the scope half
+npm run test:conformance:parse       # just the parser third of that table
+npm run test:conformance:scope       # just the scope third
+npm run test:conformance:types       # just the type-analysis check
 npm run test:conformance:ecmascript  # the test262 run, which needs a checkout
 npm run test:conformance:typescript  # TypeScript's own suite, which needs a checkout
 npm run test:conformance:eslint      # ESLint's rule tests, which need a checkout
@@ -43,6 +46,7 @@ tests.
 | `parse/conformance-eslint.mjs`      | how _rules_ behave                 | ESLint's own rule test suite        |
 | `scope/conformance-js.mjs`          | the scope graph, both entry points | `eslint-scope`                      |
 | `scope/conformance-ts.mjs`          | the scope graph, both entry points | `@typescript-eslint/scope-manager`  |
+| `types/conformance-ts.mjs`          | the type analysis' claims          | `ts.TypeChecker`                    |
 
 Zero mismatches is the standard. Anything else is a regression.
 
@@ -53,6 +57,26 @@ serialized, rehydrated with `toScopeManager()`, and diffed against the
 reference, so a field the format dropped or reordered cannot pass.
 `scope/serialize.mjs` is the shared reduction both of them — and the
 integration tests in `tests/scope/` — compare with.
+
+`types/conformance-ts.mjs` is differential in a different direction: the type
+analysis replaces no existing implementation, so there is no buffer to diff,
+but its _claims_ are checkable. Every positive answer `Types` gives —
+`isTypeOf()`, `isNullish()`, `isArray()`, `isTuple()`, `isAwaitable()` — is a
+statement about runtime behavior, so the script asks `ts.TypeChecker` about
+the same span and grades the claim. The comparison is one-directional by
+design: the analysis is conservative and silence is always allowed, so only a
+positive claim the checker contradicts counts as a disagreement. Each file
+gets a program of its own, since one shared program would let the checker see
+cross-file declaration merging the single-file analysis never promises to
+know about, and claims the checker cannot judge — `any`, type parameters,
+multiply-declared symbols — are counted as `skipped` rather than graded.
+
+```
+files=… claims=… agree=… disagree=0 skipped=… unmatched=… threw=0
+```
+
+`disagree` and `threw` are its two zeros: a disagreement is an unsound claim,
+and `threw` is a file the checker parses cleanly that the parser rejects.
 
 `parse/generate-to-ast.mjs` produces source rather than checking it: it turns
 the schema in `parse/to-ast-shapes.mjs` into `src/parse/to-ast-decode.ts`,
@@ -81,11 +105,12 @@ files=… threw=0 kinds=… exercised=… problems=0        # parse/conformance-
 derived=… declared=… identical=… differ=0             # parse/derive-shapes
 binary files=… ok=… mismatch=0 threw=0                # scope/conformance-js
 tree   files=… ok=… mismatch=0 threw=0
+files=… claims=… agree=… disagree=0 skipped=… …       # types/conformance-ts
 ```
 
 ## Two scripts test the rejecting half
 
-The other nine are **differential**: they run a program through two
+The other ten are **differential**: they run a program through two
 implementations and compare what comes back, which means they can only ever
 check a program both implementations accept. Nothing in them tests that an
 error is _reported_, and nothing could — `node_modules` is working code, so it
@@ -280,6 +305,7 @@ node scripts/parse/conformance-js.mjs ../../node_modules 200
 node scripts/parse/conformance-ts.mjs ../some-project/src 500
 node scripts/parse/conformance-types.mjs ../../node_modules 5000
 node scripts/scope/conformance-js.mjs ../some-react-app/src 500
+node scripts/types/conformance-ts.mjs ../../node_modules 300
 ```
 
 Pointing one at a React codebase is the way to cover JSX with something wider

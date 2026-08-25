@@ -1,7 +1,7 @@
 # @eslint/jskit-inspect
 
 A web app for inspecting how `@eslint/jskit` sees a program. Type or paste
-JavaScript or TypeScript on the left; the right shows, in three tabs, what
+JavaScript or TypeScript on the left; the right shows, in four tabs, what
 each of its analyses produced:
 
 - **AST** — the ESTree tree from `toAST()`, along with any problems
@@ -12,9 +12,12 @@ each of its analyses produced:
   two views: `toGraphTree()`'s tree of every execution unit, or a Mermaid
   flowchart of one of them, chosen from a dropdown — one node per basic
   block, one link per edge.
+- **Types** — `toTypeTree()`'s view of the type buffer `inferTypes()`
+  returned: every type the program states, every typed symbol by name, and
+  every typed node by position.
 
 Everything runs client-side: the page ships the toolkit's browser bundle and
-reruns all three analyses as you type. Parsing always accepts the
+reruns all four analyses as you type. Parsing always accepts the
 union of everything JavaScript and TypeScript allow; the source type, dialect,
 and JSX controls in the header change interpretation (validation problems,
 scope details), not what parses.

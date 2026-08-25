@@ -1,9 +1,10 @@
 /**
  * @fileoverview The seam where the native (Rust) implementation plugs in.
  *
- * `@eslint/jskit-native` reimplements the three buffer producers — `parse()`,
- * `analyze()`, and `createGraph()` — and writes the same binary formats, so
- * the rest of the toolkit cannot tell which implementation ran. This module
+ * `@eslint/jskit-native` reimplements the four buffer producers — `parse()`,
+ * `analyze()`, `createGraph()`, and `inferTypes()` — and writes the same
+ * binary formats, so the rest of the toolkit cannot tell which
+ * implementation ran. This module
  * holds the registration point: the Node entry (`src/index-node.ts`) loads
  * the binding and registers it here, and the entry points check for it before
  * running the TypeScript implementation. In the browser bundle nothing ever
@@ -83,6 +84,17 @@ export interface NativeBinding {
 
 	/** The native `createGraph()` over both buffers and the source text. */
 	createGraph(
+		parsed: ArrayBuffer,
+		scope: ArrayBuffer,
+		text: string,
+	): ArrayBuffer;
+
+	/**
+	 * The native `inferTypes()` over both buffers and the source text.
+	 * Optional so that a binding built before the type analysis existed
+	 * still registers; `inferTypes()` falls back to TypeScript without it.
+	 */
+	inferTypes?(
 		parsed: ArrayBuffer,
 		scope: ArrayBuffer,
 		text: string,

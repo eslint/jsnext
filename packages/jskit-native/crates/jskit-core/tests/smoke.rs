@@ -1,8 +1,9 @@
-//! Sanity checks over the three producers. The exhaustive verification is
+//! Sanity checks over the four producers. The exhaustive verification is
 //! the differential corpus in `tools/`; these only prove the crate works
 //! standalone.
 
 use jskit_core::flow::create_graph;
+use jskit_core::types::infer_types;
 use jskit_core::parse::{parse, validate_ast, ParseOptions, ValidateSourceType};
 use jskit_core::scope::options::ResolvedOptions;
 use jskit_core::scope::{analyze, words_of};
@@ -28,6 +29,11 @@ fn parses_analyzes_and_graphs() {
     let flow_words = words_of(&flow);
 
     assert_eq!(flow_words[0], 0x4746434a, "flow magic");
+
+    let types = infer_types(&parse_words, &source, &scope_words);
+    let type_words = words_of(&types);
+
+    assert_eq!(type_words[0], 0x5954534a, "type magic");
 }
 
 #[test]

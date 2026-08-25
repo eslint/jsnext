@@ -112,6 +112,13 @@ if (binding === null) {
 
 			assertParity(() => jskit.createGraph(parsed, scope));
 		});
+
+		test(`inferTypes parity: ${file}`, () => {
+			const parsed = jskit.parse(text);
+			const scope = jskit.analyze(parsed);
+
+			assertParity(() => jskit.inferTypes(parsed, scope));
+		});
 	}
 
 	test("parse errors carry ParseError fields", () => {

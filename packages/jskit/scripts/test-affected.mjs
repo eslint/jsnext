@@ -43,9 +43,10 @@ import { dirname, resolve } from "node:path";
  * @type {Record<string, string[]>}
  */
 const DOWNSTREAM = {
-	parse: ["parse", "scope", "flow"],
-	scope: ["scope", "flow"],
+	parse: ["parse", "scope", "flow", "types"],
+	scope: ["scope", "flow", "types"],
 	flow: ["flow"],
+	types: ["types"],
 };
 
 const AREAS = Object.keys(DOWNSTREAM);

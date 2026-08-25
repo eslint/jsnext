@@ -190,6 +190,15 @@ Every fixture is parsed as a **module**. A snippet that is only legal in a
 script cannot go in one — put it in the inline list in
 `packages/jskit/scripts/parse/conformance-types.mjs` instead.
 
+**An eighth site, only when the node should be _typed_.** The type analysis
+(`packages/jskit/src/types/types-walker.ts`) descends every kind through the
+slot table, so a new node is safe with no registration — it is simply
+untyped, which is the analysis' honest default. Add a case to the walker (and
+its Rust mirror, `crates/jskit-core/src/types/walker.rs` — both, or
+`tools/diff-types.mjs` fails) only when the node carries type information a
+rule would ask about: a new expression with a fixed result type, or a new
+type-annotation syntax.
+
 ## Then run the corpus
 
 The driver checks one sample. These check ~2,650 real files, and are the

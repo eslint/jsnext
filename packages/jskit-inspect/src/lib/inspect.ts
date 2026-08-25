@@ -1,5 +1,5 @@
 /**
- * @fileoverview Runs a program through all three analyses and collects what
+ * @fileoverview Runs a program through all four analyses and collects what
  * each one produced, keeping the failures separate so one analysis breaking
  * does not blank the others.
  */
@@ -7,10 +7,12 @@
 import {
 	analyze,
 	createGraph,
+	inferTypes,
 	parse,
 	toAST,
 	toGraphTree,
 	toScopeTree,
+	toTypeTree,
 	validate,
 	type FlowTree,
 	type ParseResult,
@@ -55,6 +57,7 @@ export interface Inspection {
 	ast: PaneResult;
 	scopes: PaneResult;
 	flow: PaneResult<FlowTree>;
+	types: PaneResult;
 }
 
 /**
@@ -76,8 +79,8 @@ function failed(message: string): PaneResult<never> {
 }
 
 /**
- * Parses a program and runs the AST, scope, and control flow analyses over
- * it, entirely in this process.
+ * Parses a program and runs the AST, scope, control flow, and type analyses
+ * over it, entirely in this process.
  * @param code The source text to inspect.
  * @param options How the program should be interpreted.
  * @returns What each analysis produced.
@@ -97,6 +100,7 @@ export function inspect(code: string, options: InspectionOptions): Inspection {
 			ast: failed(message),
 			scopes: failed(message),
 			flow: failed(message),
+			types: failed(message),
 		};
 	}
 
@@ -151,11 +155,31 @@ export function inspect(code: string, options: InspectionOptions): Inspection {
 		}
 	}
 
+	let typesPane: PaneResult;
+
+	if (scopeBuffer === null) {
+		typesPane = failed(
+			"The type analysis needs the scope analysis, which failed.",
+		);
+	} else {
+		try {
+			const types = inferTypes(result, scopeBuffer);
+
+			typesPane = {
+				data: toTypeTree(types, result, scopeBuffer),
+				error: null,
+			};
+		} catch (error) {
+			typesPane = failed(messageOf(error));
+		}
+	}
+
 	return {
 		parseError: null,
 		validationErrors,
 		ast: astPane,
 		scopes: scopesPane,
 		flow: flowPane,
+		types: typesPane,
 	};
 }

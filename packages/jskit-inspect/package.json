@@ -1,7 +1,7 @@
 {
   "name": "@eslint/jskit-inspect",
   "version": "0.0.0",
-  "description": "A web app for inspecting how @eslint/jskit parses, scopes, and graphs a program.",
+  "description": "A web app for inspecting how @eslint/jskit parses, scopes, graphs, and types a program.",
   "type": "module",
   "private": true,
   "scripts": {

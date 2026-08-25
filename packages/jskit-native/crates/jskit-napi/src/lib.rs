@@ -244,3 +244,27 @@ pub fn create_graph(
 
     Ok(env.create_arraybuffer_with_data(flow_buffer)?.into_raw())
 }
+
+/// The native `inferTypes()`: byte-identical to the TypeScript walk.
+///
+/// `parsed` and `scope` are the parse and scope buffers over the same
+/// program, and `text` is the exact source; the JavaScript wrapper validates
+/// both buffers and recovers the text before calling in.
+#[napi]
+pub fn infer_types(
+    env: Env,
+    parsed: JsArrayBuffer,
+    scope: JsArrayBuffer,
+    text: JsString,
+) -> Result<JsArrayBuffer> {
+    let parse_buffer = parsed.into_value()?;
+    let parse_words = jskit_core::scope::words_of(&parse_buffer);
+    let scope_buffer = scope.into_value()?;
+    let scope_words = jskit_core::scope::words_of(&scope_buffer);
+    let utf16 = text.into_utf16()?;
+    let slice = utf16.as_slice();
+    let units = &slice[..slice.len().saturating_sub(1)];
+    let types_buffer = jskit_core::types::infer_types(&parse_words, units, &scope_words);
+
+    Ok(env.create_arraybuffer_with_data(types_buffer)?.into_raw())
+}

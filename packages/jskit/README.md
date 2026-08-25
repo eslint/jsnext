@@ -8,13 +8,14 @@ speak the same binary representation of a program.
 npm install @eslint/jskit
 ```
 
-Three analyses ship in one package, in the order a tool uses them:
+Four analyses ship in one package, in the order a tool uses them:
 
 | Analysis  | Entry points                       | What it produces                                                                                                                      |
 | --------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | **Parse** | `parse()`, `validate()`, `toAST()` | One `ArrayBuffer` holding a binary AST, every line offset, and — on request — a binary token stream, plus an ESTree tree on request.  |
 | **Scope** | `analyze()`, `analyzeTree()`       | One `ArrayBuffer` of scopes, symbols, references, and definitions, reproducing `eslint-scope` and `@typescript-eslint/scope-manager`. |
 | **Flow**  | `createGraph()`                    | One `ArrayBuffer` holding a basic-block control flow graph for every execution unit in the program.                                   |
+| **Types** | `inferTypes()`                     | One `ArrayBuffer` recording what the program states about its types, for classification queries at any node.                          |
 
 The buffer between them is the reason they are one package. Nothing allocates a
 JavaScript object per node until something actually asks for one, so scope
@@ -139,9 +140,41 @@ to its scope reference, so a buffer from `analyzeTree()` is refused.
 
 **More:** [`docs/flow/api.md`](./docs/flow/api.md).
 
+## Types
+
+`inferTypes()` reads what a program states about its types — annotations,
+literals, initializers, signatures, imports — and records a type for every
+node and symbol it can speak for, without running a type checker. The `Types`
+class answers the classification questions type-aware lint rules ask, keyed
+by a node index or any ESTree node, and every answer is conservative: where
+the analysis knows nothing, it says so instead of guessing.
+
+```js
+import { parse, analyze, inferTypes, Types } from "@eslint/jskit";
+
+const parsed = parse(sourceText);
+const scope = analyze(parsed);
+const types = inferTypes(parsed, scope);
+
+const queries = new Types(types, parsed);
+
+queries.isTypeOf(node, "string"); // does typeof definitely say "string"?
+queries.mayBeNullish(node); // can this still be null or undefined?
+queries.isAwaitable(node); // a Promise from the standard library, or a thenable?
+queries.getTypeOrigin(node); // { kind: "package", specifier: "zod" }
+```
+
+Named types carry their provenance — declared locally, known from the
+TypeScript standard library, or imported from a named package or file — the
+same split `typescript-eslint`'s `TypeOrValueSpecifier` matches types by.
+The scope buffer must come from `analyze()` over the same parse result, for
+the same reason `createGraph()` requires it.
+
+**More:** [`docs/types/api.md`](./docs/types/api.md).
+
 ## Tree shaking
 
-The package is marked `sideEffects: false` and the three analyses reference
+The package is marked `sideEffects: false` and the four analyses reference
 each other only through the functions that need them, so a bundler ships what
 you import and nothing else. A tree-only scope bundle contains neither the
 binary reader nor the parser; a binary-only bundle contains neither the tree
@@ -164,6 +197,8 @@ quietly break.
 | [`docs/scope/architecture.md`](./docs/scope/architecture.md)       | The walk, resolution, and the rule for reconciling the two analyzers it reproduces.                                             |
 | [`docs/flow/api.md`](./docs/flow/api.md)                           | `createGraph()`, the reader, and the JSON view.                                                                                 |
 | [`docs/flow/architecture.md`](./docs/flow/architecture.md)         | The flow format and the four places it trades precision for simplicity.                                                         |
+| [`docs/types/api.md`](./docs/types/api.md)                         | `inferTypes()`, the `Types` queries, and the JSON view.                                                                         |
+| [`docs/types/architecture.md`](./docs/types/architecture.md)       | The type format, the two-pass walk, and everything the analysis deliberately declines to claim.                                 |
 | [`../../docs/deviations.md`](../../docs/deviations.md)             | Every place the output deliberately differs from a reference implementation.                                                    |
 
 Each analysis also has a `requirements.md` beside its architecture document,
@@ -182,8 +217,8 @@ npm run build             # esbuild bundle + .d.ts files
 
 `npm test` is the fast check. What actually proves correctness is the
 differential corpus: every JavaScript and TypeScript file in `node_modules` is
-run through all three analyses and compared against the implementation each one
-replaces. [`scripts/README.md`](./scripts/README.md) explains what each script
+run through the analyses with a reference implementation and compared against
+the one each replaces. [`scripts/README.md`](./scripts/README.md) explains what each script
 covers and how to point one at a corpus of your own.
 
 ## License

@@ -22,8 +22,8 @@ fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
     let command = args.next().unwrap_or_default();
 
-    if command != "parse" && command != "analyze" && command != "graph" {
-        eprintln!("usage: jskit-dump parse|analyze <file> [options]");
+    if command != "parse" && command != "analyze" && command != "graph" && command != "types" {
+        eprintln!("usage: jskit-dump parse|analyze|graph|types <file> [options]");
 
         return ExitCode::from(2);
     }
@@ -113,6 +113,14 @@ fn main() -> ExitCode {
                     jskit_core::flow::create_graph(&words, &units, &scope_words);
 
                 std::io::stdout().write_all(&flow_buffer).unwrap();
+            } else if command == "types" {
+                let words = words_of(&buffer);
+                let scope_buffer = analyze(&words, &units, scope_options);
+                let scope_words = words_of(&scope_buffer);
+                let types_buffer =
+                    jskit_core::types::infer_types(&words, &units, &scope_words);
+
+                std::io::stdout().write_all(&types_buffer).unwrap();
             } else {
                 std::io::stdout().write_all(&buffer).unwrap();
             }

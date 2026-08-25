@@ -4,40 +4,43 @@ An npm workspace holding a fast, ESLint-compatible toolchain for the latest
 JavaScript, TypeScript, and JSX syntax. TypeScript source, bundled with
 `esbuild`, tested with `vitest`.
 
-| Package                  | Name                    | What it does                                                                                                                                                                                                                                                                                                                            |
-| ------------------------ | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/jskit`         | `@eslint/jskit`         | The toolkit: parser, scope analyzer, and control flow analyzer, in one package with one entry point.                                                                                                                                                                                                                                    |
-| `packages/jskit-native`  | `@eslint/jskit-native`  | The three buffer producers — `parse()`, `analyze()`, `createGraph()` — plus `validate()`, reimplemented in Rust behind Node-API bindings, writing byte-identical buffers and reporting identical diagnostics. `@eslint/jskit`'s Node entry uses it when it is built and falls back to TypeScript when it is not. See the section below. |
-| `packages/jskit-inspect` | `@eslint/jskit-inspect` | Web app (Astro + React) that runs all three in the browser: code in a left-hand editor, AST/scope/flow trees in tabs on the right, with the flow tab offering a Mermaid diagram of one chosen execution unit. Its `start`/`build`/`lint:types` scripts build `@eslint/jskit` first.                                                     |
+| Package                  | Name                    | What it does                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------ | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `packages/jskit`         | `@eslint/jskit`         | The toolkit: parser, scope analyzer, and control flow analyzer, in one package with one entry point.                                                                                                                                                                                                                                                   |
+| `packages/jskit-native`  | `@eslint/jskit-native`  | The four buffer producers — `parse()`, `analyze()`, `createGraph()`, `inferTypes()` — plus `validate()`, reimplemented in Rust behind Node-API bindings, writing byte-identical buffers and reporting identical diagnostics. `@eslint/jskit`'s Node entry uses it when it is built and falls back to TypeScript when it is not. See the section below. |
+| `packages/jskit-inspect` | `@eslint/jskit-inspect` | Web app (Astro + React) that runs all four in the browser: code in a left-hand editor, AST/scope/flow/type trees in tabs on the right, with the flow tab offering a Mermaid diagram of one chosen execution unit. Its `start`/`build`/`lint:types` scripts build `@eslint/jskit` first.                                                                |
 
-**The three analyses are directories, not packages.** `parse`, `scope`, and
-`flow` split the source, the tests, the documentation, the scripts, and the
-benchmarks alike:
+**The four analyses are directories, not packages.** `parse`, `scope`,
+`flow`, and `types` split the source, the tests, the documentation, the
+scripts, and the benchmarks alike:
 
 ```
 packages/jskit/
-  src/index.ts        the public surface: export * from all three
+  src/index.ts        the public surface: export * from all four
   src/parse/          tokenizer, parser, validator, ESTree decoder
   src/scope/          the scope walk and the binary scope format
   src/flow/           the control flow walk and the binary flow format
-  tests/{parse,scope,flow}/       integration tests, *.test.ts
-  docs/{parse,scope,flow}/        api.md, architecture.md, requirements.md
+  src/types/          the type walk and the binary type format
+  tests/{parse,scope,flow,types}/ integration tests, *.test.ts
+  docs/{parse,scope,flow,types}/  api.md, architecture.md, requirements.md
   scripts/{parse,scope}/          the differential conformance runs
   benchmarks/{parse,scope}/       the performance comparisons
 ```
 
 Everything ships from `src/index.ts` as one bundle, `dist/jskit.js`. Within
-`src/`, `scope/` imports `../parse/index.js` and `flow/` imports both — always
-through the sub-index, never a module inside another directory. The package is
+`src/`, `scope/` imports `../parse/index.js`, and `flow/` and `types/` import
+both — always through the sub-index, never a module inside another
+directory. The package is
 `sideEffects: false`, so importing one analysis still leaves the others behind;
 `tests/scope/tree-shaking.test.ts` proves it against the built bundle.
 
-**The two buffer formats describe their headers with the same field names**, so
-the scope one is prefixed `SCOPE_H_*`/`SCOPE_HEADER_WORDS` and the flow one
-`FLOW_H_*`/`FLOW_HEADER_WORDS`. They are the only names the three surfaces
+**The buffer formats describe their headers with the same field names**, so
+the scope one is prefixed `SCOPE_H_*`/`SCOPE_HEADER_WORDS`, the flow one
+`FLOW_H_*`/`FLOW_HEADER_WORDS`, and the type one
+`TYPES_H_*`/`TYPES_HEADER_WORDS`. They are the only names the four surfaces
 would otherwise collide on, and `export *` would silently drop a collision
-rather than report it — so if you add a constant to one format, check the other
-two for the name first. `npm run lint:types` catches what slips through.
+rather than report it — so if you add a constant to one format, check the
+others for the name first. `npm run lint:types` catches what slips through.
 
 `flow`'s `createGraph()` reads the two binary buffers directly and returns
 a binary control flow graph; `toGraphTree()` is its JSON debugging view and
@@ -50,6 +53,25 @@ along with the four places it deliberately trades precision for simplicity.
 It has no differential conformance suite — there is no reference
 implementation to diff against — so its integration tests in
 `packages/jskit/tests/flow/` are the contract.
+
+`types`' `inferTypes()` reads the parse and scope buffers and returns a
+binary record of what the program states about its types — classification
+without a type checker. The `Types` class answers `isNullish()`,
+`isTypeOf()`, `isAwaitable()`, and the rest, keyed by a node or `NodeRef`;
+`toTypeTree()` is its JSON debugging view and `TypesBufferReader` its
+word-level reader. Like `flow`, it accepts scope buffers only from
+`analyze()`, and like `flow` it replaces no existing implementation — its
+integration tests in `packages/jskit/tests/types/` are the contract, the
+differential run in `packages/jskit-native/tools/diff-types.mjs` holds the
+two implementations byte-identical, and
+`packages/jskit/scripts/types/conformance-ts.mjs` spot-checks every positive
+claim against `ts.TypeChecker` over the corpus, where `disagree=0` is the
+standard. Named types record their **origin** —
+local, the TypeScript standard library, a package, or a file — and every
+query is conservative: no recorded type means every predicate answers
+`false`. The format is specified in
+[`packages/jskit/docs/types/architecture.md`](./packages/jskit/docs/types/architecture.md),
+along with everything the analysis deliberately declines to claim.
 
 `scope` has **two entry points over one walk**: `analyze()` reads the binary
 buffers and `analyzeTree()` reads an ordinary ESTree tree. Neither is a
@@ -77,21 +99,23 @@ Two consequences worth knowing before you touch it:
 
 ## The native implementation
 
-`packages/jskit-native` is the three buffer producers plus the validator in
-Rust: `parse()`, `analyze()`, and `createGraph()` write byte-identical
-buffers, and `validate()` reports the same problems in the same order with
-the same messages — its output is a short list rather than a tree, which is
+`packages/jskit-native` is the four buffer producers plus the validator in
+Rust: `parse()`, `analyze()`, `createGraph()`, and `inferTypes()` write
+byte-identical buffers, and `validate()` reports the same problems in the
+same order with the same messages — its output is a short list rather than a tree, which is
 what makes it the one non-producer worth carrying across the boundary.
 Everything else that reads a buffer — `toAST()`, `Scopes`,
-`toScopeManager()`, `FlowBufferReader`, the ESLint parser object — is the one
-TypeScript implementation either way. That is oxc-parser's shape too, and for
+`toScopeManager()`, `FlowBufferReader`, `Types`, the ESLint parser object —
+is the one TypeScript implementation either way. That is oxc-parser's shape too, and for
 the same reason: ESTree nodes are JavaScript objects, and building millions
 of them through Node-API calls costs far more than building them in
 JavaScript from the buffer, which is why `toAST()`'s speed lives in the
 _generated_ decoder (`src/parse/to-ast-decode.ts`, from
 `scripts/parse/to-ast-shapes.mjs`) rather than in Rust. `analyzeTree()` has
 no native form on purpose: it reads the caller's ESTree objects, and crossing
-the Node-API boundary per node costs more than the walk saves.
+the Node-API boundary per node costs more than the walk saves. `inferTypes()`
+follows the same split: the Rust side produces the buffer, and the `Types`
+queries stay TypeScript.
 
 How it is wired, and what follows from the wiring:
 
@@ -164,7 +188,7 @@ changing anything in them:
   not in it is a bug.
 
 [`packages/jskit/scripts/README.md`](./packages/jskit/scripts/README.md)
-covers the ten scripts behind `npm run test:conformance` and how they divide the
+covers the scripts behind `npm run test:conformance` and how they divide the
 work.
 
 Task-specific procedures live in [`.agents/skills/`](./.agents/skills), which
@@ -254,13 +278,14 @@ produced, so blast radius runs downstream and never up. The cascade is a fact
 about the source layout rather than about CI, which is why it is not in the
 workflow.
 
-| Changed         | Tests run   | Conformance                                                 |
-| --------------- | ----------- | ----------------------------------------------------------- |
-| `src/parse/`    | all three   | parse and scope                                             |
-| `src/scope/`    | scope, flow | scope                                                       |
-| `src/flow/`     | flow        | none — there is no reference implementation to diff against |
-| anything shared | all three   | parse and scope                                             |
-| prose only      | none        | none                                                        |
+| Changed         | Tests run          | Conformance                                                 |
+| --------------- | ------------------ | ----------------------------------------------------------- |
+| `src/parse/`    | all four           | parse, scope, and types                                     |
+| `src/scope/`    | scope, flow, types | scope and types                                             |
+| `src/flow/`     | flow               | none — there is no reference implementation to diff against |
+| `src/types/`    | types              | types — the claims checked against `ts.TypeChecker`         |
+| anything shared | all four           | parse, scope, and types                                     |
+| prose only      | none               | none                                                        |
 
 **"Anything shared" is a default rather than a list.** The `all` filter is
 written as `**` followed by an exclusion per area, and the action runs with

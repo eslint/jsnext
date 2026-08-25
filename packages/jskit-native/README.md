@@ -1,20 +1,21 @@
 # @eslint/jskit-native
 
-The native (Rust) implementation of `@eslint/jskit`'s three buffer producers
-— `parse()`, `analyze()`, and `createGraph()` — plus its validator. The
-producers write **the same binary formats, byte for byte** — the same parse
-buffer, the same scope buffer, the same flow buffer — and `validate()`
-reports **the same problems in the same order with the same messages**, so
-everything downstream (`toAST()`, `Scopes`, `toScopeManager()`,
-`FlowBufferReader`, the ESLint parser object) is the untouched TypeScript
-code reading output it cannot tell apart from its own.
+The native (Rust) implementation of `@eslint/jskit`'s four buffer producers
+— `parse()`, `analyze()`, `createGraph()`, and `inferTypes()` — plus its
+validator. The producers write **the same binary formats, byte for byte** —
+the same parse buffer, the same scope buffer, the same flow buffer, the same
+type buffer — and `validate()` reports **the same problems in the same order
+with the same messages**, so everything downstream (`toAST()`, `Scopes`,
+`toScopeManager()`, `FlowBufferReader`, `Types`, the ESLint parser object) is
+the untouched TypeScript code reading output it cannot tell apart from its
+own.
 
 ## How it plugs in
 
 `@eslint/jskit`'s Node entry point (`dist/jskit-node.js`, selected by the
 `node` export condition) tries to `require("@eslint/jskit-native")` and, when
 the binding loads, registers it through `setNative()`. Every later call to
-`parse()`, `validate()`, `analyze()`, or `createGraph()` — including the ones
+`parse()`, `validate()`, `analyze()`, `createGraph()`, or `inferTypes()` — including the ones
 the ESLint parser object makes internally — then runs in Rust. When the package is
 missing, was not built for this platform, or `JSKIT_NATIVE=0` is set in the
 environment, nothing is registered and the TypeScript implementation runs
@@ -28,9 +29,9 @@ than the walk saves.
 ## Layout
 
 ```
-crates/jskit-core   the implementation: parse/, scope/, flow/, no Node
-                    dependencies; `src/bin/jskit-dump.rs` writes any of the
-                    three buffers to stdout for the differential harness
+crates/jskit-core   the implementation: parse/, scope/, flow/, types/, no
+                    Node dependencies; `src/bin/jskit-dump.rs` writes any of
+                    the four buffers to stdout for the differential harness
 crates/jskit-napi   the Node-API bindings (thin: strings in, ArrayBuffers out)
 index.js            loads the platform binary, exports `null` when it cannot
 build.mjs           `cargo build --release` + copy, skipped without cargo
@@ -55,6 +56,7 @@ node tools/diff-parse.mjs    ../../node_modules   # parse buffers, +--all-option
 node tools/diff-validate.mjs ../../node_modules   # problem lists, both dialects
 node tools/diff-analyze.mjs  ../../node_modules   # scope buffers, + option flags
 node tools/diff-graph.mjs    ../../node_modules   # flow buffers
+node tools/diff-types.mjs    ../../node_modules   # type buffers
 ```
 
 `diff-validate.mjs` is at its strongest over a test262 checkout — the one
