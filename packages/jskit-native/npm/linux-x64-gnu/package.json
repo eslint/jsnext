@@ -1,6 +1,6 @@
 {
   "name": "@eslint/jskit-native-linux-x64-gnu",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The Linux x64 (glibc) binary for @eslint/jskit-native.",
   "type": "commonjs",
   "main": "jskit.linux-x64-gnu.node",
