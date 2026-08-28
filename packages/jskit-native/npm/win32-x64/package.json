@@ -1,6 +1,6 @@
 {
   "name": "@eslint/jskit-native-win32-x64",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The Windows x64 binary for @eslint/jskit-native.",
   "type": "commonjs",
   "main": "jskit.win32-x64.node",

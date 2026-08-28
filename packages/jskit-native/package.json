@@ -1,6 +1,6 @@
 {
   "name": "@eslint/jskit-native",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Native (Rust) implementation of @eslint/jskit's parse(), analyze(), and createGraph(), producing the same binary buffers.",
   "type": "commonjs",
   "main": "index.js",
