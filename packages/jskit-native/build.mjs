@@ -7,7 +7,7 @@
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { copyFileSync } from "node:fs";
+import { copyFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -40,10 +40,13 @@ const built = join(
 	"release",
 	`${prefix}jskit_napi.${extension}`,
 );
-const target = join(
-	here,
-	`jskit.${process.platform}-${process.arch}${process.platform === "linux" ? "-gnu" : ""}.node`,
-);
+// The binary lands inside its platform package, which is where index.js and
+// the release workflow expect it. `mkdirSync` covers a platform no package
+// is checked in for — index.js still finds the binary by path there.
+const platformTarget = `${process.platform}-${process.arch}${process.platform === "linux" ? "-gnu" : ""}`;
+const targetDir = join(here, "npm", platformTarget);
+const target = join(targetDir, `jskit.${platformTarget}.node`);
 
+mkdirSync(targetDir, { recursive: true });
 copyFileSync(built, target);
 console.log(`[jskit-native] built ${target}`);

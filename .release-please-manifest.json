@@ -1,4 +1,9 @@
 {
   "packages/jskit": "0.0.0",
-  "packages/jskit-native": "0.0.0"
+  "packages/jskit-native": "0.0.0",
+  "packages/jskit-native/npm/darwin-arm64": "0.0.0",
+  "packages/jskit-native/npm/darwin-x64": "0.0.0",
+  "packages/jskit-native/npm/linux-arm64-gnu": "0.0.0",
+  "packages/jskit-native/npm/linux-x64-gnu": "0.0.0",
+  "packages/jskit-native/npm/win32-x64": "0.0.0"
 }

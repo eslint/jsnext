@@ -33,8 +33,16 @@ crates/jskit-core   the implementation: parse/, scope/, flow/, types/, no
                     Node dependencies; `src/bin/jskit-dump.rs` writes any of
                     the four buffers to stdout for the differential harness
 crates/jskit-napi   the Node-API bindings (thin: strings in, ArrayBuffers out)
-index.js            loads the platform binary, exports `null` when it cannot
-build.mjs           `cargo build --release` + copy, skipped without cargo
+npm/                one npm package per platform binary, esbuild-style: each
+                    declares the `os`/`cpu`/`libc` it is for, the release
+                    workflow stamps all of them into this package's
+                    `optionalDependencies` at publish time, and npm installs
+                    only the one matching the machine
+index.js            requires the matching platform package — or the locally
+                    built binary in npm/<target>/ — and exports `null` when
+                    neither loads
+build.mjs           `cargo build --release` + copy into npm/<target>/,
+                    skipped without cargo
 test.mjs            parity tests: native and TypeScript buffers byte-equal
 tools/              the differential runs (see below)
 ```

@@ -1,16 +1,22 @@
 {
-  "name": "@eslint/jskit-native",
+  "name": "@eslint/jskit-native-win32-x64",
   "version": "0.0.0",
-  "description": "Native (Rust) implementation of @eslint/jskit's parse(), analyze(), and createGraph(), producing the same binary buffers.",
+  "description": "The Windows x64 binary for @eslint/jskit-native.",
   "type": "commonjs",
-  "main": "index.js",
+  "main": "jskit.win32-x64.node",
   "files": [
-    "index.js"
+    "jskit.win32-x64.node"
+  ],
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
   ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/eslint/jsnext.git",
-    "directory": "packages/jskit-native"
+    "directory": "packages/jskit-native/npm/win32-x64"
   },
   "bugs": {
     "url": "https://github.com/eslint/jsnext/issues"
@@ -19,10 +25,6 @@
   "publishConfig": {
     "access": "public",
     "provenance": true
-  },
-  "scripts": {
-    "build": "node build.mjs",
-    "test": "node --test test.mjs"
   },
   "keywords": [
     "parser",

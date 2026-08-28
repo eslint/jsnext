@@ -1,16 +1,22 @@
 {
-  "name": "@eslint/jskit-native",
+  "name": "@eslint/jskit-native-darwin-arm64",
   "version": "0.0.0",
-  "description": "Native (Rust) implementation of @eslint/jskit's parse(), analyze(), and createGraph(), producing the same binary buffers.",
+  "description": "The macOS ARM64 (Apple Silicon) binary for @eslint/jskit-native.",
   "type": "commonjs",
-  "main": "index.js",
+  "main": "jskit.darwin-arm64.node",
   "files": [
-    "index.js"
+    "jskit.darwin-arm64.node"
+  ],
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
   ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/eslint/jsnext.git",
-    "directory": "packages/jskit-native"
+    "directory": "packages/jskit-native/npm/darwin-arm64"
   },
   "bugs": {
     "url": "https://github.com/eslint/jsnext/issues"
@@ -19,10 +25,6 @@
   "publishConfig": {
     "access": "public",
     "provenance": true
-  },
-  "scripts": {
-    "build": "node build.mjs",
-    "test": "node --test test.mjs"
   },
   "keywords": [
     "parser",

@@ -52,15 +52,15 @@ jobs:
             matrix:
                 include:
                     - os: ubuntu-latest
-                      binary: jskit.linux-x64-gnu.node
+                      target: linux-x64-gnu
                     - os: ubuntu-24.04-arm
-                      binary: jskit.linux-arm64-gnu.node
+                      target: linux-arm64-gnu
                     - os: macos-13
-                      binary: jskit.darwin-x64.node
+                      target: darwin-x64
                     - os: macos-latest
-                      binary: jskit.darwin-arm64.node
+                      target: darwin-arm64
                     - os: windows-latest
-                      binary: jskit.win32-x64.node
+                      target: win32-x64
         runs-on: ${{ matrix.os }}
         steps:
             - uses: actions/checkout@v7
@@ -86,16 +86,20 @@ jobs:
             - name: Verify Parity Against the TypeScript Implementation
               run: npm test --workspace=@eslint/jskit-native
 
+            # The artifact is named after the target so that the publish
+            # job's download step drops each binary back into its platform
+            # package directory.
             - uses: actions/upload-artifact@v7
               with:
-                  name: ${{ matrix.binary }}
-                  path: packages/jskit-native/${{ matrix.binary }}
+                  name: ${{ matrix.target }}
+                  path: packages/jskit-native/npm/${{ matrix.target }}/jskit.${{ matrix.target }}.node
                   if-no-files-found: error
 
-    # The two packages ship together: the buffer formats are one contract
-    # with two implementations, and `@eslint/jskit` pins the exact
-    # `@eslint/jskit-native` version it was released beside (the
-    # linked-versions plugin keeps the two version numbers equal).
+    # The packages ship together: the buffer formats are one contract with
+    # two implementations, and `@eslint/jskit` pins the exact
+    # `@eslint/jskit-native` version it was released beside, which in turn
+    # pins the exact version of each platform package (the linked-versions
+    # plugin keeps every version number in the group equal).
     publish:
         needs: [release-please, build-native]
         if: ${{ needs.release-please.outputs.releases_created == 'true' }}
@@ -122,23 +126,47 @@ jobs:
             - name: Install Packages
               run: npm ci
 
-            # Every platform's binary lands beside index.js, so the one
-            # published package carries all of them and the loader picks by
-            # platform at require time.
+            # Each artifact is named after its target, and download-artifact
+            # extracts every artifact into a directory of its own name, so
+            # each binary lands back inside its platform package —
+            # packages/jskit-native/npm/<target>/jskit.<target>.node.
             - uses: actions/download-artifact@v8
               with:
-                  path: packages/jskit-native
-                  merge-multiple: true
+                  path: packages/jskit-native/npm
 
             - name: List the Binaries Being Published
-              run: ls -la packages/jskit-native/*.node
+              run: ls -la packages/jskit-native/npm/*/*.node
 
-            # No `NODE_AUTH_TOKEN`: both packages are published through npm
+            # The checked-in `@eslint/jskit-native` package.json carries no
+            # `optionalDependencies`: a pin can only point at a published
+            # version, and the release pull request bumps every version
+            # before anything is published, so a checked-in pin would break
+            # `npm ci` on that very pull request. This stamps the five
+            # platform packages in, each pinned to the exact version about
+            # to be published — the same move esbuild's publish makes.
+            - name: Pin the Platform Packages in @eslint/jskit-native
+              if: ${{ needs.release-please.outputs.native_released == 'true' }}
+              run: node packages/jskit-native/tools/pin-platform-packages.mjs
+
+            # No `NODE_AUTH_TOKEN`: every package is published through npm
             # trusted publishing, which authenticates with the OIDC token
             # granted by the `id-token: write` permission above and requires
-            # no stored secret. The native package goes first so that the
-            # exact version `@eslint/jskit` pins exists by the time anyone
-            # installs it.
+            # no stored secret. Publishing runs bottom-up so every exact pin
+            # exists by the time anyone installs it: the platform packages
+            # first, then `@eslint/jskit-native` (which pins them), then
+            # `@eslint/jskit` (which pins it). One binary per platform
+            # package; `os`, `cpu`, and (on Linux) `libc` in each one's
+            # package.json make npm install only the match. The platform
+            # packages are not npm workspaces — npm refuses to install a
+            # workspace whose `os`/`cpu` do not match the machine — so they
+            # publish from their own directories rather than by name.
+            - name: Publish the Platform Packages
+              if: ${{ needs.release-please.outputs.native_released == 'true' }}
+              run: |
+                  for target in darwin-arm64 darwin-x64 linux-arm64-gnu linux-x64-gnu win32-x64; do
+                      (cd "packages/jskit-native/npm/${target}" && npm publish --provenance)
+                  done
+
             - name: Publish @eslint/jskit-native
               if: ${{ needs.release-please.outputs.native_released == 'true' }}
               run: npm publish --provenance --workspace=@eslint/jskit-native

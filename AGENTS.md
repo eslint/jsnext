@@ -323,21 +323,36 @@ jobs directly would block every merge where one of them correctly skipped.
 
 `release-please` watches `main`, keeps a release pull request open, and turns
 its merge into a tag and an npm publish. The versions live in
-`.release-please-manifest.json`; `release-please-config.json` lists the two
-public packages — `@eslint/jskit` and `@eslint/jskit-native` — with the
-`linked-versions` plugin holding their version numbers equal, because the
+`.release-please-manifest.json`; `release-please-config.json` lists the
+public packages — `@eslint/jskit`, `@eslint/jskit-native`, and the five
+platform packages under `packages/jskit-native/npm/` — with the
+`linked-versions` plugin holding every version number equal, because the
 binary buffer formats are one contract with two implementations and the exact
-version pin in `@eslint/jskit`'s `optionalDependencies` is what keeps a
-matched pair installed. `@eslint/jskit-inspect` is private and is not
-released. There is no JSR configuration and none is wanted.
+version pins in the `optionalDependencies` chain are what keep a matched set
+installed. `@eslint/jskit-inspect` is private and is not released. There is
+no JSR configuration and none is wanted.
 
-A release build compiles the native binary on one runner per supported
-platform — linux x64/arm64 (gnu), macOS x64/arm64, Windows x64 — runs the
-parity tests against that very binary on that very machine, and publishes one
-`@eslint/jskit-native` package carrying all of the binaries; `index.js` picks
-by platform at require time, and a platform with no binary falls back to the
-TypeScript implementation. The native package publishes before `@eslint/jskit`
-so the pinned version exists first.
+The binaries ship the way esbuild's do: one npm package per platform
+(`@eslint/jskit-native-linux-x64-gnu` and its four siblings), each carrying
+one binary and declaring the `os`, `cpu`, and (on Linux) `libc` it is for.
+The published `@eslint/jskit-native` lists all five as exact-pinned
+`optionalDependencies`, npm installs only the one matching the machine, and
+`index.js` requires it by name at require time — a platform with no package
+falls back to the TypeScript implementation. The checked-in package.json
+omits those pins, and the platform packages are not npm workspaces: a pin
+can only point at a published version (the release pull request bumps
+versions before they exist, which would break `npm ci`), and npm refuses to
+install a workspace whose `os`/`cpu` do not match the machine. The release
+workflow stamps the pins in with
+`packages/jskit-native/tools/pin-platform-packages.mjs` immediately before
+publishing; in a checkout, `index.js` loads the locally built binary from
+`npm/<target>/` by path instead.
+
+A release build compiles each binary on one runner of its own platform —
+linux x64/arm64 (gnu), macOS x64/arm64, Windows x64 — runs the parity tests
+against that very binary on that very machine, and publishes bottom-up: the
+platform packages first, then `@eslint/jskit-native`, then `@eslint/jskit`,
+so every exact pin exists before the package pinning it.
 
 Publishing goes through npm trusted publishing, which authenticates with the
 workflow's OIDC token, so no npm secret is stored. The one secret the workflow
