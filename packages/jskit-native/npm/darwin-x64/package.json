@@ -1,6 +1,6 @@
 {
   "name": "@eslint/jskit-native-darwin-x64",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The macOS x64 binary for @eslint/jskit-native.",
   "type": "commonjs",
   "main": "jskit.darwin-x64.node",
