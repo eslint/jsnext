@@ -374,31 +374,42 @@ answer depends on context the text alone does not supply**.
   syntax under `dialect: "js"`, JSX without `jsx: true`, a mismatched JSX
   closing tag.
 
-So `dialect` and `declaration` are options of phase 2, never phase 1. When
-adding a new diagnostic, decide which side of that line it falls on first. A
-check that needs to know the dialect, whether JSX is enabled, or whether the
-file is a `.d.ts`, belongs in `validate.ts`, even if a reference parser throws
-for it.
+So `declaration` is an option of phase 2, never phase 1. When adding a new
+diagnostic, decide which side of that line it falls on first. A check that
+needs to know whether the file is a `.d.ts` belongs in `validate.ts`, even if
+a reference parser throws for it.
 
-**`sourceType` and `jsx` are the exceptions, and they are the only two.** Each
-is an option of _both_ phases, because each makes two readings of the same
-text both valid and different:
+**`sourceType`, `jsx`, and `dialect` are the exceptions, and they are the only
+three.** Each is an option of _both_ phases, because each makes two readings
+of the same text both valid and different:
 
-|              | one reading                     | the other                       |
-| ------------ | ------------------------------- | ------------------------------- |
-| `await.x`    | script: a member expression     | module: a syntax error          |
-| `a <!--b`    | script: `a`, then a comment     | module: `a < !(--b)`            |
-| `<T>() => x` | `.ts`: a generic arrow function | `.tsx`: an unclosed JSX element |
-| `<T>value`   | `.ts`: a type assertion         | `.tsx`: a JSX element opening   |
+|                  | one reading                     | the other                       |
+| ---------------- | ------------------------------- | ------------------------------- |
+| `await.x`        | script: a member expression     | module: a syntax error          |
+| `a <!--b`        | script: `a`, then a comment     | module: `a < !(--b)`            |
+| `<T>() => x`     | `.ts`: a generic arrow function | `.tsx`: an unclosed JSX element |
+| `<T>value`       | `.ts`: a type assertion         | `.tsx`: a JSX element opening   |
+| `f<A, B>(a + b)` | js: `(f < A)`, `(B > (a + b))`  | ts: a call with type arguments  |
 
 No single tree stands for both, so phase 1 has to choose, and it cannot choose
-without being told. `dialect` and `declaration` never pose that question —
-TypeScript syntax and `export const x: number;` either parse or do not, and
-where they parse, every setting agrees on the tree. That is the test for
-whether something belongs in `ParseOptions`: **not** "does it need outside
-context" — everything here does — but "would two answers both be valid?"
+without being told. `declaration` never poses that question — `export const x:
+number;` either parses or does not, and where it parses, every setting agrees
+on the tree. That is the test for whether something belongs in `ParseOptions`:
+**not** "does it need outside context" — everything here does — but "would two
+answers both be valid?"
 
-The two exceptions differ in one way. `sourceType` has no permissive middle:
+`dialect` is the narrowest of the three: it decides one ambiguity and nothing
+else. Unambiguous TypeScript syntax — a type annotation, an `as` expression,
+an interface — still parses under `dialect: "js"`, and `validate()` is still
+the one to report it, so phase 1 goes on accepting the union everywhere the
+text does not force a choice. It is `<` after an expression that forces one,
+and there `"ts"` is already the permissive reading: it takes the type
+arguments only when a call, a tagged template, or an end of expression follows
+the `>`, and falls back to the comparisons otherwise, so it accepts everything
+`"js"` accepts. That is why `dialect` has no permissive middle to add and why
+`"js"` narrows rather than widens.
+
+The three exceptions differ in one way. `sourceType` has no permissive middle:
 phase 1 must pick a side, so `parse()` records the choice in the buffer, and
 `validate()` and `toAST()` read it back rather than being told again — naming
 the opposite side of the module line throws, while narrowing `script` to
@@ -411,7 +422,20 @@ and `.ts` readings directly, which also skips the speculation — the reason
 JSX-heavy files parse much faster when the caller says which kind of file it
 has. The choice is deliberately not recorded in the buffer: a JSX node either
 is in the tree or is not, and phases 2 and 3 read the tree. `validate()`'s
-`jsx` option is still the one that says whether JSX is _allowed_.
+`jsx` option is still the one that says whether JSX is _allowed_. `dialect`
+follows `jsx` on that last point: the choice is not recorded either, because
+type arguments either are in the tree or are not.
+
+The ESLint parser object passes `jsx` to phase 1 only when it is on, and
+`dialect` both ways. The asymmetry is deliberate. A permissive `jsx` still
+reads JSX the way a `.jsx` file would, so the tree is right and only the
+verdict is deferred — which buys the better "JSX is not enabled" diagnostic. A
+permissive `dialect` is not: it reads `f < A, B > (a + b)` — valid JavaScript,
+and two comparisons — as a call with explicit type arguments, which is the
+wrong tree for a `.js` file and draws three spurious "TypeScript syntax is not
+allowed" problems. The price is that TypeScript written in a `.js` file by
+mistake fails to parse rather than being told what is wrong with it, and a
+wrong tree for a valid program is the worse of the two.
 
 `declaration` is the clearest case of phase-2 context the text cannot supply:
 a declaration file is one by its _name_, which is why TypeScript decides it

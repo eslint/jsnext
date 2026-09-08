@@ -157,16 +157,29 @@ function buildProgram(code: string, options: EslintParserOptions): Program {
 	 * element then still parses, and phase two reports it as "JSX is not
 	 * enabled" — a far better diagnostic than the type-assertion parse error
 	 * the strict reading would produce.
+	 *
+	 * `dialect` goes to phase one both ways, and the difference from `jsx` is
+	 * the point. A permissive `jsx` still reads JSX the way a `.jsx` file
+	 * would, so the tree is right and only the verdict is deferred. A
+	 * permissive `dialect` is not: it reads `f < A, B > (a + b)` — valid
+	 * JavaScript, and two comparisons — as a call with explicit type
+	 * arguments, which is the wrong tree for a `.js` file and draws three
+	 * spurious "TypeScript syntax is not allowed" problems from phase two.
+	 * The cost is that TypeScript written in a `.js` file by mistake now
+	 * fails to parse rather than being told what is wrong with it; a wrong
+	 * tree for a valid program is the worse of the two, and it is what
+	 * `espree` does with the same text.
 	 */
 	/*
 	 * `tokens: true` because ESLint reads tokens as freely as nodes: the
 	 * `Program` this hands back must carry the full token and comment lists.
 	 */
+	const dialect = dialectFor(options);
 	const result = parse(
 		code,
 		jsxFor(options)
-			? { sourceType, jsx: true, tokens: true }
-			: { sourceType, tokens: true },
+			? { sourceType, jsx: true, dialect, tokens: true }
+			: { sourceType, dialect, tokens: true },
 	);
 	const lines = new LineIndex(readLineStarts(result));
 
@@ -180,7 +193,6 @@ function buildProgram(code: string, options: EslintParserOptions): Program {
 		sourceType === "script" && globalReturnFor(options)
 			? "commonjs"
 			: sourceType;
-	const dialect = dialectFor(options);
 
 	/*
 	 * `toAST()` deliberately does not validate, so the two passes are run

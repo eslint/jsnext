@@ -20,5 +20,6 @@ pub mod validator;
 pub mod values;
 
 pub use api::{parse, ParseOptions, SourceType};
+pub use parser::Dialect;
 pub use errors::ParseError;
 pub use validator::{validate_ast, ValidateSourceType, ValidationProblem};

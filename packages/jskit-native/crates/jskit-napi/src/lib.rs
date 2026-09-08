@@ -15,7 +15,9 @@ use napi::bindgen_prelude::*;
 use napi::{Env, JsArrayBuffer, JsObject, JsString};
 use napi_derive::napi;
 
-use jskit_core::parse::{ParseError, ParseOptions, SourceType, ValidateSourceType};
+use jskit_core::parse::{
+    Dialect, ParseError, ParseOptions, SourceType, ValidateSourceType,
+};
 use jskit_core::scope::options::{ResolvedOptions, ScopeSourceType};
 
 /// The options `parse()` accepts, mirroring the TypeScript `ParseOptions`.
@@ -24,6 +26,7 @@ use jskit_core::scope::options::{ResolvedOptions, ScopeSourceType};
 pub struct NativeParseOptions {
     pub source_type: Option<String>,
     pub jsx: Option<bool>,
+    pub dialect: Option<String>,
     pub source: Option<bool>,
     pub tokens: Option<bool>,
     pub parents: Option<bool>,
@@ -53,9 +56,21 @@ fn resolve_options(options: Option<NativeParseOptions>) -> Result<ParseOptions> 
         }
     };
 
+    let dialect = match options.dialect.as_deref() {
+        None | Some("ts") => Dialect::Ts,
+        Some("js") => Dialect::Js,
+        Some(other) => {
+            return Err(Error::new(
+                Status::InvalidArg,
+                format!("Unknown dialect: {other}"),
+            ))
+        }
+    };
+
     Ok(ParseOptions {
         source_type,
         jsx: options.jsx,
+        dialect,
         source: options.source.unwrap_or(false),
         tokens: options.tokens.unwrap_or(false),
         parents: options.parents.unwrap_or(false),

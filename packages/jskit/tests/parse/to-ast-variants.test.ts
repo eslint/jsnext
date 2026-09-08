@@ -127,7 +127,7 @@ for (const { file, dialect, jsx } of FIXTURES) {
 				let plain;
 
 				try {
-					plain = toAST(parse(code, { jsx, tokens: true }), {
+					plain = toAST(parse(code, { jsx, dialect, tokens: true }), {
 						dialect,
 					});
 				} catch {
@@ -167,9 +167,10 @@ for (const { file, dialect, jsx } of FIXTURES) {
 				let plain;
 
 				try {
-					plain = toAST(parse(code, { jsx, tokens: true }), {
-						dialect: other,
-					});
+					plain = toAST(
+						parse(code, { jsx, dialect: other, tokens: true }),
+						{ dialect: other },
+					);
 				} catch {
 					continue;
 				}
@@ -184,7 +185,8 @@ for (const { file, dialect, jsx } of FIXTURES) {
 				} catch {
 					/*
 					 * Under `dialect: "js"` the ESLint path refuses the
-					 * TypeScript fixtures outright — validation throws before
+					 * TypeScript fixtures outright — phase one reads no type
+					 * syntax and phase two rejects what is left, both before
 					 * anything is decoded — so only the plain decode of that
 					 * combination can be exercised, and it just was.
 					 */

@@ -126,19 +126,44 @@ export abstract class ParserBase {
 	readonly jsx: boolean | undefined;
 
 	/**
+	 * How a `<` *after* an expression reads.
+	 *
+	 * `"ts"` reads a type argument list whenever one fits and a call, a
+	 * tagged template, or an end of expression follows it, so `f<A, B>(x)` is
+	 * a call with explicit type arguments. `"js"` never reads one, so the same
+	 * text is the two comparisons `(f < A)` and `(B > x)` that `espree`
+	 * produces.
+	 *
+	 * There is no third state, unlike `jsx`: the `"ts"` reading already falls
+	 * back to the comparisons wherever the type arguments do not fit, so it
+	 * accepts everything `"js"` accepts here.
+	 *
+	 * It governs only that ambiguity — unambiguous TypeScript syntax parses
+	 * under either setting, and `validate()` decides whether it was allowed.
+	 */
+	readonly dialect: "js" | "ts";
+
+	/**
 	 * Creates a parser over a source text.
 	 * @param source The source text to parse.
 	 * @param isModule Whether to read the text as an ES module. CommonJS is
 	 *      read as a script: the two differ in what is *allowed*, which is
 	 *      phase two's question, not in what anything means.
 	 * @param jsx How a `<` in expression position reads; see the field.
+	 * @param dialect How a `<` after an expression reads; see the field.
 	 */
-	constructor(source: string, isModule: boolean, jsx?: boolean) {
+	constructor(
+		source: string,
+		isModule: boolean,
+		jsx?: boolean,
+		dialect: "js" | "ts" = "ts",
+	) {
 		this.source = source;
 		this.tokenizer = new Tokenizer(source, isModule);
 		this.writer = new NodeWriter(source.length);
 		this.inAsync = isModule;
 		this.jsx = jsx;
+		this.dialect = dialect;
 		this.tokenizer.inAsync = isModule;
 		this.tokenizer.next();
 	}

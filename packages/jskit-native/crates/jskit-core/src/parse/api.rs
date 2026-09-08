@@ -9,6 +9,7 @@ use super::binary::{
     SOURCE_TYPE_SCRIPT,
 };
 use super::errors::ParseError;
+use super::parser::Dialect;
 use super::parser::Parser;
 
 /// Which reading of the text the parser is given.
@@ -40,6 +41,11 @@ pub struct ParseOptions {
     /// How a `<` in expression position reads; `None` accepts the union.
     pub jsx: Option<bool>,
 
+    /// How a `<` after an expression reads. Defaults to `Ts`, which takes a
+    /// type argument list wherever one fits and a call can follow it; `Js`
+    /// never takes one, so `f<A, B>(a + b)` stays two comparisons.
+    pub dialect: Dialect,
+
     /// Whether to copy the source text into the parse buffer.
     pub source: bool,
 
@@ -53,7 +59,7 @@ pub struct ParseOptions {
 /// Parses source text into one binary buffer.
 pub fn parse(code: &[u16], options: &ParseOptions) -> Result<Vec<u8>, ParseError> {
     let is_module = options.source_type == SourceType::Module;
-    let mut parser = Parser::new(code, is_module, options.jsx)?;
+    let mut parser = Parser::new(code, is_module, options.jsx, options.dialect)?;
     let root = parser.parse_program()?;
 
     Ok(build_parse_buffer(&ParseBufferInput {

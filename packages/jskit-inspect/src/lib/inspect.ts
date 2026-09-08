@@ -89,8 +89,18 @@ export function inspect(code: string, options: InspectionOptions): Inspection {
 	let result: ParseResult;
 
 	try {
-		// `tokens: true` because the AST pane's `toAST()` reports them.
-		result = parse(code, { sourceType: options.sourceType, tokens: true });
+		/*
+		 * `tokens: true` because the AST pane's `toAST()` reports them, and
+		 * `dialect` because it decides how an ambiguous `<` reads:
+		 * `f<A, B>(a + b)` is a call with type arguments under `"ts"` and two
+		 * comparisons under `"js"`, so the pane would otherwise show the
+		 * TypeScript tree however the selector is set.
+		 */
+		result = parse(code, {
+			sourceType: options.sourceType,
+			dialect: options.dialect,
+			tokens: true,
+		});
 	} catch (error) {
 		const message = messageOf(error);
 

@@ -957,6 +957,16 @@ export abstract class ExpressionParser extends TypeParser {
 	 *      less-than operator after all.
 	 */
 	private tryParseTypeArgumentsInExpression(): number {
+		/*
+		 * In JavaScript there are no type arguments to find, and the `<` is a
+		 * comparison however the rest of the line reads. Speculating anyway
+		 * would turn `f < A, B > (a + b)` — two comparisons, and valid
+		 * JavaScript — into a call with explicit type arguments.
+		 */
+		if (this.dialect === "js") {
+			return 0;
+		}
+
 		const state = this.tokenizer.save();
 		const snapshot = this.writer.mark();
 
@@ -1592,7 +1602,17 @@ export abstract class ExpressionParser extends TypeParser {
 			this.writer.set(node, NODE_A, callee);
 
 			if (this.at(T_LT)) {
-				this.writer.set(node, NODE_C, this.parseTypeArguments());
+				/*
+				 * Tried rather than read outright, for the same reason as in
+				 * a call: `new f < A > c` is two comparisons in both
+				 * dialects, so the type arguments only count when something
+				 * that continues a `new` follows them.
+				 */
+				const typeArguments = this.tryParseTypeArgumentsInExpression();
+
+				if (typeArguments !== 0) {
+					this.writer.set(node, NODE_C, typeArguments);
+				}
 			}
 		}
 

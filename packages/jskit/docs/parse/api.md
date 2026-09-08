@@ -59,6 +59,7 @@ own.
 | ------------ | ---------- | ------------------------------------------------------------------------------------------- |
 | `sourceType` | `"module"` | Whether to read the text as a script, an ES module, or a CommonJS module.                   |
 | `jsx`        | unset      | How a `<` in expression position reads: the `.tsx` way, the `.ts` way, or try both.         |
+| `dialect`    | `"ts"`     | How a `<` after an expression reads: type arguments, or a comparison.                       |
 | `tokens`     | `false`    | Store the token records (comments included), so `TokenReader` and `toAST()` can read them.  |
 | `source`     | `false`    | Copy the source text into the buffer, so it can be read in a process that did not parse it. |
 | `parents`    | `false`    | Derive each node's parent, so a tool can climb from a node to its context.                  |
@@ -110,6 +111,49 @@ Unlike `sourceType`, the choice is not recorded in the buffer: a JSX node
 either is in the tree or is not, and the later phases read the tree rather
 than re-deciding. `validate()`'s own `jsx` option is unchanged — it still says
 whether the JSX that parsed is _allowed_.
+
+`dialect` is the third such question, and the one a `<` _after_ an expression
+poses:
+
+```js
+// The same eleven characters, read two ways.
+parse("f < A , B > ( a + b )", { dialect: "js" });
+// => two comparisons: `(f < A)` and `(B > (a + b))`, which is what `espree` does
+
+parse("f < A , B > ( a + b )", { dialect: "ts" });
+// => one call to `f` with the explicit type arguments `<A, B>`
+```
+
+- **`dialect: "ts"`** — the default — reads a type argument list whenever one
+  fits and a call, a tagged template, or an end of expression follows the `>`,
+  and falls back to the comparisons otherwise.
+- **`dialect: "js"`** never reads type arguments there, so the `<` is always a
+  comparison.
+
+There is no permissive middle to add, because `"ts"` already is one: the `>`
+has to be followed by something that can only continue a call, so every
+program `"js"` accepts at that spot, `"ts"` accepts the same way. `f < A, B >
+c` is two comparisons under both. Naming `"js"` narrows rather than widens.
+
+It settles that ambiguity and nothing else. TypeScript syntax that is not
+ambiguous still parses under `dialect: "js"` — the option does not turn phase
+1 into a JavaScript-only parser:
+
+```js
+const result = parse("let x: number = 1;", { dialect: "js" });
+// parses; the annotation is in the tree
+
+validate(result, { dialect: "js" });
+// => 'TypeScript syntax is not allowed when the dialect is "js".'
+```
+
+Like `jsx`, the choice is not recorded in the buffer: type arguments either
+are in the tree or are not. And like `jsx`, `parse()`'s option and
+`validate()`'s option of the same name are independent — `parse()`'s says how
+the text reads, `validate()`'s says whether what parsed is allowed. Passing
+`"js"` to one and not the other is legal and occasionally useful, but the
+ESLint parser object passes the same value to both, because a file is one
+language or the other.
 
 The tokens are roughly a third of the buffer, and the consumers that read only
 the tree — `validate()`, scope analysis, control flow analysis — never look at
@@ -291,7 +335,13 @@ It differs from `toAST()` in five ways, each because ESLint requires it:
 - **The dialect comes from the file name.** `.js`, `.cjs`, `.mjs`, and `.jsx`
   are parsed as JavaScript, so TypeScript syntax in them is reported rather
   than quietly accepted; everything else is parsed as TypeScript. Pass an
-  explicit `dialect` in `parserOptions` to override that.
+  explicit `dialect` in `parserOptions` to override that. It reaches both
+  phases, which is what makes `f < A, B > (a + b)` two comparisons in a `.js`
+  file and a call with type arguments in a `.ts` one — matching `espree` and
+  `@typescript-eslint/parser` respectively. The cost is that TypeScript
+  written in a `.js` file by mistake fails to parse rather than drawing the
+  "TypeScript syntax is not allowed" message; a wrong tree for a valid
+  program is the worse of the two.
 - **Declaration files come from the file name too.** `.d.ts`, `.d.mts`, and
   `.d.cts` are treated as ambient, so a `const` in one needs no initializer.
   Pass an explicit `declaration` in `parserOptions` to override that.

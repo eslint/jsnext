@@ -174,10 +174,11 @@ export interface ToAstOptions {
 /**
  * How the buffers `parse()` produces should be built.
  *
- * Apart from `sourceType` and `jsx` — the two questions where two readings of
- * the same text can both be valid — these describe the *encoding* of the
- * output, never how the text is interpreted. Everything that is merely
- * allowed or disallowed stays with `validate()`, per the phase split.
+ * Apart from `sourceType`, `jsx`, and `dialect` — the three questions where
+ * two readings of the same text can both be valid — these describe the
+ * *encoding* of the output, never how the text is interpreted. Everything
+ * that is merely allowed or disallowed stays with `validate()`, per the phase
+ * split.
  */
 export interface ParseOptions {
 	/**
@@ -224,6 +225,34 @@ export interface ParseOptions {
 	 * tree rather than re-deciding.
 	 */
 	jsx?: boolean;
+
+	/**
+	 * How a `<` after an expression reads. It is the third interpretation
+	 * question two readings of the same text can answer differently:
+	 * `f<A, B>(a + b)` is a call with explicit type arguments in TypeScript
+	 * and the two comparisons `(f < A)` and `(B > (a + b))` in JavaScript, and
+	 * no tree stands for both.
+	 *
+	 * Defaults to `"ts"`, which reads the type arguments whenever a call, a
+	 * tagged template, or an end of expression follows the `>` and falls back
+	 * to the comparisons otherwise. `"js"` never reads type arguments there,
+	 * matching `espree`.
+	 *
+	 * Unlike `sourceType` and `jsx`, this one has no permissive middle,
+	 * because the `"ts"` reading already is one: the `>` has to be followed by
+	 * something that can only continue a call, so every program the `"js"`
+	 * reading accepts here the `"ts"` reading accepts the same way. Naming
+	 * `"js"` narrows rather than widens.
+	 *
+	 * It decides only that ambiguity. TypeScript syntax that is unambiguous —
+	 * a type annotation, an `as` expression, an interface — still parses under
+	 * `"js"`, and `validate()` is still the one to say it was not allowed.
+	 *
+	 * Like `jsx`, the choice is not recorded in the buffer: type arguments
+	 * either are in the tree or are not, and the later phases read the tree
+	 * rather than re-deciding.
+	 */
+	dialect?: "js" | "ts";
 
 	/**
 	 * Whether to copy the source text into the parse buffer, making the buffer
@@ -293,7 +322,12 @@ export function parse(code: string, options: ParseOptions = {}): ParseResult {
 	}
 
 	const sourceType = options.sourceType ?? "module";
-	const parser = new Parser(code, sourceType === "module", options.jsx);
+	const parser = new Parser(
+		code,
+		sourceType === "module",
+		options.jsx,
+		options.dialect ?? "ts",
+	);
 	const root = parser.parseProgram();
 	const writer = parser.writer;
 	const tokenizer = parser.tokenizer;

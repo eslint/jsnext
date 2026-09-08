@@ -2,7 +2,7 @@
 //!
 //! Port of `packages/jskit/src/parse/parser-expressions.ts`.
 
-use super::{PRes, Parser, AFTER_JSX_EXPRESSION};
+use super::{Dialect, PRes, Parser, AFTER_JSX_EXPRESSION};
 use crate::parse::binary::TF_HAS_ESCAPE;
 use crate::parse::node_kinds::*;
 use crate::parse::token_kinds::*;
@@ -706,6 +706,14 @@ impl<'a> Parser<'a> {
     /// Tries to read a `<...>` type argument list in an expression position.
     /// Returns `0` when the `<` was a less-than operator after all.
     fn try_parse_type_arguments_in_expression(&mut self) -> PRes {
+        // In JavaScript there are no type arguments to find, and the `<` is a
+        // comparison however the rest of the line reads. Speculating anyway
+        // would turn `f < A, B > (a + b)` — two comparisons, and valid
+        // JavaScript — into a call with explicit type arguments.
+        if self.dialect == Dialect::Js {
+            return Ok(0);
+        }
+
         let state = self.tokenizer.save();
         let snapshot = self.writer.mark();
 
@@ -1292,9 +1300,15 @@ impl<'a> Parser<'a> {
             self.writer.set(node, NODE_A, callee);
 
             if self.at(T_LT) {
-                let type_arguments = self.parse_type_arguments()?;
+                // Tried rather than read outright, for the same reason as in
+                // a call: `new f < A > c` is two comparisons in both
+                // dialects, so the type arguments only count when something
+                // that continues a `new` follows them.
+                let type_arguments = self.try_parse_type_arguments_in_expression()?;
 
-                self.writer.set(node, NODE_C, type_arguments);
+                if type_arguments != 0 {
+                    self.writer.set(node, NODE_C, type_arguments);
+                }
             }
         }
 

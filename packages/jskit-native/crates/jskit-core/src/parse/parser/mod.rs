@@ -60,6 +60,14 @@ pub struct Parser<'a> {
     /// How a `<` in expression position reads, when the caller said.
     pub jsx: Option<bool>,
 
+    /// How a `<` *after* an expression reads. `Ts` takes a type argument list
+    /// whenever one fits and a call, a tagged template, or an end of
+    /// expression follows it; `Js` never takes one, so `f<A, B>(x)` is the
+    /// two comparisons `(f < A)` and `(B > x)`. There is no third state: the
+    /// `Ts` reading already falls back to the comparisons wherever the type
+    /// arguments do not fit.
+    pub dialect: Dialect,
+
     /// Whether a conditional type is currently out of reach — inside the
     /// `extends` type of an enclosing conditional.
     pub(crate) no_conditional_types: bool,
@@ -69,9 +77,27 @@ pub struct Parser<'a> {
     pub(crate) newline_after_matching_paren: bool,
 }
 
+/// Which language an ambiguous `<` after an expression is read as.
+///
+/// `f<A, B>(a + b)` is a call with explicit type arguments in TypeScript and
+/// the two comparisons `(f < A)` and `(B > (a + b))` in JavaScript, and no
+/// tree stands for both. Mirrors `ParseOptions#dialect` in
+/// `packages/jskit/src/parse/api.ts`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Dialect {
+    #[default]
+    Ts,
+    Js,
+}
+
 impl<'a> Parser<'a> {
     /// Creates a parser over a source text and scans the first token.
-    pub fn new(source: &'a [u16], is_module: bool, jsx: Option<bool>) -> PRes<Self> {
+    pub fn new(
+        source: &'a [u16],
+        is_module: bool,
+        jsx: Option<bool>,
+        dialect: Dialect,
+    ) -> PRes<Self> {
         let mut tokenizer = Tokenizer::new(source, is_module);
 
         tokenizer.in_async = is_module;
@@ -86,6 +112,7 @@ impl<'a> Parser<'a> {
             allow_super_property: false,
             allow_super_call: false,
             jsx,
+            dialect,
             no_conditional_types: false,
             newline_after_matching_paren: false,
         };
