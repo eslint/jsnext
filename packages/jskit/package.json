@@ -1,6 +1,6 @@
 {
   "name": "@eslint/jskit",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "A fast, ESLint-compatible parser, scope analyzer, control flow analyzer, and type analyzer for JavaScript and TypeScript.",
   "type": "module",
   "main": "./dist/jskit.js",
@@ -31,7 +31,7 @@
     "provenance": true
   },
   "optionalDependencies": {
-    "@eslint/jskit-native": "0.0.0"
+    "@eslint/jskit-native": "0.1.0"
   },
   "scripts": {
     "build": "node scripts/build.js && tsc -p tsconfig.build.json",

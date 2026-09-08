@@ -1,6 +1,6 @@
 {
   "name": "@eslint/jskit-native-darwin-arm64",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The macOS ARM64 (Apple Silicon) binary for @eslint/jskit-native.",
   "type": "commonjs",
   "main": "jskit.darwin-arm64.node",
