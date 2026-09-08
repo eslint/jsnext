@@ -404,9 +404,12 @@ an interface — still parses under `dialect: "js"`, and `validate()` is still
 the one to report it, so phase 1 goes on accepting the union everywhere the
 text does not force a choice. It is `<` after an expression that forces one,
 and there `"ts"` is already the permissive reading: it takes the type
-arguments only when a call, a tagged template, or an end of expression follows
-the `>`, and falls back to the comparisons otherwise, so it accepts everything
-`"js"` accepts. That is why `dialect` has no permissive middle to add and why
+arguments only when a call, a tagged template, or a token that cannot _begin_
+an expression follows the `>` — the last of those covering `as`, `satisfies`,
+every other binary operator, and every closer — and falls back to the
+comparisons otherwise. Each of those followers leaves the comparison reading
+without an operand after the `>`, so `"ts"` still accepts everything `"js"`
+accepts. That is why `dialect` has no permissive middle to add and why
 `"js"` narrows rather than widens.
 
 The three exceptions differ in one way. `sourceType` has no permissive middle:

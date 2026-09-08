@@ -3003,6 +3003,16 @@ impl<'a> Validator<'a> {
 
             names.insert(name.clone());
 
+            // A body-less method is a TypeScript overload signature, and
+            // signatures describe the one implementation rather than adding
+            // another declaration — so `#x(): void; #x(a: number): void {}`
+            // declares `#x` once, however many signatures precede the body.
+            // Only what is left counts toward the duplicate check, the same
+            // way a constructor overload is counted in `check_constructor()`.
+            if ast.kind(ast.field(member, NODE_B)) == N_TS_EMPTY_BODY_FUNCTION_EXPRESSION {
+                continue;
+            }
+
             let flags = ast.flags(member);
             let accessor = (flags & MKIND_MASK) >> MKIND_SHIFT;
             let is_static = (flags & NF_STATIC) != 0;

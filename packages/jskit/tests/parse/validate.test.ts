@@ -1640,6 +1640,42 @@ describe("private names", () => {
 			messages("class C { #p; [key: string]: number; m() { this.#p; } }"),
 		).toEqual([]);
 	});
+
+	/*
+	 * Overload signatures describe the one implementation rather than adding
+	 * declarations of their own, so a private name may carry as many as it
+	 * likes and still be declared once.
+	 */
+	it("allows overload signatures on a private method", () => {
+		expect(
+			messages("class C { #m(): void; #m(a: number): void {} }"),
+		).toEqual([]);
+		expect(
+			messages(
+				"class C { #m(): void; #m(a: number): void; #m(a?: number): void {} }",
+			),
+		).toEqual([]);
+	});
+
+	it("allows a private method's signatures in an ambient class", () => {
+		expect(
+			messages(
+				"declare class D { #m(a: number): void; #m(a: number, b?: string): void; }",
+			),
+		).toEqual([]);
+	});
+
+	it("still reports two private implementations", () => {
+		expect(
+			messages("class C { #m(a: number): void {} #m(): void {} }"),
+		).toEqual(["Identifier '#m' has already been declared."]);
+	});
+
+	it("still reports a private field beside a private implementation", () => {
+		expect(messages("class C { #m; #m() {} }")).toEqual([
+			"Identifier '#m' has already been declared.",
+		]);
+	});
 });
 
 describe("using declarations", () => {

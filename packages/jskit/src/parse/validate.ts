@@ -4392,6 +4392,21 @@ class Validator {
 			names.add(name);
 
 			/*
+			 * A body-less method is a TypeScript overload signature, and
+			 * signatures describe the one implementation rather than adding
+			 * another declaration — so `#x(): void; #x(a: number): void {}`
+			 * declares `#x` once, however many signatures precede the body.
+			 * Only what is left counts toward the duplicate check, the same
+			 * way a constructor overload is counted in `checkConstructor()`.
+			 */
+			if (
+				reader.kind(reader.field(member, NODE_B)) ===
+				N_TSEmptyBodyFunctionExpression
+			) {
+				continue;
+			}
+
+			/*
 			 * A getter and a setter pair up only with each other. Encoding the
 			 * accessor kind and the `static` side in one number makes "have I
 			 * already seen something this cannot sit beside?" a single lookup.

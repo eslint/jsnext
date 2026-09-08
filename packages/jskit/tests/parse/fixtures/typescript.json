@@ -451,5 +451,15 @@
  "type T = `a` | `b`;",
  "let x: `${A}`;",
  "type T = `\\n`;",
- "type T = `\\u0041`;"
+ "type T = `\\u0041`;",
+ "const a = new (Generic<string> as Foo)();",
+ "const b = f<string> as Foo;",
+ "const c = f<string> satisfies Foo;",
+ "const d = f<string> ? 1 : 2;",
+ "const e = f<string> || g<number>;",
+ "const h = f<string> === g;",
+ "class C { #m(): void; #m(a: number): void {} }",
+ "declare class D { #m(a: number): void; #m(a: number, b?: string): void; }",
+ "module Foo { \"use strict\"; }",
+ "namespace Bar { \"use strict\"; let x = 1; }"
 ]

@@ -1595,11 +1595,11 @@ impl<'a> Parser<'a> {
 
             self.enter_brace(true)?;
 
-            while !self.at(T_BRACE_CLOSE) && !self.at(T_EOF) {
-                let statement = self.parse_statement(false)?;
-
-                self.writer.push_list(statement);
-            }
+            // A namespace body carries a directive prologue the same way a
+            // function body does: `module Foo { "use strict"; }` states a
+            // directive, not an expression statement that happens to be a
+            // string.
+            self.parse_statement_list(T_BRACE_CLOSE)?;
 
             self.expect(T_BRACE_CLOSE)?;
 

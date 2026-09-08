@@ -1827,9 +1827,13 @@ export class Parser extends JsxParser {
 
 			this.enterBrace(true);
 
-			while (!this.at(T_BRACE_CLOSE) && !this.at(T_EOF)) {
-				this.writer.pushList(this.parseStatement());
-			}
+			/*
+			 * A namespace body carries a directive prologue the same way a
+			 * function body does: `module Foo { "use strict"; }` states a
+			 * directive, not an expression statement that happens to be a
+			 * string.
+			 */
+			this.parseStatementList(T_BRACE_CLOSE);
 
 			this.expect(T_BRACE_CLOSE);
 			this.writer.set(body, NODE_A, this.writer.endList(mark));

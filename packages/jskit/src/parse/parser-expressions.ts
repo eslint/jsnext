@@ -978,22 +978,31 @@ export abstract class ExpressionParser extends TypeParser {
 
 			/*
 			 * A type argument list in an expression only makes sense when it
-			 * is followed by a call, a tagged template, or something that
-			 * cannot continue an expression. `?.` counts as a call: the
-			 * arguments belong to the call the optional link introduces, as
-			 * in `f<string>?.()`.
+			 * is followed by a call, a tagged template, or a token that
+			 * cannot *begin* an expression — which is what makes the reading
+			 * unambiguous, since the comparison it would otherwise be needs
+			 * an operand after the `>`. `KIND_CONTINUES_EXPR` is that set,
+			 * and it already covers `?.` (the arguments belong to the call
+			 * the optional link introduces, as in `f<string>?.()`), the
+			 * binary operators — `as` and `satisfies` among them — and every
+			 * closer.
+			 *
+			 * Two members of that set are left out. `>` is ambiguous with a
+			 * rescanned `>>`, which is why TypeScript declines it too, and
+			 * `.` is what separates an instantiation expression from a
+			 * property access: `f<A>.b` is TS1477, "an instantiation
+			 * expression cannot be followed by a property access", and
+			 * `(f<A>).b` is how it is written instead. `<`, `+`, and `-`
+			 * need no exclusion: each can start an expression, so none of
+			 * them is in the set to begin with.
 			 */
 			if (
 				following === T_PAREN_OPEN ||
-				following === T_QUESTION_DOT ||
 				following === T_TEMPLATE_FULL ||
 				following === T_TEMPLATE_HEAD ||
-				following === T_SEMICOLON ||
-				following === T_COMMA ||
-				following === T_PAREN_CLOSE ||
-				following === T_BRACKET_CLOSE ||
-				following === T_BRACE_CLOSE ||
-				following === T_EOF
+				(following !== T_GT &&
+					following !== T_DOT &&
+					KIND_CONTINUES_EXPR[following] !== 0)
 			) {
 				return typeArguments;
 			}
@@ -1727,12 +1736,13 @@ export abstract class ExpressionParser extends TypeParser {
 
 		if (kind === T_LT) {
 			/*
-			 * In JSX mode a `<` is an element unless it is spelled the one
-			 * way an element cannot be, which is how a `.tsx` file keeps
-			 * generic arrows: `<T,>() => x` and `<T extends U>() => x` are
-			 * arrows, and `<T>() => x` is an unclosed element. Two tokens of
-			 * lookahead read the spelling, so the elements that make up the
-			 * bulk of a JSX file skip the arrow attempt entirely.
+			 * In JSX mode a `<` is an element unless it is spelled one of the
+			 * ways an element cannot be, which is how a `.tsx` file keeps
+			 * generic arrows: `<T,>() => x`, `<T extends U>() => x`, and
+			 * `<T = U>() => x` are arrows, and `<T>() => x` is an unclosed
+			 * element. Two tokens of lookahead read the spelling, so the
+			 * elements that make up the bulk of a JSX file skip the arrow
+			 * attempt entirely.
 			 */
 			if (this.jsx === true && !this.atTsxGenericArrow()) {
 				return 0;
@@ -1746,7 +1756,8 @@ export abstract class ExpressionParser extends TypeParser {
 
 	/**
 	 * Determines whether a `<` begins a generic arrow under JSX rules, where
-	 * only the unambiguous `<T,>` and `<T extends ...>` spellings do.
+	 * only the unambiguous `<T,>`, `<T extends ...>`, and `<T = ...>`
+	 * spellings do.
 	 * @returns `true` when the type parameter list cannot be an element.
 	 */
 	private atTsxGenericArrow(): boolean {
@@ -1765,7 +1776,8 @@ export abstract class ExpressionParser extends TypeParser {
 
 			if (this.atBindingName()) {
 				this.next();
-				result = this.at(T_COMMA) || this.at(T_extends);
+				result =
+					this.at(T_COMMA) || this.at(T_extends) || this.at(T_ASSIGN);
 			}
 		} catch {
 			/*

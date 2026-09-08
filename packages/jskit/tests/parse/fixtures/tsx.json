@@ -53,5 +53,8 @@
  "interface PropsType {\n  children: JSX.Element\n  name: string\n}\nclass Component extends React.Component<PropsType, {}> {\n  render() {\n    return (\n      <h2>\n        {this.props.children}\n      </h2>\n    )\n  }\n}",
  "const a = (\n  <div>\n    {[\"foo\", \"bar\"].map((i) => (\n      <span>{i / 2}</span>\n    ))}\n  </div>\n);",
  "const a = (\n  <div>\n    {[\"foo\", \"bar\"].map(function (i) {\n      return <span>{i / 2}</span>;\n    })}\n  </div>\n);",
- "/// <reference path=\"react.d.ts\" />\ninterface Props {\n  foo: string;\n}\nclass MyComponent extends React.Component<Props, {}> {\n  render() {\n    return <span>{this.props.foo}</span>;\n  }\n}\n<MyComponent foo=\"bar\" />;"
+ "/// <reference path=\"react.d.ts\" />\ninterface Props {\n  foo: string;\n}\nclass MyComponent extends React.Component<Props, {}> {\n  render() {\n    return <span>{this.props.foo}</span>;\n  }\n}\n<MyComponent foo=\"bar\" />;",
+ "const f = <T = unknown>() => {};",
+ "const g = <const T = U>() => {};",
+ "const h = <T = unknown, U = never>() => {};"
 ]
