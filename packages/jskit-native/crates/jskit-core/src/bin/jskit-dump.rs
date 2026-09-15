@@ -37,8 +37,8 @@ fn main() -> ExitCode {
             "--tokens" => options.tokens = true,
             "--parents" => options.parents = true,
             "--source" => options.source = true,
-            "--jsx=true" => options.jsx = Some(true),
-            "--jsx=false" => options.jsx = Some(false),
+            "--jsx=true" => options.jsx = true,
+            "--jsx=false" => options.jsx = false,
             "--source-type=module" => {
                 options.source_type = SourceType::Module;
                 scope_options.source_type = ScopeSourceType::Module;

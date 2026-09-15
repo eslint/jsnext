@@ -384,15 +384,14 @@ pattern, `retype()` converts it in place.
 
 **`<` in expression position.** `<T>value` is a TypeScript type assertion and
 `<T>value</T>` is a JSX element. TypeScript resolves this by file extension,
-which `parse()` does not have. So the parser tries JSX first, and on failure
-rewinds and tries a type assertion. JSX wins wherever both readings work, which
-is the `.tsx` choice. When both fail, the JSX diagnostic is preferred, since
-that is nearly always what the author meant.
+and `parse()` resolves it by its `jsx` option, which stands in for the
+extension: `true` reads an element directly, the `.tsx` choice, and `false` —
+the default — reads a type assertion, the `.ts` choice. Nothing is tried and
+rewound, so neither reading pays for the other.
 
-The `jsx` option does not enter into this. It belongs to phase 2, so a JSX
-element parses either way and `validate()` reports it when the option is off —
-once per outermost `JSXElement` or `JSXFragment`, which is what the `inJsx`
-flag in the walk is for.
+`validate()` has a `jsx` option of its own, which says whether the JSX that
+parsed is allowed. With it off, it reports JSX once per outermost `JSXElement`
+or `JSXFragment`, which is what the `inJsx` flag in the walk is for.
 
 **A mismatched JSX closing tag.** `<div>{x}</span>` yields a perfectly
 well-shaped tree, so under the phase rule it is not a parse error. It is

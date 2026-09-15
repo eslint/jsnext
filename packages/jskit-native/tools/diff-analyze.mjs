@@ -174,10 +174,11 @@ function describeDifference(expected, actual) {
 
 /**
  * Turns the option sets into jskit-dump arguments.
+ * @param {boolean} jsx Whether the file is parsed as JSX.
  * @returns {string[]} The command line arguments.
  */
-function dumpArguments() {
-	const result = [];
+function dumpArguments(jsx) {
+	const result = [`--jsx=${jsx}`];
 
 	if (parseOptions.sourceType) {
 		result.push(`--source-type=${parseOptions.sourceType}`);
@@ -234,11 +235,13 @@ for (const file of files) {
 		continue;
 	}
 
+	const jsx = /\.[jt]sx$/u.test(file);
+
 	let tsBuffer;
 
 	try {
 		tsBuffer = Buffer.from(
-			analyze(parse(text, parseOptions), scopeOptions),
+			analyze(parse(text, { ...parseOptions, jsx }), scopeOptions),
 		);
 	} catch {
 		threw++;
@@ -248,9 +251,13 @@ for (const file of files) {
 	let rustBuffer;
 
 	try {
-		rustBuffer = execFileSync(DUMP, ["analyze", file, ...dumpArguments()], {
-			maxBuffer: 1 << 28,
-		});
+		rustBuffer = execFileSync(
+			DUMP,
+			["analyze", file, ...dumpArguments(jsx)],
+			{
+				maxBuffer: 1 << 28,
+			},
+		);
 	} catch {
 		mismatch++;
 

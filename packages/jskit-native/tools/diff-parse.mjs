@@ -243,7 +243,10 @@ for (const file of files) {
 		continue;
 	}
 
-	for (const options of optionSets) {
+	const jsx = /\.[jt]sx$/u.test(file);
+
+	for (const fileOptions of optionSets) {
+		const options = { jsx, ...fileOptions };
 		let tsBuffer = null;
 		let tsError = null;
 

@@ -38,7 +38,7 @@ export function typesOf(
 	code: string,
 	options: AnalyzeOptions = {},
 ): TypesFixture {
-	const parsed = parse(code);
+	const parsed = parse(code, { jsx: options.jsx ?? false });
 	const scope = analyze(parsed, { sourceType: "module", ...options });
 	const types = inferTypes(parsed, scope);
 

@@ -131,4 +131,33 @@ if (binding === null) {
 				error.column === 7,
 		);
 	});
+
+	test("parse error parity: JSX without the jsx option", () => {
+		for (const code of [
+			"const a = <div />;",
+			"const f = (p: P): JSX.Element => <div>{p.x}</div>;",
+			"const a = <any>;",
+			"const a = <div />;\nconst b = ;",
+		]) {
+			const describe = () => {
+				try {
+					jskit.parse(code);
+				} catch (error) {
+					return [error.message, error.index, error.lineNumber];
+				}
+
+				return null;
+			};
+			const native = describe();
+
+			jskit.setNative(null);
+
+			try {
+				assert.deepStrictEqual(native, describe(), code);
+				assert.notStrictEqual(native, null, code);
+			} finally {
+				jskit.setNative(binding);
+			}
+		}
+	});
 }

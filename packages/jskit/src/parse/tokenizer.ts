@@ -499,9 +499,7 @@ export class Tokenizer {
 		 * A speculative parse only ever throws to be caught and rewound, so
 		 * the message and position would never be read — and building them
 		 * would make V8 capture a call stack, which costs more than the parse
-		 * being abandoned. The one path that surfaces a speculative failure
-		 * to the caller re-parses outside speculation to get the real
-		 * diagnostic; see `parseAngleBracketExpression()`.
+		 * being abandoned.
 		 */
 		if (this.backtracking > 0) {
 			return (this.backtrackError ??= new ParseError(

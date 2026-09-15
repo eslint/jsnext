@@ -380,12 +380,14 @@ for (const [name, dialect] of [
 		continue;
 	}
 
+	const jsx = name === "jsx" || name === "tsx";
+
 	for (const [i, code] of snippets.entries()) {
 		for (const sourceType of ["module", "script"]) {
 			let ast;
 
 			try {
-				ast = toAST(parse(code, { sourceType, tokens: true }), {
+				ast = toAST(parse(code, { sourceType, jsx, tokens: true }), {
 					sourceType,
 					dialect,
 				});
@@ -440,6 +442,7 @@ const files = walk(process.argv[2] ?? "../../node_modules").slice(
 
 for (const file of files) {
 	const dialect = /\.(ts|mts|cts|tsx)$/u.test(file) ? "ts" : "js";
+	const jsx = /\.[jt]sx$/u.test(file);
 	let code;
 
 	try {
@@ -451,7 +454,7 @@ for (const file of files) {
 	let ast;
 
 	try {
-		ast = toAST(parse(code, { sourceType: "module", tokens: true }), {
+		ast = toAST(parse(code, { sourceType: "module", jsx, tokens: true }), {
 			sourceType: "module",
 			dialect,
 		});

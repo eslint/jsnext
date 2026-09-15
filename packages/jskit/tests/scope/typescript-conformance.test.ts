@@ -91,7 +91,7 @@ function compare(code: string, jsx: boolean): void {
 		flags,
 	);
 
-	const parsed = parse(code);
+	const parsed = parse(code, { jsx });
 
 	expect(
 		serializeBinary(

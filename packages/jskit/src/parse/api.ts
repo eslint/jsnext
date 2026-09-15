@@ -14,7 +14,15 @@ import {
 	supplySource,
 } from "./binary.js";
 import { clearEntityCache, decodeEntities } from "./entities.js";
+import { ParseError } from "./errors.js";
 import { LineIndex, type SourceLocation } from "./locations.js";
+import {
+	NODE_KIND,
+	NODE_START,
+	NODE_WORDS,
+	N_JSXElement,
+	N_JSXFragment,
+} from "./node-kinds.js";
 import { Parser } from "./parser.js";
 import { AstReader, TokenReader } from "./reader.js";
 import { decodeTree } from "./to-ast.js";
@@ -207,18 +215,18 @@ export interface ParseOptions {
 	 *
 	 * `true` reads it the way a `.tsx` file does: JSX directly, with a
 	 * generic arrow only behind the unambiguous `<T,>` and `<T extends ...>`
-	 * spellings, and no `<T>expr` type assertions. `false` reads it the way a
-	 * `.ts` file does: a type assertion or a generic arrow, never JSX.
+	 * spellings, and no `<T>expr` type assertions. `false` — the default —
+	 * reads it the way a `.ts` file does: a type assertion or a generic
+	 * arrow, never JSX, so an element in the text is a syntax error. When
+	 * the whole text would have parsed the `.tsx` way, that error says so —
+	 * "JSX syntax is not allowed unless the jsx option is enabled", at the
+	 * first element — instead of describing a broken type assertion.
 	 *
-	 * Left unset, the parser accepts the union: JSX is tried speculatively
-	 * first and the TypeScript readings are the fallback. That accepts
-	 * everything either mode accepts — which is what lets `validate()` be the
-	 * one to say whether JSX was *allowed* — but the speculation is not free
-	 * in either direction. On JSX-heavy files it costs a substantial share of
-	 * the parse, and on files that lean on old-style `<T>expr` assertions
-	 * each failed JSX attempt scans ahead before it is undone, so the parse
-	 * goes quadratic — hundreds of times slower on a file of nothing else. A
-	 * caller that knows which kind of file it has should say so.
+	 * There is no permissive middle. Accepting the union would mean trying
+	 * JSX speculatively and falling back to the assertion, which costs a
+	 * substantial share of the parse on JSX-heavy files and goes quadratic on
+	 * files that lean on `<T>expr` assertions — and the caller always knows
+	 * which kind of file it has.
 	 *
 	 * Unlike `sourceType`, the choice is not recorded in the buffer: a JSX
 	 * node either is in the tree or is not, and the later phases read the
@@ -238,7 +246,7 @@ export interface ParseOptions {
 	 * to the comparisons otherwise. `"js"` never reads type arguments there,
 	 * matching `espree`.
 	 *
-	 * Unlike `sourceType` and `jsx`, this one has no permissive middle,
+	 * Unlike `sourceType`, this one has no need of a permissive middle,
 	 * because the `"ts"` reading already is one: the `>` has to be followed by
 	 * something that can only continue a call, so every program the `"js"`
 	 * reading accepts here the `"ts"` reading accepts the same way. Naming
@@ -322,13 +330,17 @@ export function parse(code: string, options: ParseOptions = {}): ParseResult {
 	}
 
 	const sourceType = options.sourceType ?? "module";
-	const parser = new Parser(
-		code,
-		sourceType === "module",
-		options.jsx,
-		options.dialect ?? "ts",
-	);
-	const root = parser.parseProgram();
+	const isModule = sourceType === "module";
+	const jsx = options.jsx ?? false;
+	const dialect = options.dialect ?? "ts";
+	const parser = new Parser(code, isModule, jsx, dialect);
+	let root: number;
+
+	try {
+		root = parser.parseProgram();
+	} catch (error) {
+		throw jsx ? error : explainMissingJsx(code, isModule, dialect, error);
+	}
 	const writer = parser.writer;
 	const tokenizer = parser.tokenizer;
 
@@ -347,6 +359,70 @@ export function parse(code: string, options: ParseOptions = {}): ParseResult {
 		parents: options.parents ?? false,
 		sourceType: SOURCE_TYPE_NAMES.indexOf(sourceType),
 	});
+}
+
+/**
+ * Decides what a parse that failed without `jsx: true` should report.
+ *
+ * Read the `.ts` way, an element is a broken type assertion, and the
+ * diagnostic that produces — `Expected '>' but found '/'` for `<div/>` —
+ * describes the symptom rather than the cause. So the text is parsed once
+ * more the `.tsx` way, and when that succeeds with an element in the tree,
+ * the missing option is what gets reported, at the first element and in the
+ * words `validate()` uses for the same mistake. Anything else keeps the
+ * original error.
+ *
+ * This runs only on the way to throwing, so a program that parses never pays
+ * for it, and a file that is broken the `.tsx` way too pays one more parse.
+ * @param code The source text that failed to parse.
+ * @param isModule Whether it was read as an ES module.
+ * @param dialect How a `<` after an expression was read.
+ * @param error What the failed parse threw.
+ * @returns The error to throw in its place.
+ */
+function explainMissingJsx(
+	code: string,
+	isModule: boolean,
+	dialect: "js" | "ts",
+	error: unknown,
+): unknown {
+	if (!(error instanceof ParseError)) {
+		return error;
+	}
+
+	let parser: Parser;
+
+	try {
+		parser = new Parser(code, isModule, true, dialect);
+		parser.parseProgram();
+	} catch {
+		return error;
+	}
+
+	const words = parser.writer.nodes.words;
+	const last = parser.writer.count * NODE_WORDS;
+	let first = -1;
+
+	// Node 0 is reserved; an outer element always starts before its children.
+	for (let base = NODE_WORDS; base < last; base += NODE_WORDS) {
+		const kind = words[base + NODE_KIND];
+
+		if (
+			(kind === N_JSXElement || kind === N_JSXFragment) &&
+			(first === -1 || words[base + NODE_START] < first)
+		) {
+			first = words[base + NODE_START];
+		}
+	}
+
+	if (first === -1) {
+		return error;
+	}
+
+	return parser.tokenizer.error(
+		"JSX syntax is not allowed unless the jsx option is enabled.",
+		first,
+	);
 }
 
 /**

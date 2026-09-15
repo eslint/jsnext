@@ -61,11 +61,10 @@ JSX (`acorn` has no JSX of its own, so it appears with `acorn-jsx`):
 | `espree`                                       | 19.1  | 0.27x    |
 | `@typescript-eslint/parser` + TypeScript 6     | 2.3   | 0.03x    |
 
-The JSX rows assume the caller passes `jsx: true` to `parse()`. Without it the
-parser accepts the union of the `.ts` and `.tsx` readings by speculating at
-every `<` in expression position, which costs about fifteen percent on this
-fixture — and used to cost half the parse before exceptions left the
-speculation path. JSX is where the binary representation pays best: an element
+The JSX rows pass `jsx: true` to `parse()`, which reads every `<` in
+expression position as an element directly. There is no mode that tries both
+readings: speculating at every `<` cost about fifteen percent on this fixture,
+and far more on files full of `<T>expr` assertions. JSX is where the binary representation pays best: an element
 is many small nodes, and none of them is allocated.
 
 `@babel/parser` returns Babel's own AST rather than ESTree, so its row is

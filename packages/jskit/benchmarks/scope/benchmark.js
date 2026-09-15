@@ -94,13 +94,16 @@ async function contenders(dialect, code, withParse) {
 		jsx: dialect !== "js",
 	};
 
+	const parseOptions = { jsx: dialect === "jsx" };
+
 	if (withParse) {
 		list.push({
 			name: "jskit: parse() + analyze()",
-			run: () => jskit.analyze(jskit.parse(code), scopeOptions),
+			run: () =>
+				jskit.analyze(jskit.parse(code, parseOptions), scopeOptions),
 		});
 	} else {
-		const parsed = jskit.parse(code);
+		const parsed = jskit.parse(code, parseOptions);
 
 		list.push({
 			name: "jskit: analyze()",

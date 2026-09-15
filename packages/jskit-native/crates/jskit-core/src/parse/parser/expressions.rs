@@ -319,49 +319,13 @@ impl<'a> Parser<'a> {
 
     /// Parses whatever a `<` in expression position turns out to introduce.
     fn parse_angle_bracket_expression(&mut self) -> PRes {
-        if self.jsx == Some(true) {
+        if self.jsx {
             let element = self.parse_jsx_root(AFTER_JSX_EXPRESSION)?;
 
             return self.parse_call_or_member_expression(false, element, false);
         }
 
-        if self.jsx == Some(false) {
-            return self.parse_type_assertion();
-        }
-
-        let state = self.tokenizer.save();
-        let snapshot = self.writer.mark();
-        let mut element = 0;
-        let mut failed = false;
-
-        match self.parse_jsx_root(AFTER_JSX_EXPRESSION) {
-            Ok(parsed) => element = parsed,
-            Err(_) => {
-                failed = true;
-                self.writer.rewind(snapshot);
-                self.tokenizer.restore(&state);
-            }
-        }
-
-        if !failed {
-            return self.parse_call_or_member_expression(false, element, false);
-        }
-
-        match self.parse_type_assertion() {
-            Ok(assertion) => Ok(assertion),
-            Err(_) => {
-                // Neither reading worked. The JSX diagnostic is reported,
-                // re-parsed outside speculation for the real message.
-                self.writer.rewind(snapshot);
-                self.tokenizer.restore(&state);
-
-                self.parse_jsx_root(AFTER_JSX_EXPRESSION)?;
-
-                // Unreachable in practice; refuse rather than return a
-                // half-built reading.
-                Err(self.error("Invalid expression"))
-            }
-        }
+        self.parse_type_assertion()
     }
 
     /// Parses an old-style `<T>expr` type assertion.
@@ -1444,7 +1408,7 @@ impl<'a> Parser<'a> {
         if kind == T_LT {
             // In JSX mode a `<` is an element unless it is spelled one of the
             // ways an element cannot be.
-            if self.jsx == Some(true) && !self.at_tsx_generic_arrow()? {
+            if self.jsx && !self.at_tsx_generic_arrow()? {
                 return Ok(0);
             }
 

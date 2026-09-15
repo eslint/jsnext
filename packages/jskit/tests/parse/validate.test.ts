@@ -213,30 +213,51 @@ describe("dialect", () => {
 });
 
 describe("jsx", () => {
+	/*
+	 * These are about `validate()`'s option, so the text is always parsed as
+	 * JSX — the only way a JSX node reaches the buffer — and only the second
+	 * phase is told whether it is allowed.
+	 */
+
+	/**
+	 * Parses a source text as JSX, validates it, and returns the messages.
+	 * @param code The source text to check.
+	 * @param options How the program should be interpreted.
+	 * @returns The message of every problem found.
+	 */
+	function jsxMessages(
+		code: string,
+		options: Parameters<typeof validate>[1] = {},
+	): string[] {
+		return validate(parse(code, { jsx: true }), options).map(
+			problem => problem.message,
+		);
+	}
+
 	it("rejects JSX by default", () => {
-		expect(messages("<div/>;")).toEqual([
+		expect(jsxMessages("<div/>;")).toEqual([
 			expect.stringMatching(/JSX syntax is not allowed/u),
 		]);
 	});
 
 	it("rejects a fragment by default", () => {
-		expect(messages("<>text</>;")).toEqual([
+		expect(jsxMessages("<>text</>;")).toEqual([
 			expect.stringMatching(/JSX syntax is not allowed/u),
 		]);
 	});
 
 	it("allows JSX when the option is on", () => {
-		expect(messages("<div>{a}</div>;", { jsx: true })).toEqual([]);
+		expect(jsxMessages("<div>{a}</div>;", { jsx: true })).toEqual([]);
 	});
 
 	it("rejects JSX in either dialect", () => {
-		expect(messages("<div/>;", { dialect: "js" })).toHaveLength(1);
-		expect(messages("<div/>;", { dialect: "ts" })).toHaveLength(1);
+		expect(jsxMessages("<div/>;", { dialect: "js" })).toHaveLength(1);
+		expect(jsxMessages("<div/>;", { dialect: "ts" })).toHaveLength(1);
 	});
 
 	it("reports a whole tree once, at its root", () => {
 		const problems = validate(
-			parse("<div><span>{a}</span><br/></div>;"),
+			parse("<div><span>{a}</span><br/></div>;", { jsx: true }),
 			{},
 		);
 
@@ -245,11 +266,11 @@ describe("jsx", () => {
 	});
 
 	it("reports each JSX tree that stands on its own", () => {
-		expect(messages("<a/>; <b/>;")).toHaveLength(2);
+		expect(jsxMessages("<a/>; <b/>;")).toHaveLength(2);
 	});
 
 	it("still reports other problems inside a rejected tree", () => {
-		expect(messages("<div>{x}</span>;")).toEqual([
+		expect(jsxMessages("<div>{x}</span>;")).toEqual([
 			expect.stringMatching(/JSX syntax is not allowed/u),
 			expect.stringMatching(/is closed by/u),
 		]);

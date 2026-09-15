@@ -517,71 +517,22 @@ export abstract class ExpressionParser extends TypeParser {
 	/**
 	 * Parses whatever a `<` in expression position turns out to introduce.
 	 *
-	 * It is either JSX or an old-style `<T>expr` type assertion, and only the
+	 * It is either JSX or an old-style `<T>expr` type assertion, and the
 	 * `jsx` option settles it without parsing: `true` reads it the way a
 	 * `.tsx` file does, where the assertion spelling does not exist, and
-	 * `false` reads it the way a `.ts` file does, where JSX does not. When
-	 * the option was not given, JSX is tried first and the assertion is the
-	 * fallback, which is what keeps `<any>value` working in code that has no
-	 * JSX in it.
+	 * `false` reads it the way a `.ts` file does, where JSX does not.
 	 * @returns The index of the expression node.
-	 * @throws {ParseError} When no permitted reading works.
+	 * @throws {ParseError} When the reading the option picked does not work.
 	 */
 	private parseAngleBracketExpression(): number {
-		if (this.jsx === true) {
+		if (this.jsx) {
 			return this.parseCallOrMemberExpression(
 				false,
 				this.parseJsxRoot(AFTER_JSX_EXPRESSION),
 			);
 		}
 
-		if (this.jsx === false) {
-			return this.parseTypeAssertion();
-		}
-
-		const state = this.tokenizer.save();
-		const snapshot = this.writer.mark();
-		let element = 0;
-		let failed = false;
-
-		this.tokenizer.backtracking++;
-
-		try {
-			element = this.parseJsxRoot(AFTER_JSX_EXPRESSION);
-		} catch {
-			failed = true;
-			this.writer.rewind(snapshot);
-			this.tokenizer.restore(state);
-		} finally {
-			this.tokenizer.backtracking--;
-		}
-
-		if (!failed) {
-			return this.parseCallOrMemberExpression(false, element);
-		}
-
-		try {
-			return this.parseTypeAssertion();
-		} catch {
-			/*
-			 * Neither reading worked. The JSX diagnostic is reported because a
-			 * `<` in expression position is far more often a broken element
-			 * than a broken type assertion — and the attempt above threw the
-			 * shared backtracking placeholder, so the parse is run once more,
-			 * outside speculation, to fail with the real message. It cannot
-			 * succeed this time: nothing has moved since it failed.
-			 */
-			this.writer.rewind(snapshot);
-			this.tokenizer.restore(state);
-
-			this.parseJsxRoot(AFTER_JSX_EXPRESSION);
-
-			/*
-			 * Unreachable in practice; if the re-parse somehow got further,
-			 * refuse rather than return a half-built reading.
-			 */
-			throw this.error("Invalid expression");
-		}
+		return this.parseTypeAssertion();
 	}
 
 	/**
@@ -1744,7 +1695,7 @@ export abstract class ExpressionParser extends TypeParser {
 			 * elements that make up the bulk of a JSX file skip the arrow
 			 * attempt entirely.
 			 */
-			if (this.jsx === true && !this.atTsxGenericArrow()) {
+			if (this.jsx && !this.atTsxGenericArrow()) {
 				return 0;
 			}
 

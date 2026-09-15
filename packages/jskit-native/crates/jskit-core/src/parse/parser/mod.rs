@@ -57,15 +57,15 @@ pub struct Parser<'a> {
     /// Whether `super()` is currently legal.
     pub allow_super_call: bool,
 
-    /// How a `<` in expression position reads, when the caller said.
-    pub jsx: Option<bool>,
+    /// How a `<` in expression position reads: `true` as JSX, `false` as a
+    /// type assertion.
+    pub jsx: bool,
 
     /// How a `<` *after* an expression reads. `Ts` takes a type argument list
     /// whenever one fits and a call, a tagged template, or an end of
     /// expression follows it; `Js` never takes one, so `f<A, B>(x)` is the
-    /// two comparisons `(f < A)` and `(B > x)`. There is no third state: the
-    /// `Ts` reading already falls back to the comparisons wherever the type
-    /// arguments do not fit.
+    /// two comparisons `(f < A)` and `(B > x)`. The `Ts` reading already falls
+    /// back to the comparisons wherever the type arguments do not fit.
     pub dialect: Dialect,
 
     /// Whether a conditional type is currently out of reach — inside the
@@ -95,7 +95,7 @@ impl<'a> Parser<'a> {
     pub fn new(
         source: &'a [u16],
         is_module: bool,
-        jsx: Option<bool>,
+        jsx: bool,
         dialect: Dialect,
     ) -> PRes<Self> {
         let mut tokenizer = Tokenizer::new(source, is_module);

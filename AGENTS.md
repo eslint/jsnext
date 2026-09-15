@@ -417,28 +417,30 @@ phase 1 must pick a side, so `parse()` records the choice in the buffer, and
 `validate()` and `toAST()` read it back rather than being told again — naming
 the opposite side of the module line throws, while narrowing `script` to
 `commonjs` is allowed, because those two parse identically and differ only in
-what phase 2 permits. `jsx` does have a middle, and it is the default: left
-unset, `parse()` accepts the union of both readings by trying JSX first and
-falling back to the assertion, so code that never hits the ambiguity parses
-the same under every setting. The explicit `true` and `false` pick the `.tsx`
-and `.ts` readings directly, which also skips the speculation — the reason
-JSX-heavy files parse much faster when the caller says which kind of file it
-has. The choice is deliberately not recorded in the buffer: a JSX node either
-is in the tree or is not, and phases 2 and 3 read the tree. `validate()`'s
-`jsx` option is still the one that says whether JSX is _allowed_. `dialect`
-follows `jsx` on that last point: the choice is not recorded either, because
-type arguments either are in the tree or are not.
+what phase 2 permits. `jsx` has no middle either, and is a plain boolean:
+`true` picks the `.tsx` reading and `false` — the default — the `.ts` one, so
+an element in a file parsed without `jsx: true` is a syntax error — one that
+names the missing option, because a failed parse is retried the `.tsx` way
+before it throws, and an element that fits is reported as JSX that is not
+enabled. A middle
+that accepted both would have to try JSX speculatively and fall back to the
+assertion, which costs a real share of the parse on JSX-heavy files and goes
+quadratic on files full of `<T>expr` assertions, and the caller always knows
+which kind of file it has. The choice is deliberately not recorded in the
+buffer: a JSX node either is in the tree or is not, and phases 2 and 3 read the
+tree. `validate()`'s `jsx` option is still the one that says whether JSX is
+_allowed_. `dialect` follows `jsx` on that last point: the choice is not
+recorded either, because type arguments either are in the tree or are not.
 
-The ESLint parser object passes `jsx` to phase 1 only when it is on, and
-`dialect` both ways. The asymmetry is deliberate. A permissive `jsx` still
-reads JSX the way a `.jsx` file would, so the tree is right and only the
-verdict is deferred — which buys the better "JSX is not enabled" diagnostic. A
-permissive `dialect` is not: it reads `f < A, B > (a + b)` — valid JavaScript,
-and two comparisons — as a call with explicit type arguments, which is the
-wrong tree for a `.js` file and draws three spurious "TypeScript syntax is not
-allowed" problems. The price is that TypeScript written in a `.js` file by
-mistake fails to parse rather than being told what is wrong with it, and a
-wrong tree for a valid program is the worse of the two.
+The ESLint parser object passes `jsx` and `dialect` to phase 1 both ways, read
+off `ecmaFeatures.jsx` and the file name. A wrong `dialect` reads
+`f < A, B > (a + b)` — valid JavaScript, and two comparisons — as a call with
+explicit type arguments, which is the wrong tree for a `.js` file; a wrong
+`jsx` reads an element as a broken type assertion or a type assertion as a
+broken element. The price is that TypeScript written in a `.js` file by
+mistake fails to parse rather than being told what is wrong with it, which is
+also what `espree` does with the same text. JSX in the wrong file fails to
+parse too, but `parse()` names the missing option.
 
 `declaration` is the clearest case of phase-2 context the text cannot supply:
 a declaration file is one by its _name_, which is why TypeScript decides it

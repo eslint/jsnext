@@ -102,7 +102,7 @@ describe("espree conformance for JSX", () => {
 				comment: true,
 				range: true,
 			});
-			const actual = toAST(parse(code, { tokens: true }), {
+			const actual = toAST(parse(code, { jsx: true, tokens: true }), {
 				sourceType: "module",
 				dialect: "js",
 			});

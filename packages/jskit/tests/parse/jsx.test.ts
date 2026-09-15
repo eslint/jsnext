@@ -11,7 +11,7 @@ import { parse, toAST, validate } from "../../src/index.js";
  * @returns One `type:value` string per token.
  */
 function types(code: string): string[] {
-	const ast = toAST(parse(code, { tokens: true }), {
+	const ast = toAST(parse(code, { jsx: true, tokens: true }), {
 		sourceType: "module",
 		dialect: "js",
 	});
@@ -27,7 +27,7 @@ function types(code: string): string[] {
  * @returns The expression of the first statement.
  */
 function firstExpression(code: string): Record<string, unknown> {
-	const ast = toAST(parse(code, { tokens: true }), {
+	const ast = toAST(parse(code, { jsx: true, tokens: true }), {
 		sourceType: "module",
 		dialect: "js",
 	});
@@ -93,7 +93,7 @@ describe("JSX scanning", () => {
 	});
 
 	it("does not read a closing tag's slash as a regular expression", () => {
-		expect(() => parse("<div>a</div>;")).not.toThrow();
+		expect(() => parse("<div>a</div>;", { jsx: true })).not.toThrow();
 	});
 
 	it("keeps division working outside JSX", () => {
@@ -156,7 +156,7 @@ describe("JSX parsing", () => {
 		expect(element.children).toHaveLength(1);
 	});
 
-	it("still parses an old-style type assertion when JSX does not fit", () => {
+	it("parses an old-style type assertion when JSX is off", () => {
 		const ast = toAST(parse("const a = <string>b;", { tokens: true }), {
 			dialect: "ts",
 		});
@@ -170,13 +170,15 @@ describe("JSX parsing", () => {
 	});
 
 	it("reports the JSX problem when an element is unterminated", () => {
-		expect(() => parse("<div a={1}>text")).toThrow(
+		expect(() => parse("<div a={1}>text", { jsx: true })).toThrow(
 			/Unterminated JSX element/u,
 		);
 	});
 
 	it("reports a mismatched closing tag during validation", () => {
-		const problems = validate(parse("<div>{x}</span>;"), { jsx: true });
+		const problems = validate(parse("<div>{x}</span>;", { jsx: true }), {
+			jsx: true,
+		});
 
 		expect(problems).toEqual([
 			{
@@ -188,14 +190,17 @@ describe("JSX parsing", () => {
 	});
 
 	it("accepts a matching pair", () => {
-		expect(validate(parse("<A.B>{x}</A.B>;"), { jsx: true })).toEqual([]);
+		expect(
+			validate(parse("<A.B>{x}</A.B>;", { jsx: true }), { jsx: true }),
+		).toEqual([]);
 	});
 
-	it("falls back to a type assertion when JSX cannot fit", () => {
+	it("reads an element as a type assertion when JSX is off", () => {
 		/*
 		 * `<div>text` is an unterminated element, but it is also a perfectly
-		 * good type assertion, so that is what it becomes. Asking for the
-		 * JavaScript dialect is what turns it back into a reported problem.
+		 * good type assertion, so that is what it becomes without `jsx: true`.
+		 * Asking for the JavaScript dialect is what turns it into a reported
+		 * problem.
 		 */
 		const result = parse("<div>text", { tokens: true });
 

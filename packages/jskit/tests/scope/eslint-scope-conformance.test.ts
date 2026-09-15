@@ -89,7 +89,7 @@ function compare(
 		FLAGS,
 	);
 
-	const parsed = parse(code);
+	const parsed = parse(code, { jsx });
 
 	expect(
 		serializeBinary(
@@ -131,7 +131,7 @@ describe("eslint-scope conformance for JSX", () => {
 	}
 
 	it("creates no reference when JSX support is off", () => {
-		const parsed = parse("const a = <Component />;");
+		const parsed = parse("const a = <Component />;", { jsx: true });
 		const scopeManager = toScopeManager(
 			analyze(parsed, {
 				sourceType: "module",

@@ -171,6 +171,7 @@ const seen = new Set();
 
 for (const file of files) {
 	const code = readFileSync(file, "utf8");
+	const jsx = /\.tsx$/u.test(file);
 	let expected;
 
 	try {
@@ -178,7 +179,7 @@ for (const file of files) {
 			sourceType: "module",
 			range: true,
 			loc: false,
-			jsx: /\.tsx$/u.test(file),
+			jsx,
 		});
 	} catch {
 		continue;
@@ -187,10 +188,13 @@ for (const file of files) {
 	let actual;
 
 	try {
-		actual = toAST(parse(code, { sourceType: "module", tokens: true }), {
-			sourceType: "module",
-			dialect: "ts",
-		});
+		actual = toAST(
+			parse(code, { sourceType: "module", jsx, tokens: true }),
+			{
+				sourceType: "module",
+				dialect: "ts",
+			},
+		);
 	} catch (error) {
 		threw++;
 

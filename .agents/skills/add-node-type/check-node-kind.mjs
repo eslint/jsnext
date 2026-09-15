@@ -301,11 +301,12 @@ console.log("\n## Round trip\n");
 
 const isTypeScript = type.startsWith("TS");
 const dialect = isTypeScript ? "ts" : "js";
+const jsx = type.startsWith("JSX");
 let result;
 
 try {
 	// `tokens: true` because `toAST()` reports tokens on the `Program`.
-	result = jskit.parse(code, { sourceType, tokens: true });
+	result = jskit.parse(code, { sourceType, jsx, tokens: true });
 	console.log("  ok    parse");
 } catch (error) {
 	console.log(`  FAIL  parse: ${error.message}`);
@@ -315,7 +316,7 @@ try {
 // `toAST()` deliberately does not validate; the problems come from
 // `validate()`, its own pass over the same buffer.
 const ast = jskit.toAST(result, { sourceType, dialect });
-const errors = jskit.validate(result, { sourceType, dialect });
+const errors = jskit.validate(result, { sourceType, dialect, jsx });
 const found = collect(ast, type);
 
 if (found.length === 0) {

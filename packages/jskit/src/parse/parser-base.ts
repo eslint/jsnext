@@ -113,17 +113,14 @@ export abstract class ParserBase {
 	allowSuperCall = false;
 
 	/**
-	 * How a `<` in expression position reads, when the caller said.
+	 * How a `<` in expression position reads.
 	 *
 	 * `true` reads it the way a `.tsx` file does — JSX directly, with a
 	 * generic arrow only behind the `<T,>` and `<T extends ...>` spellings —
 	 * and `false` the way a `.ts` file does, where it opens a type assertion
-	 * or a generic arrow and JSX is never attempted. `undefined` is the
-	 * union: JSX is tried speculatively first and the TypeScript readings are
-	 * the fallback, which accepts everything either mode accepts but pays for
-	 * the attempt.
+	 * or a generic arrow and JSX is never attempted.
 	 */
-	readonly jsx: boolean | undefined;
+	readonly jsx: boolean;
 
 	/**
 	 * How a `<` *after* an expression reads.
@@ -134,9 +131,8 @@ export abstract class ParserBase {
 	 * text is the two comparisons `(f < A)` and `(B > x)` that `espree`
 	 * produces.
 	 *
-	 * There is no third state, unlike `jsx`: the `"ts"` reading already falls
-	 * back to the comparisons wherever the type arguments do not fit, so it
-	 * accepts everything `"js"` accepts here.
+	 * The `"ts"` reading already falls back to the comparisons wherever the
+	 * type arguments do not fit, so it accepts everything `"js"` accepts here.
 	 *
 	 * It governs only that ambiguity — unambiguous TypeScript syntax parses
 	 * under either setting, and `validate()` decides whether it was allowed.
@@ -155,7 +151,7 @@ export abstract class ParserBase {
 	constructor(
 		source: string,
 		isModule: boolean,
-		jsx?: boolean,
+		jsx = false,
 		dialect: "js" | "ts" = "ts",
 	) {
 		this.source = source;

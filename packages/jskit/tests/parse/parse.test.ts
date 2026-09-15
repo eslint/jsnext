@@ -1129,7 +1129,7 @@ describe("the jsx option", () => {
 	/**
 	 * Parses a lone initializer and reports its node type.
 	 * @param code The source text, whose first statement declares one value.
-	 * @param jsx The `jsx` mode to parse under, or `undefined` for the union.
+	 * @param jsx The `jsx` mode to parse under, or `undefined` for the default.
 	 * @returns The type of the initializer's node.
 	 */
 	function initializerType(code: string, jsx?: boolean): string {
@@ -1209,27 +1209,90 @@ describe("the jsx option", () => {
 		});
 	});
 
-	describe("left unset, the union", () => {
-		it("parses JSX", () => {
-			expect(initializerType("const a = <div>x</div>;")).toBe(
-				"JSXElement",
-			);
-		});
-
-		it("parses a type assertion where JSX does not fit", () => {
+	describe("left unset, the .ts reading", () => {
+		it("parses a type assertion", () => {
 			expect(initializerType("const v = <any>value;")).toBe(
 				"TSTypeAssertion",
 			);
 		});
 
-		/*
-		 * When neither reading works, the diagnostic must be the JSX one with
-		 * its real message and position — not the placeholder the speculative
-		 * attempt threw internally.
-		 */
-		it("reports the JSX problem when neither reading works", () => {
-			expect(() => parse("const a = <div>;")).toThrow(
-				/Unterminated JSX element \(1:17\)/u,
+		it("never parses JSX", () => {
+			expect(() => parse("const a = <div>x</div>;")).toThrow(ParseError);
+		});
+	});
+
+	/*
+	 * The `.ts` reading of an element is a broken type assertion, and its
+	 * diagnostic describes the symptom. When the text would have parsed as
+	 * JSX, the error says so instead.
+	 */
+	describe("without jsx: true, the diagnostic for an element", () => {
+		const JSX_NOT_ENABLED =
+			/^JSX syntax is not allowed unless the jsx option is enabled\./u;
+
+		it("names the option, at the element", () => {
+			expect(() => parse("const a = <div/>;")).toThrow(
+				/JSX syntax is not allowed unless the jsx option is enabled\. \(1:11\)/u,
+			);
+		});
+
+		it("names the option for an element with children and attributes", () => {
+			for (const code of [
+				"const a = <div x={1}>hi</div>;",
+				"<>text</>;",
+				"const a = <ul>{items.map(i => <li key={i} />)}</ul>;",
+			]) {
+				expect(() => parse(code), code).toThrow(JSX_NOT_ENABLED);
+				expect(() => parse(code, { dialect: "js" }), code).toThrow(
+					JSX_NOT_ENABLED,
+				);
+			}
+		});
+
+		it("names the option for an element in a typed arrow's body", () => {
+			for (const code of [
+				"const f = <T,>(x: T) => <div>{x}</div>;",
+				"const f = (p: P): JSX.Element => <div />;",
+			]) {
+				expect(() => parse(code), code).toThrow(JSX_NOT_ENABLED);
+			}
+		});
+
+		it("reports the first element, wherever the reading first failed", () => {
+			expect(() =>
+				parse("const a = 1 < 2;\nconst b = (p): E => <div />;"),
+			).toThrow(/enabled\. \(2:21\)/u);
+		});
+
+		it("keeps the original error when the text is broken as JSX too", () => {
+			let message = "";
+
+			try {
+				parse("const a = <div />;\nconst b = ;");
+			} catch (error) {
+				message = (error as Error).message;
+			}
+
+			expect(message).not.toMatch(JSX_NOT_ENABLED);
+			expect(message).not.toBe("");
+		});
+
+		it("keeps the assertion's own error when the text is not JSX either", () => {
+			let message = "";
+
+			try {
+				parse("const v = <any>;");
+			} catch (error) {
+				message = (error as Error).message;
+			}
+
+			expect(message).not.toMatch(JSX_NOT_ENABLED);
+			expect(message).not.toBe("");
+		});
+
+		it("keeps the JSX reading's error out of a jsx: true parse", () => {
+			expect(() => parse("const a = <div>;", { jsx: true })).toThrow(
+				/Unterminated JSX element/u,
 			);
 		});
 	});

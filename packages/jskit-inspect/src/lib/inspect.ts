@@ -91,13 +91,15 @@ export function inspect(code: string, options: InspectionOptions): Inspection {
 	try {
 		/*
 		 * `tokens: true` because the AST pane's `toAST()` reports them, and
-		 * `dialect` because it decides how an ambiguous `<` reads:
-		 * `f<A, B>(a + b)` is a call with type arguments under `"ts"` and two
-		 * comparisons under `"js"`, so the pane would otherwise show the
-		 * TypeScript tree however the selector is set.
+		 * `jsx` and `dialect` because each decides how an ambiguous `<` reads:
+		 * `<T>value` is an element under `jsx: true` and a type assertion
+		 * otherwise, and `f<A, B>(a + b)` is a call with type arguments under
+		 * `"ts"` and two comparisons under `"js"`, so the pane would otherwise
+		 * ignore the checkbox and the selector.
 		 */
 		result = parse(code, {
 			sourceType: options.sourceType,
+			jsx: options.jsx,
 			dialect: options.dialect,
 			tokens: true,
 		});

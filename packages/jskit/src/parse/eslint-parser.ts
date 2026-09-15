@@ -150,37 +150,20 @@ function buildProgram(code: string, options: EslintParserOptions): Program {
 	 * *reads* as well as what is allowed. ESLint has it before the first
 	 * character is scanned, so there is nothing to defer.
 	 *
-	 * `jsx` goes to phase one only when it is on. `jsx: true` reads a `<` in
-	 * expression position as an element directly, which is both the `.tsx`
-	 * reading and the fast path. When JSX is off, phase one is deliberately
-	 * left in its permissive mode instead of being told `false`: a stray
-	 * element then still parses, and phase two reports it as "JSX is not
-	 * enabled" — a far better diagnostic than the type-assertion parse error
-	 * the strict reading would produce.
+	 * `jsx` and `dialect` go to phase one as well, because each decides how a
+	 * `<` reads: `jsx` whether one in expression position opens an element or
+	 * a type assertion, `dialect` whether one after an expression opens type
+	 * arguments or a comparison. So an element in a file without JSX is a
+	 * parse error, as it is for `espree` and `@typescript-eslint/parser` —
+	 * though `parse()` names the missing option rather than the token it
+	 * tripped on, when the file would have parsed as JSX.
 	 *
-	 * `dialect` goes to phase one both ways, and the difference from `jsx` is
-	 * the point. A permissive `jsx` still reads JSX the way a `.jsx` file
-	 * would, so the tree is right and only the verdict is deferred. A
-	 * permissive `dialect` is not: it reads `f < A, B > (a + b)` — valid
-	 * JavaScript, and two comparisons — as a call with explicit type
-	 * arguments, which is the wrong tree for a `.js` file and draws three
-	 * spurious "TypeScript syntax is not allowed" problems from phase two.
-	 * The cost is that TypeScript written in a `.js` file by mistake now
-	 * fails to parse rather than being told what is wrong with it; a wrong
-	 * tree for a valid program is the worse of the two, and it is what
-	 * `espree` does with the same text.
-	 */
-	/*
 	 * `tokens: true` because ESLint reads tokens as freely as nodes: the
 	 * `Program` this hands back must carry the full token and comment lists.
 	 */
+	const jsx = jsxFor(options);
 	const dialect = dialectFor(options);
-	const result = parse(
-		code,
-		jsxFor(options)
-			? { sourceType, jsx: true, dialect, tokens: true }
-			: { sourceType, dialect, tokens: true },
-	);
+	const result = parse(code, { sourceType, jsx, dialect, tokens: true });
 	const lines = new LineIndex(readLineStarts(result));
 
 	/*
@@ -203,7 +186,7 @@ function buildProgram(code: string, options: EslintParserOptions): Program {
 		result,
 		resolvedSourceType,
 		dialect,
-		jsxFor(options),
+		jsx,
 		declarationFor(options),
 	);
 

@@ -56,7 +56,7 @@ describe("typescript-eslint conformance for JSX", () => {
 				loc: false,
 				jsx: true,
 			});
-			const actual = toAST(parse(code, { tokens: true }), {
+			const actual = toAST(parse(code, { jsx: true, tokens: true }), {
 				sourceType: "module",
 				dialect: "ts",
 			});

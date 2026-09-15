@@ -149,10 +149,13 @@ for (const file of files) {
 		let actual;
 
 		try {
-			actual = toAST(parse(code, { sourceType, tokens: true }), {
-				sourceType,
-				dialect: "js",
-			});
+			actual = toAST(
+				parse(code, { sourceType, jsx: true, tokens: true }),
+				{
+					sourceType,
+					dialect: "js",
+				},
+			);
 		} catch (error) {
 			threw++;
 			problems.push([file, sourceType, "THROW", error.message]);

@@ -69,7 +69,7 @@ fn resolve_options(options: Option<NativeParseOptions>) -> Result<ParseOptions> 
 
     Ok(ParseOptions {
         source_type,
-        jsx: options.jsx,
+        jsx: options.jsx.unwrap_or(false),
         dialect,
         source: options.source.unwrap_or(false),
         tokens: options.tokens.unwrap_or(false),

@@ -107,6 +107,7 @@ let mismatches = 0;
 
 for (const file of files) {
 	const code = readFileSync(file, "utf8");
+	const jsx = /\.[jt]sx$/u.test(file);
 	let buffer = null;
 	let sourceType = "module";
 
@@ -114,7 +115,7 @@ for (const file of files) {
 
 	for (const attempt of ["module", "script"]) {
 		try {
-			buffer = parse(code, { sourceType: attempt });
+			buffer = parse(code, { sourceType: attempt, jsx });
 			sourceType = attempt;
 			break;
 		} catch {
@@ -127,7 +128,6 @@ for (const file of files) {
 		continue;
 	}
 
-	const jsx = /\.[jt]sx$/u.test(file);
 	const declaration = /\.d\.[cm]?ts$/u.test(file);
 	const optionSets = [
 		{ sourceType, dialect: "ts", jsx, declaration },

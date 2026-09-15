@@ -372,8 +372,26 @@ describe("typescript", () => {
 });
 
 describe("jsx", () => {
+	/**
+	 * Parses a source text as JSX and analyzes its scopes.
+	 * @param code The source text.
+	 * @param options How the program should be interpreted.
+	 * @returns The scope graph.
+	 */
+	function jsxScopesOf(
+		code: string,
+		options: Parameters<typeof analyze>[1] = {},
+	): ScopeManager<number> {
+		const parsed = parse(code, { jsx: true });
+
+		return toScopeManager(
+			analyze(parsed, { sourceType: "module", ...options }),
+			parsed,
+		);
+	}
+
 	it("references a capitalized tag but not a host tag", () => {
-		const scopeManager = scopesOf("const a = <div><Component /></div>;");
+		const scopeManager = jsxScopesOf("const a = <div><Component /></div>;");
 
 		expect(scopeManager.scopes[1].through.map(ref => ref.name)).toEqual([
 			"Component",
@@ -381,7 +399,7 @@ describe("jsx", () => {
 	});
 
 	it("references the pragma once when one is configured", () => {
-		const scopeManager = scopesOf(
+		const scopeManager = jsxScopesOf(
 			"import React from 'react'; const a = <div />; const b = <span />;",
 			{ jsxPragma: "React" },
 		);
@@ -391,7 +409,7 @@ describe("jsx", () => {
 	});
 
 	it("references the fragment factory when one is configured", () => {
-		const scopeManager = scopesOf(
+		const scopeManager = jsxScopesOf(
 			"import { Frag } from 'react'; const a = <>{x}</>;",
 			{ jsxFragmentName: "Frag" },
 		);
@@ -407,7 +425,7 @@ describe("jsx", () => {
 	 * written up in `docs/deviations.md`.
 	 */
 	it("references an element's name once, at the opening tag", () => {
-		const scopeManager = scopesOf("const C = 1; const a = <C>{x}</C>;");
+		const scopeManager = jsxScopesOf("const C = 1; const a = <C>{x}</C>;");
 		const component = scopeManager.scopes[1].set.get("C")!;
 
 		// The declaration's own identifier, and the opening tag. Not `</C>`.
@@ -415,7 +433,7 @@ describe("jsx", () => {
 	});
 
 	it("references the object of a member name once, at the opening tag", () => {
-		const scopeManager = scopesOf(
+		const scopeManager = jsxScopesOf(
 			"const N = { M: 1 }; const a = <N.M>{x}</N.M>;",
 		);
 
@@ -423,7 +441,7 @@ describe("jsx", () => {
 	});
 
 	it("references neither half of a namespaced name", () => {
-		const scopeManager = scopesOf("const x = 1; const a = <x:y></x:y>;");
+		const scopeManager = jsxScopesOf("const x = 1; const a = <x:y></x:y>;");
 
 		expect(scopeManager.scopes[1].through).toEqual([]);
 		expect(scopeManager.scopes[1].set.get("x")!.references).toHaveLength(1);
