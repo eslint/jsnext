@@ -2,13 +2,14 @@
 
 How the tokenizer and parser work, and what the binary parse buffer contains.
 
-This is a reference for people changing the parser. The [README](../../README.md)
+This is a reference for people changing the parser. [`api.md`](./api.md)
 covers the public API; this document covers the machinery behind it.
 
 ## Contents
 
 - [The three phases](#the-three-phases)
 - [Source layout](#source-layout)
+- [The native implementation](#the-native-implementation)
 - [Tokenization](#tokenization)
     - [Character classification](#character-classification)
     - [Token kinds](#token-kinds)
@@ -24,7 +25,7 @@ covers the public API; this document covers the machinery behind it.
     - [Speculation and rewinding](#speculation-and-rewinding)
     - [Expressions](#expressions)
     - [Patterns without a cover grammar](#patterns-without-a-cover-grammar)
-    - [The two ambiguities worth knowing](#the-two-ambiguities-worth-knowing)
+    - [The ambiguities worth knowing](#the-ambiguities-worth-knowing)
 - [Binary format](#binary-format)
     - [Shared conventions](#shared-conventions)
     - [The header](#the-header)
@@ -46,11 +47,18 @@ covers the public API; this document covers the machinery behind it.
 Most parsers do one pass and hand back an object tree. This one splits that
 into three, and the split is the reason the fast path is fast.
 
-| Phase    | Entry point                 | Produces                               | Fails how           |
-| -------- | --------------------------- | -------------------------------------- | ------------------- |
-| Parse    | `parse(code)`               | Two `ArrayBuffer`s and a `Uint32Array` | Throws `ParseError` |
-| Validate | `validate(result, options)` | An array of problems                   | Never throws        |
-| Decode   | `toAST(result, options)`    | ESTree objects                         | Never throws        |
+| Phase    | Entry point                 | Produces             | Fails how                    |
+| -------- | --------------------------- | -------------------- | ---------------------------- |
+| Parse    | `parse(code, options)`      | One `ArrayBuffer`    | Throws `ParseError`          |
+| Validate | `validate(result, options)` | An array of problems | Never throws for the program |
+| Decode   | `toAST(result, options)`    | ESTree objects       | Never throws for the program |
+
+Nothing about the _program_ makes phases 2 and 3 throw: whatever is wrong with
+it is either a `ParseError` from phase 1 or an entry in phase 2's list. Both
+do throw when the _call_ cannot be honored — a `sourceType` on the other side
+of the module line from the one the buffer was parsed with, which is a
+`TypeError`, or a buffer whose source text cannot be reached, which
+[the embedded source text](#the-embedded-source-text) covers.
 
 The dividing line between phase 1 and phase 2 is **whether the answer depends
 on context that the text alone does not supply**. `parse()` accepts the union
@@ -59,10 +67,19 @@ cannot be turned into tokens, or those tokens cannot be shaped into a tree.
 
 Everything that is merely _not allowed here_ — `with` in strict mode, a
 redeclared binding, `return` outside a function, TypeScript syntax in a `.js`
-file, JSX in a file that is not JSX, top-level `await` in a script — parses
-cleanly and is reported by `validate()`. That is what makes the source type,
-the dialect, and `jsx` options of phase 2 rather than phase 1, and it means one
-parse can be validated several ways.
+file, JSX in a file that is not JSX — parses cleanly and is reported by
+`validate()`. That is what makes `declaration` an option of phase 2 rather
+than phase 1, and it means one parse can be validated several ways.
+
+`sourceType`, `jsx`, and `dialect` are the exceptions, and the only three:
+each is an option of _both_ phases, because each makes two readings of the
+same text both valid and different, and no single tree stands for both.
+Top-level `await` is the `sourceType` case. In a script `await` is an
+ordinary name, so `await(x)` is a call and `await.x` a member expression; in
+a module it is an operator, so `await(x)` is an `AwaitExpression` and
+`await.x` a syntax error. Phase 1 has to be told which, and `await x` in a
+script is therefore a `ParseError` rather than a problem `validate()`
+reports — there is no tree to report it against.
 
 Phase 3 is where JavaScript objects finally get allocated. A tool that only
 needs to inspect part of a file can read the binary buffer directly with
@@ -71,7 +88,7 @@ needs to inspect part of a file can read the binary buffer directly with
 ## Source layout
 
 ```text
-src/
+src/parse/
   chars.ts          character classification tables
   token-kinds.ts    token kinds, keyword table, per-kind lookup tables
   node-kinds.ts     node kinds, node flags, the node record layout
@@ -95,10 +112,38 @@ src/
   entities.ts       XHTML named entities for JSX text
   errors.ts         ParseError
   api.ts            parse(), validate(), toAST(), and the token decoder
+  native.ts         where the Rust implementation registers itself
+  ast-types.ts      the ESTree declarations toAST() returns; types only
   visitor-keys.ts   which properties of each node hold its children
   eslint-parser.ts  the ESLint parser object
   index.ts          the public surface, and nothing but re-exports
 ```
+
+## The native implementation
+
+Everything below describes the TypeScript sources, and there is a second
+implementation of two of the three phases. `@eslint/jskit-native` carries
+`parse()` and `validate()` in Rust: the first writes a byte-identical buffer,
+the second reports the same problems in the same order with the same
+messages. `toAST()` has no native form — ESTree nodes are JavaScript objects,
+and building them across the Node-API boundary costs more than building them
+from the buffer.
+
+`native.ts` is the seam. It holds a module-level registration that `parse()`
+and `validate()` check before running the TypeScript implementation. The Node
+entry point, `src/index-node.ts`, loads the binding and registers it; the
+neutral bundle never does, so there the check is one `null` comparison.
+`JSKIT_NATIVE=0` disables the binding for a run.
+
+The Rust sources mirror these file by file under
+`packages/jskit-native/crates/jskit-core/src/parse/` — `tokenizer.rs` beside
+`tokenizer.ts`, `node_kinds.rs` beside `node-kinds.ts`, `slots.rs` beside
+`slots.ts`, `validator.rs` beside `validate.ts`, and the parser files in
+`parser/`. **A change to anything this document specifies — a token kind, a
+node kind, a slot, a flag bit, a header word, a diagnostic — is a change to
+both.** `packages/jskit-native/tools/diff-parse.mjs` and `diff-validate.mjs`
+run the corpus through the two and compare raw bytes and located problem
+lists; `mismatch=0` is the standard.
 
 ## Tokenization
 
@@ -141,10 +186,22 @@ load:
   than the specification's: contextual keywords such as `async` and `of` are
   reported as identifiers, while `let`, `static`, and `yield` are promoted to
   keywords.
+- `KIND_TOKEN_TEXT` — the exact text of every kind with a fixed spelling, the
+  punctuators and the keywords, and `""` for the rest. The token decoder hands
+  out one shared string per kind from it instead of slicing the source.
 - `KIND_BEFORE_EXPR` — whether an expression may follow this token, which is
   how `/` is resolved. See [the context stack](#the-context-stack).
+- `KIND_CONTINUES_EXPR` — whether this token can only _continue_ an expression
+  and never begin one: the binary and assignment operators, `.`, `?.`, and the
+  closers. It is not the complement of `KIND_BEFORE_EXPR` — `(`, `!`, and
+  `new` expect an expression _and_ can start one. It is what tells
+  `await = 1` from `await x`, and what decides
+  [a `<` after an expression](#the-ambiguities-worth-knowing).
 - `KIND_PRECEDENCE` — binding power for the binary operator loop.
 - `KIND_KEYWORD_FLAGS` — `KW_RESERVED`, `KW_STRICT_RESERVED`, `KW_CONTEXTUAL`.
+- `KIND_IDWORD_CODES` — the small code an `Identifier` node records when its
+  text spells a word `validate()` has a rule about. See
+  [the flags word](#the-flags-word).
 - `KEYWORD_NAMES` and `PUNCTUATOR_NAMES` — spellings, indexed by
   `kind - KEYWORD_FIRST` and `kind - PUNCT_FIRST`.
 
@@ -380,23 +437,48 @@ proceeds under the correct mode.
 Where an expression really has already been parsed and turns out to be a
 pattern, `retype()` converts it in place.
 
-### The two ambiguities worth knowing
+### The ambiguities worth knowing
 
 **`<` in expression position.** `<T>value` is a TypeScript type assertion and
 `<T>value</T>` is a JSX element. TypeScript resolves this by file extension,
 and `parse()` resolves it by its `jsx` option, which stands in for the
 extension: `true` reads an element directly, the `.tsx` choice, and `false` —
 the default — reads a type assertion, the `.ts` choice. Nothing is tried and
-rewound, so neither reading pays for the other.
+rewound in a parse that succeeds, so neither reading pays for the other.
+
+A parse that _fails_ without `jsx: true` is the one exception.
+`explainMissingJsx()` in `api.ts` parses the text once more the `.tsx` way,
+and if that succeeds with an element in the tree, the error thrown is "JSX
+syntax is not allowed unless the jsx option is enabled", at the first element
+— the cause rather than the symptom, which would otherwise be something like
+`Expected '>' but found '/'`. It runs only on the way to throwing.
 
 `validate()` has a `jsx` option of its own, which says whether the JSX that
 parsed is allowed. With it off, it reports JSX once per outermost `JSXElement`
 or `JSXFragment`, which is what the `inJsx` flag in the walk is for.
 
+**`<` after an expression.** `f<A, B>(a + b)` is two comparisons in JavaScript
+and a call with type arguments in TypeScript, and `parse()` resolves it by its
+`dialect` option. `"js"` always reads the comparisons. `"ts"` — the default —
+tries the type arguments in `tryParseTypeArgumentsInExpression()` and keeps
+them only when what follows the `>` leaves the comparison reading without an
+operand: a call's `(`, a tagged template, or a token that cannot begin an
+expression, which is `KIND_CONTINUES_EXPR`. Two members of that set are left
+out — `>`, which is ambiguous with a rescanned `>>`, and `.`, since `f<A>.b`
+is an error in TypeScript too. Otherwise it rewinds to the comparisons, so
+`"ts"` still accepts everything `"js"` does. Unambiguous TypeScript syntax parses under either setting;
+reporting it in a `.js` file is `validate()`'s `dialect` option, which is
+independent of this one.
+
 **A mismatched JSX closing tag.** `<div>{x}</span>` yields a perfectly
 well-shaped tree, so under the phase rule it is not a parse error. It is
-reported by `validate()`. `espree` throws here; this is a deliberate
-divergence.
+reported by `validate()`, where `espree` and `@typescript-eslint/parser` both
+throw. The program is rejected either way — what differs is which phase says
+so — which is why it is not an entry in
+[`docs/deviations.md`](../../../../docs/deviations.md): that file lists
+differences in output, and its "Not deviations" section covers this one. A
+closing tag that cannot be shaped into a tree at all, as in `<></a>` or
+`<a></>`, is still a `ParseError`.
 
 ## Binary format
 
@@ -552,7 +634,8 @@ Two slot conventions are worth calling out because they are easy to trip over:
 ### The flags word
 
 Word 3 packs boolean flags in the low bits and small enumerations in the high
-bits, which keeps them out of the data slots.
+bits, which keeps them out of the data slots. The topmost bit is one more
+boolean.
 
 Bits 0–22 are independent booleans:
 
@@ -571,17 +654,28 @@ Bits 0–22 are independent booleans:
 | 10  | `NF_READONLY`        | 22  | `NF_IN`             |
 | 11  | `NF_DECLARE`         |     |                     |
 
-`NF_SELF_CLOSING` is deliberately an alias of `NF_ASYNC` (bit 0). A JSX opening
-element is never async, so the bit is free on that kind. Reusing bits across
-disjoint kinds is allowed, but it must be documented at the definition.
-`NF_USE_STRICT` reuses the same bit the same way: an `ExpressionStatement`
-already marked as a directive (slot B is `1`) carries it when the directive is
-exactly `"use strict"`, so `validate()` finds the one directive that changes
-its answers without re-reading any prologue's text. The mark is only
-meaningful under the kind check — on any other kind the bit means what that
-kind says it means.
+Reusing a bit across disjoint kinds is allowed, but it must be documented at
+the definition, and the alias is only meaningful under a kind check — on any
+other kind the bit means what that kind says it means. Four aliases exist:
 
-Bits 23 and up hold packed enumerations:
+| Alias                 | Reuses     | On                                | Meaning                                                                                                                      |
+| --------------------- | ---------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `NF_SELF_CLOSING`     | `NF_ASYNC` | `JSXOpeningElement`               | The element closes itself, as in `<br />`.                                                                                   |
+| `NF_COMMA_AFTER_REST` | `NF_ASYNC` | an array or object                | A comma follows its rest element. `[...a,]` is legal as a literal and not as a pattern, and only the parser sees the comma.  |
+| `NF_USE_STRICT`       | `NF_ASYNC` | a directive `ExpressionStatement` | The directive is exactly `"use strict"`, so `validate()` finds the one that matters without re-reading any prologue's text.  |
+| `NF_LEGACY_OCTAL`     | `NF_TAIL`  | `Literal`                         | Written with a legacy octal escape or number, which strict mode forbids — and a `"use strict"` can arrive after the literal. |
+
+Each records something only the parser or tokenizer sees and `validate()`
+decides.
+
+Bit 31 is `NF_IDENTIFIER_NAME`: an `Identifier` that stands for an
+`IdentifierName` rather than a binding or a reference — the `x` in `o.x`,
+`{ x: 1 }`, and `import { x as y }`. Both are the same kind and the same
+text, and whether a reserved word is an error there depends on which it was,
+so the parser records it. It sits at the top because the low bits are spoken
+for and the enumerations start at 23.
+
+Bits 23 through 30 hold packed enumerations:
 
 | Field            | Shift | Width | Values                                        |
 | ---------------- | ----- | ----- | --------------------------------------------- |
@@ -781,13 +875,33 @@ while (scope !== NO_NODE && reader.kind(scope) !== N_FunctionDeclaration) {
 ## Validation
 
 `validate.ts` walks the tree using `SLOT_TABLE`, so it needs no per-kind switch
-to find children. It maintains a scope stack whose bindings are tagged
-`BINDING_VAR`, `BINDING_LEXICAL`, `BINDING_FUNCTION`, `BINDING_PARAM`, or
-`BINDING_TYPE`, hoists `var` and function declarations into the nearest function
-scope, and reports a conflict when two bindings cannot coexist.
+to find children. It maintains a scope stack, hoists `var` and function
+declarations into the nearest function scope, and reports a conflict when two
+bindings cannot coexist. Each binding is tagged with how it was introduced,
+which is what decides what may share its name:
+
+| Tag                          | Introduced by                                                                                                               |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `BINDING_VAR`                | `var`. Recorded in the scope's `varNames` rather than its `names`, since it binds somewhere other than where it is written. |
+| `BINDING_LEXICAL`            | `let`, `const`, a class, an import, and a `catch` parameter picked out of a pattern                                         |
+| `BINDING_FUNCTION`           | a plain function declaration                                                                                                |
+| `BINDING_PARAM`              | a parameter                                                                                                                 |
+| `BINDING_TYPE`               | an interface, type alias, enum, namespace, `import =`, or type-only import — the binding that merges with anything          |
+| `BINDING_SIGNATURE`          | a bodiless function declaration, an overload or an ambient one, which merges with the other declarations of its name        |
+| `BINDING_CATCH`              | a simple `catch` parameter, the one a `var` may reuse the name of                                                           |
+| `BINDING_AMBIENT_CLASS`      | a `declare class`, or a class in an ambient context: a lexical binding a signature may merge with                           |
+| `BINDING_ASYNC_OR_GENERATOR` | a generator or async function declaration, which Annex B's same-block allowance for function declarations excludes          |
+
+It takes four options. `declaration` is phase 2's alone. `jsx` and `dialect`
+say whether what parsed is _allowed_, independently of the `parse()` options
+of the same names, which say how the text reads. `sourceType` defaults to what
+the buffer records; it can narrow `"script"` to `"commonjs"`, and naming the
+other side of the module line throws.
 
 Problems carry a source offset internally; the public `ValidationError` reports
-`lineNumber` and `column`, resolved through `LineIndex`.
+`lineNumber` and `column`, resolved through `LineIndex`. That resolution stays
+in TypeScript when [the native validator](#the-native-implementation) runs: the
+binding returns messages and offsets.
 
 ## Decoding to ESTree
 
@@ -802,12 +916,13 @@ makes in its generated deserializers. `to-ast.ts` keeps the hand-written
 machinery the generated functions share — the decode state, the dispatch
 through the active table, and the value helpers.
 
-Two options select which of the four generated tables runs:
+Two choices select which of the four generated tables runs — `DECODE_JS`,
+`DECODE_TS`, `DECODE_JS_LOC`, or `DECODE_TS_LOC`:
 
-- `typescript` — in `"js"` mode the TypeScript-only properties are omitted
-  entirely, so the result is structurally identical to `espree`'s. In `"ts"`
-  mode, properties that `@typescript-eslint/parser` leaves `undefined` are
-  emitted as `null`.
+- `dialect` — under `"js"` the TypeScript-only properties are omitted
+  entirely, so the result is structurally identical to `espree`'s. Under
+  `"ts"`, the default, properties that `@typescript-eslint/parser` leaves
+  `undefined` are emitted as `null`.
 - `lines` — when a `LineIndex` is supplied, each node also gets `range` and
   `loc`. Only the ESLint parser object asks for this; `toAST()` passes `null`,
   because its contract is that nodes carry `start` and `end` and nothing else.
@@ -853,6 +968,9 @@ Things that will break subtly if violated:
 
 ## Extending the format
 
+Every change below is a change to the Rust sources as well; see
+[the native implementation](#the-native-implementation).
+
 To add a field to a node kind: use a free slot. Slots are per kind, so a slot
 unused by that kind costs nothing.
 
@@ -871,10 +989,20 @@ To add a node kind: append it in the correct partition (JavaScript, JSX, or
 TypeScript at or above `TS_FIRST`), raise `NODE_KIND_COUNT`, add its name to
 `NODE_KIND_NAMES`, describe its slots in `slots.ts`, add its entry to the
 decoder schema in `scripts/parse/to-ast-shapes.mjs` and regenerate with
-`npm run build:to-ast`, and declare its interface in `ast-types.ts`. Forgetting the `slots.ts` entry is the
-failure mode to watch for: the node decodes correctly but generic walks
-silently do not descend into it, so validation quietly stops checking that
-subtree and its children come back with no parent.
+`npm run build:to-ast`, declare its interface in `ast-types.ts`, and name its
+slots in `src/scope/slot-names.ts`. Then make the same change on the Rust
+side — `node_kinds.rs`, `slots.rs`, and the parser — because
+[the native implementation](#the-native-implementation) writes the same
+buffer. The
+[`add-node-type` skill](../../../../.agents/skills/add-node-type/SKILL.md)
+walks the TypeScript sites and has a driver that checks each one.
+
+Two of those entries fail silently. Forgetting `slots.ts` leaves a node that
+decodes correctly but that generic walks do not descend into, so validation
+quietly stops checking that subtree and its children come back with no
+parent. Forgetting `slot-names.ts` leaves `analyze()` working while
+`analyzeTree()` stops descending into the node, and only the scope
+conformance run notices.
 
 The `ast-types.ts` entry is the one thing on that list nothing else depends on
 at runtime, so it is also the easiest to skip. Two scripts stop it drifting:
