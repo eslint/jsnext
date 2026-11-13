@@ -324,7 +324,7 @@ jobs directly would block every merge where one of them correctly skipped.
 `release-please` watches `main`, keeps a release pull request open, and turns
 its merge into a tag and an npm publish. The versions live in
 `.release-please-manifest.json`; `release-please-config.json` lists the
-public packages — `@eslint/jskit`, `@eslint/jskit-native`, and the five
+public packages — `@eslint/jskit`, `@eslint/jskit-native`, and the seven
 platform packages under `packages/jskit-native/npm/` — with the
 `linked-versions` plugin holding every version number equal, because the
 binary buffer formats are one contract with two implementations and the exact
@@ -333,9 +333,9 @@ installed. `@eslint/jskit-inspect` is private and is not released. There is
 no JSR configuration and none is wanted.
 
 The binaries ship the way esbuild's do: one npm package per platform
-(`@eslint/jskit-native-linux-x64-gnu` and its four siblings), each carrying
+(`@eslint/jskit-native-linux-x64-gnu` and its six siblings), each carrying
 one binary and declaring the `os`, `cpu`, and (on Linux) `libc` it is for.
-The published `@eslint/jskit-native` lists all five as exact-pinned
+The published `@eslint/jskit-native` lists all seven as exact-pinned
 `optionalDependencies`, npm installs only the one matching the machine, and
 `index.js` requires it by name at require time — a platform with no package
 falls back to the TypeScript implementation. The checked-in package.json
@@ -348,11 +348,29 @@ workflow stamps the pins in with
 publishing; in a checkout, `index.js` loads the locally built binary from
 `npm/<target>/` by path instead.
 
-A release build compiles each binary on one runner of its own platform —
-linux x64/arm64 (gnu), macOS x64/arm64, Windows x64 — runs the parity tests
-against that very binary on that very machine, and publishes bottom-up: the
-platform packages first, then `@eslint/jskit-native`, then `@eslint/jskit`,
-so every exact pin exists before the package pinning it.
+The platforms are every Node.js
+[Tier 1 platform](https://github.com/nodejs/node/blob/main/BUILDING.md#strategy)
+on every release line `engines` admits, which is why Linux ARMv7 and
+Windows x86 are there: Node.js 24 dropped both, but 22 lists them as Tier 1.
+Adding a target means a platform package under `npm/`, an entry in both
+release-please files, a build job, the publish loop, and — if its Rust triple
+is not the obvious one — the table in `build.mjs`.
+
+A release build compiles each binary on its own platform —
+linux x64/arm64/armv7 (gnu), macOS x64/arm64, Windows x64/x86 — runs the
+parity tests against that very binary on that very machine, and publishes
+bottom-up: the platform packages first, then `@eslint/jskit-native`, then
+`@eslint/jskit`, so every exact pin exists before the package pinning it.
+
+The Linux binaries are built inside Debian buster rather than on the runner,
+by `packages/jskit-native/tools/build-in-container.sh`. A shared library
+demands the newest glibc symbol versions it was linked against, so a binary
+built on a current Ubuntu needs glibc 2.34 or later — and on anything older
+it fails to load, and `@eslint/jskit` falls back to TypeScript without a
+word. Buster's glibc is 2.28, the floor Node.js 22 supports, and the script
+fails the build if any symbol needs more. A local `npm run build` links
+against whatever glibc the machine has, which is fine for a checkout and
+wrong for a release.
 
 Publishing goes through npm trusted publishing, which authenticates with the
 workflow's OIDC token, so no npm secret is stored. The one secret the workflow

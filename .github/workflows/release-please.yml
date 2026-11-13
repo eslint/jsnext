@@ -39,11 +39,21 @@ jobs:
                   echo "packages/jskit-native--release_created: ${{ steps.release.outputs['packages/jskit-native--release_created'] }}"
 
     # One native binary per platform, each built on a runner of that platform
-    # — nothing is cross-compiled — and each verified before it is uploaded:
-    # the parity tests in packages/jskit-native/test.mjs assert that the
-    # binary produces byte-identical buffers to the TypeScript implementation
-    # on that machine. A binary that was never exercised on its own platform
-    # does not get published.
+    # and each verified before it is uploaded: the parity tests in
+    # packages/jskit-native/test.mjs assert that the binary produces
+    # byte-identical buffers to the TypeScript implementation on that
+    # machine. A binary that was never exercised on its own platform does not
+    # get published.
+    #
+    # The targets are every Tier 1 platform of every Node.js release line the
+    # `engines` field admits (https://github.com/nodejs/node/blob/main/BUILDING.md#strategy).
+    # Two of them exist only on Node.js 22 — 24 dropped Windows x86 and
+    # Linux ARMv7 — so their jobs run Node.js 22. Windows x86 runs here as a
+    # 32-bit Node.js on the 64-bit runner, with Rust told to build `i686`
+    # for it (build.mjs passes `--target` whenever the Node.js target differs
+    # from the toolchain's host); WoW64 runs the result natively, so the
+    # parity tests exercise the real binary. The Linux targets build in a
+    # job of their own below.
     build-native:
         needs: release-please
         if: ${{ needs.release-please.outputs.releases_created == 'true' }}
@@ -51,29 +61,33 @@ jobs:
             fail-fast: false
             matrix:
                 include:
-                    - os: ubuntu-latest
-                      target: linux-x64-gnu
-                    - os: ubuntu-24.04-arm
-                      target: linux-arm64-gnu
                     - os: macos-13
                       target: darwin-x64
                     - os: macos-latest
                       target: darwin-arm64
                     - os: windows-latest
                       target: win32-x64
+                    - os: windows-latest
+                      target: win32-ia32
+                      node-version: 22
+                      node-architecture: x86
+                      rust-target: i686-pc-windows-msvc
         runs-on: ${{ matrix.os }}
         steps:
             - uses: actions/checkout@v7
 
             - uses: actions/setup-node@v7
               with:
-                  node-version: lts/*
+                  node-version: ${{ matrix.node-version || 'lts/*' }}
+                  architecture: ${{ matrix.node-architecture }}
 
             # Pinned by commit SHA, not by tag, for the same reason
             # `dorny/paths-filter` is in ci.yml: a tag can be moved to point
             # at different code, and this workflow publishes to npm.
             - name: Install Rust
               uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+              with:
+                  targets: ${{ matrix.rust-target }}
 
             # `npm ci` also runs the root `prepare`, which builds the
             # toolkit's dist/ — the parity tests load the package through it.
@@ -95,13 +109,83 @@ jobs:
                   path: packages/jskit-native/npm/${{ matrix.target }}/jskit.${{ matrix.target }}.node
                   if-no-files-found: error
 
+    # Every Linux binary is built inside Debian buster (`buildpack-deps`, for
+    # its compiler), because a shared library demands the newest glibc symbol
+    # versions it was linked against: built on the runner's own Ubuntu, the
+    # binary needs glibc 2.34 or later and fails to load — falling back to
+    # TypeScript without a word — on the glibc 2.28 that Node.js 22 supports.
+    # Buster's glibc is 2.28, and tools/build-in-container.sh fails the build
+    # if any symbol needs more. Node.js comes from the official tarball,
+    # which is built for that same floor, pinned by version and checksum.
+    #
+    # Linux ARMv7 has no hosted runner, so it builds in a 32-bit ARM
+    # container on the arm64 runner: an ARMv7 Node.js and an ARMv7 Rust
+    # toolchain, with nothing cross-compiled. QEMU is registered in case the
+    # runner's cores cannot execute AArch32 themselves. The image is pinned
+    # by digest for the same reason the actions are pinned by SHA.
+    build-native-linux:
+        needs: release-please
+        if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - os: ubuntu-latest
+                      target: linux-x64-gnu
+                      platform: linux/amd64
+                      node-arch: x64
+                      node-sha256: cdeb8670a0c81f51b4dc4ac61919f9b1ad917b304bf8221eb939570663d240f8
+                      rust-host: x86_64-unknown-linux-gnu
+                    - os: ubuntu-24.04-arm
+                      target: linux-arm64-gnu
+                      platform: linux/arm64
+                      node-arch: arm64
+                      node-sha256: 2babb9eb5264860d540849f4b064a6fbdebcdc323657d9d382ce23d313fd5e09
+                      rust-host: aarch64-unknown-linux-gnu
+                    - os: ubuntu-24.04-arm
+                      target: linux-arm-gnu
+                      platform: linux/arm/v7
+                      node-arch: armv7l
+                      node-sha256: 1c3e15d38e4cafbbf74377ac070cd9d7e0418c673e1f6332f38f1d4762a699f9
+                      rust-host: armv7-unknown-linux-gnueabihf
+                      qemu: arm
+        runs-on: ${{ matrix.os }}
+        env:
+            NODE_VERSION: 22.23.5
+        steps:
+            - uses: actions/checkout@v7
+
+            - name: Register QEMU
+              if: ${{ matrix.qemu }}
+              uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+              with:
+                  platforms: ${{ matrix.qemu }}
+
+            - name: Build and Verify in a glibc 2.28 Container
+              run: |
+                  docker run --rm --platform "${{ matrix.platform }}" \
+                      --volume "${PWD}:/work" --workdir /work \
+                      --env NODE_VERSION \
+                      --env NODE_ARCH="${{ matrix.node-arch }}" \
+                      --env NODE_SHA256="${{ matrix.node-sha256 }}" \
+                      --env RUST_HOST="${{ matrix.rust-host }}" \
+                      --env TARGET="${{ matrix.target }}" \
+                      buildpack-deps:buster@sha256:c9285bcb198c0ae171bfc350a4af94ddfda547c4e4d2900a92c280232319341e \
+                      packages/jskit-native/tools/build-in-container.sh
+
+            - uses: actions/upload-artifact@v7
+              with:
+                  name: ${{ matrix.target }}
+                  path: packages/jskit-native/npm/${{ matrix.target }}/jskit.${{ matrix.target }}.node
+                  if-no-files-found: error
+
     # The packages ship together: the buffer formats are one contract with
     # two implementations, and `@eslint/jskit` pins the exact
     # `@eslint/jskit-native` version it was released beside, which in turn
     # pins the exact version of each platform package (the linked-versions
     # plugin keeps every version number in the group equal).
     publish:
-        needs: [release-please, build-native]
+        needs: [release-please, build-native, build-native-linux]
         if: ${{ needs.release-please.outputs.releases_created == 'true' }}
         runs-on: ubuntu-latest
         permissions:
@@ -141,8 +225,8 @@ jobs:
             # `optionalDependencies`: a pin can only point at a published
             # version, and the release pull request bumps every version
             # before anything is published, so a checked-in pin would break
-            # `npm ci` on that very pull request. This stamps the five
-            # platform packages in, each pinned to the exact version about
+            # `npm ci` on that very pull request. This stamps every platform
+            # package in, each pinned to the exact version about
             # to be published — the same move esbuild's publish makes.
             - name: Pin the Platform Packages in @eslint/jskit-native
               if: ${{ needs.release-please.outputs.native_released == 'true' }}
@@ -163,7 +247,7 @@ jobs:
             - name: Publish the Platform Packages
               if: ${{ needs.release-please.outputs.native_released == 'true' }}
               run: |
-                  for target in darwin-arm64 darwin-x64 linux-arm64-gnu linux-x64-gnu win32-x64; do
+                  for target in darwin-arm64 darwin-x64 linux-arm-gnu linux-arm64-gnu linux-x64-gnu win32-ia32 win32-x64; do
                       (cd "packages/jskit-native/npm/${target}" && npm publish --provenance)
                   done
 

@@ -1,5 +1,5 @@
 /**
- * @fileoverview Stamps the five platform packages into
+ * @fileoverview Stamps every platform package under `npm/` into
  * `@eslint/jskit-native`'s `optionalDependencies`, each pinned to its exact
  * version, the way esbuild's publish step does.
  *

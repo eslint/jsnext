@@ -21,10 +21,19 @@ const { join } = require("node:path");
 
 const target = `${process.platform}-${process.arch}${process.platform === "linux" ? "-gnu" : ""}`;
 
-const CANDIDATES = [
-	`@eslint/jskit-native-${target}`,
-	join(__dirname, "npm", target, `jskit.${target}.node`),
-];
+// The 32-bit ARM binary is built for ARMv7, but `process.arch` reports
+// `arm` on ARMv6 too, and there an ARMv7 instruction kills the process with
+// SIGILL rather than throwing anything `require()` could catch. So an older
+// core gets no candidates at all, and the TypeScript implementation.
+const unsupported =
+	process.arch === "arm" && Number(process.config.variables.arm_version) < 7;
+
+const CANDIDATES = unsupported
+	? []
+	: [
+			`@eslint/jskit-native-${target}`,
+			join(__dirname, "npm", target, `jskit.${target}.node`),
+		];
 
 let binding = null;
 

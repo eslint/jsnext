@@ -10,8 +10,10 @@
         "jskit-native",
         "jskit-native-darwin-arm64",
         "jskit-native-darwin-x64",
+        "jskit-native-linux-arm-gnu",
         "jskit-native-linux-arm64-gnu",
         "jskit-native-linux-x64-gnu",
+        "jskit-native-win32-ia32",
         "jskit-native-win32-x64"
       ]
     }
@@ -40,6 +42,11 @@
       "release-type": "node",
       "component": "jskit-native-darwin-x64"
     },
+    "packages/jskit-native/npm/linux-arm-gnu": {
+      "release-as": "0.1.0",
+      "release-type": "node",
+      "component": "jskit-native-linux-arm-gnu"
+    },
     "packages/jskit-native/npm/linux-arm64-gnu": {
       "release-as": "0.1.0",
       "release-type": "node",
@@ -49,6 +56,11 @@
       "release-as": "0.1.0",
       "release-type": "node",
       "component": "jskit-native-linux-x64-gnu"
+    },
+    "packages/jskit-native/npm/win32-ia32": {
+      "release-as": "0.1.0",
+      "release-type": "node",
+      "component": "jskit-native-win32-ia32"
     },
     "packages/jskit-native/npm/win32-x64": {
       "release-as": "0.1.0",

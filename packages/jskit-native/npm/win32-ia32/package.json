@@ -1,0 +1,43 @@
+{
+  "name": "@eslint/jskit-native-win32-ia32",
+  "version": "0.0.0",
+  "description": "The Windows x86 (32-bit) binary for @eslint/jskit-native.",
+  "type": "commonjs",
+  "main": "jskit.win32-ia32.node",
+  "files": [
+    "jskit.win32-ia32.node"
+  ],
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "ia32"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eslint/jsnext.git",
+    "directory": "packages/jskit-native/npm/win32-ia32"
+  },
+  "bugs": {
+    "url": "https://github.com/eslint/jsnext/issues"
+  },
+  "homepage": "https://github.com/eslint/jsnext/tree/main/packages/jskit-native#readme",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "keywords": [
+    "parser",
+    "scope",
+    "control-flow",
+    "javascript",
+    "typescript",
+    "eslint",
+    "native",
+    "napi"
+  ],
+  "license": "Apache-2.0",
+  "engines": {
+    "node": "^22.13.0 || >=24"
+  }
+}
