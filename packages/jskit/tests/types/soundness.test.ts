@@ -218,18 +218,26 @@ describe("loop variables", () => {
 		);
 	});
 
-	it("claims nothing for a tuple with an optional element", () => {
-		// The checker adds `undefined` or not depending on `strict`.
+	it("admits undefined for a tuple's optional element", () => {
+		// The checker's answer under `strict`, as for an optional parameter.
 		expect(
 			bodyType(
 				`declare const t: [number, string?]; for (const v of t) v;`,
 			),
-		).toBe("unknown");
+		).toBe("number | string | undefined");
 		expect(
 			bodyType(
 				`declare const t: [a: number, b?: string]; for (const v of t) v;`,
 			),
-		).toBe("unknown");
+		).toBe("number | string | undefined");
+	});
+
+	it("spreads a labeled rest element", () => {
+		expect(
+			bodyType(
+				`declare const t: [a: number, ...rest: boolean[]]; for (const v of t) v;`,
+			),
+		).toBe("number | boolean");
 	});
 
 	it("binds string from a string and any from any", () => {

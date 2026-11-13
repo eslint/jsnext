@@ -13,7 +13,15 @@
  * "no" from "no idea".
  */
 
-import { AstReader, NODE_KIND_NAMES } from "../parse/index.js";
+import {
+	AstReader,
+	NF_OPTIONAL,
+	NODE_A,
+	NODE_KIND_NAMES,
+	N_TSNamedTupleMember,
+	N_TSOptionalType,
+	N_TSRestType,
+} from "../parse/index.js";
 import { type NodeRef } from "../scope/index.js";
 import { typeNodeAtHandle, typeNodeHandle } from "./handles.js";
 import { TypesBufferReader } from "./types-buffer-reader.js";
@@ -61,6 +69,7 @@ import {
 	TY_FLAGS,
 	TY_MEMBER_COUNT,
 	TY_MEMBER_FIRST,
+	TY_NODE,
 	TY_SHAPE,
 	TY_SYMBOL,
 	TYS_ARRAY,
@@ -1036,8 +1045,32 @@ export class Types<TNode extends number = number> {
 			const pool = buffer.typeField(type, TY_DATA0);
 			const parts: string[] = [];
 
+			/*
+			 * The record keeps the element types with the rest and optional
+			 * markers unwrapped; the tuple's own syntax still has them.
+			 */
+			const reader = this.#reader;
+			const list = reader.field(
+				typeNodeAtHandle(reader, buffer.typeField(type, TY_NODE)),
+				NODE_A,
+			);
+
 			for (let i = 0; i < buffer.listCount(pool); i++) {
-				parts.push(this.#render(buffer.listItem(pool, i), depth - 1));
+				const element = reader.listItem(list, i);
+				const kind = reader.kind(element);
+				const text = this.#render(buffer.listItem(pool, i), depth - 1);
+
+				if (kind === N_TSRestType) {
+					parts.push(`...${text}`);
+				} else if (
+					kind === N_TSOptionalType ||
+					(kind === N_TSNamedTupleMember &&
+						(reader.flags(element) & NF_OPTIONAL) !== 0)
+				) {
+					parts.push(`${text}?`);
+				} else {
+					parts.push(text);
+				}
 			}
 
 			return `[${parts.join(", ")}]`;

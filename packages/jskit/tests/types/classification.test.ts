@@ -327,6 +327,80 @@ describe("arrays and tuples", () => {
 	});
 });
 
+describe("tuple positions", () => {
+	/**
+	 * The rendered type of an expression statement's expression.
+	 * @param code The source text.
+	 * @param snippet The expression's source text.
+	 * @returns The rendered type, `"unknown"` when nothing is recorded.
+	 */
+	function typeOf(code: string, snippet: string): string {
+		const start = code.lastIndexOf(snippet);
+
+		return typesOf(code).queries.typeToString({
+			type: "MemberExpression",
+			start,
+			end: start + snippet.length,
+		});
+	}
+
+	it("reads a rest element's elements from the rest on", () => {
+		const code = `declare const t: [number, ...boolean[]]; t[0]; t[1]; t[5];`;
+
+		expect(typeOf(code, "t[0]")).toBe("number");
+		expect(typeOf(code, "t[1]")).toBe("boolean");
+		expect(typeOf(code, "t[5]")).toBe("boolean");
+	});
+
+	it("unions a middle rest with the elements after it", () => {
+		const code = `declare const t: [number, ...boolean[], string]; t[0]; t[1]; t[2];`;
+
+		expect(typeOf(code, "t[0]")).toBe("number");
+		expect(typeOf(code, "t[1]")).toBe("boolean | string");
+		expect(typeOf(code, "t[2]")).toBe("boolean | string");
+	});
+
+	it("reads through a labeled rest", () => {
+		const code = `declare const t: [a: number, ...rest: boolean[]]; t[1];`;
+
+		expect(typeOf(code, "t[1]")).toBe("boolean");
+	});
+
+	it("admits undefined for an optional element", () => {
+		const code = `declare const t: [number, string?]; t[0]; t[1];`;
+
+		expect(typeOf(code, "t[0]")).toBe("number");
+		expect(typeOf(code, "t[1]")).toBe("string | undefined");
+	});
+
+	it("claims nothing past the end of a fixed tuple", () => {
+		const code = `declare const t: [number, string]; t[2];`;
+
+		expect(typeOf(code, "t[2]")).toBe("unknown");
+	});
+
+	it("claims nothing from a spread tuple on", () => {
+		// The checker flattens `...[A, B]` into positions; the record does not.
+		const code = `declare const t: [number, ...[string, boolean]]; t[0]; t[1];`;
+
+		expect(typeOf(code, "t[0]")).toBe("number");
+		expect(typeOf(code, "t[1]")).toBe("unknown");
+	});
+
+	it("renders rest and optional markers", () => {
+		const code = `declare const a: [number, ...boolean[]]; declare const b: [a: number, b?: string]; a; b;`;
+		const fixture = typesOf(code);
+		const render = (snippet: string): string =>
+			fixture.queries.typeToString({
+				type: "Identifier",
+				start: code.lastIndexOf(snippet),
+			});
+
+		expect(render("a;")).toBe("[number, ...boolean[]]");
+		expect(render("b;")).toBe("[number, string?]");
+	});
+});
+
 describe("enums", () => {
 	it("classifies enums and their members", () => {
 		const code = `enum Direction { Up, Down } let d: Direction; d;`;

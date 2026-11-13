@@ -188,19 +188,27 @@ The rules are fixed and conservative. The ones worth knowing:
   one pass cannot see, so it stays untyped.
 - **Loop variables** bind from what the loop iterates, which is typed
   first. A `for…of` declaration binds an array's element type, the union of
-  a tuple's elements (a rest element contributing its array's element),
-  `string` for a string, `any` for `any`, and each constituent's answer for
-  a union; `for await` awaits it. A `for…in` declaration binds `string`.
-  Neither widens, since the checker widens initializers and never iterated
-  values. Each declines where the checker's answer is out of reach: an
-  iterable it does not model (`Set`, `Map`, a generator), a tuple with an
-  optional element — `undefined` is in the checker's answer only under
-  `strict` — and a `for…in` over a value whose type is unknown or might be
-  generic, which the checker types as `Extract<keyof T, string>`.
+  what a tuple's positions hold (below), `string` for a string, `any` for
+  `any`, and each constituent's answer for a union; `for await` awaits it.
+  A `for…in` declaration binds `string`. Neither widens, since the checker
+  widens initializers and never iterated values. Each declines where the
+  checker's answer is out of reach: an iterable it does not model (`Set`,
+  `Map`, a generator), and a `for…in` over a value whose type is unknown or
+  might be generic, which the checker types as `Extract<keyof T, string>`.
+- **Tuple positions** are read from the tuple's own syntax beside its
+  record, which keeps one type per element with the rest and optional
+  markers unwrapped — a rest element's entry is the array it spreads, a
+  labeled one's included. Indexing a position before any rest reads that
+  element; from a rest on, any position could hold any of the rest's
+  elements or any element after it, so it reads their union. A spread tuple
+  — `...[A, B]` — the checker flattens into fixed positions, which the
+  record does not, so indexing from one on claims nothing.
 - **Optionality admits `undefined`**: `x?: T` on a parameter binds
   `T | undefined` — the argument may simply be absent — and reading an
-  optional member produces `T | undefined` the same way. Both are the
-  checker's answers too.
+  optional member or an optional tuple element produces `T | undefined`
+  the same way. These are the checker's answers under `strict`; without it
+  the checker leaves `undefined` out, so this errs toward possibly
+  nullish.
 - **Names are not expressions**: a non-computed member key, a module
   declaration's name literal, and the identifiers of a type-only export
   record nothing, and the expression pass never descends into type-context

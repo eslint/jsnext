@@ -615,45 +615,105 @@ impl<'a, 'b> TypesWalker<'a, 'b> {
         TYPE_NONE
     }
 
-    /// The union of what iterating a tuple produces, reading the tuple's own
-    /// syntax beside its record: a rest element contributes its array's
-    /// element type, and an optional element or a labeled rest claims
-    /// nothing.
+    /// The union of what iterating a tuple produces: every element, a rest
+    /// element contributing its array's element type.
     fn tuple_element_type(&mut self, type_id: u32) -> u32 {
         let ast = self.ast;
-        let pool = self.builder.type_field(type_id, TY_DATA0);
-        let node = self.node_at(self.builder.type_field(type_id, TY_NODE));
-        let list = ast.field(node, NODE_A);
+        let list = self.tuple_list(type_id);
         let size = ast.raw_list_size(list);
         let mut parts: Vec<u32> = Vec::new();
 
         for i in 0..size {
-            let element = ast.raw_list_item(list, i);
-            let kind = ast.kind(element);
-            let mut part = self.builder.pool_item(pool, i);
+            let part = if ast.kind(ast.raw_list_item(list, i)) == N_TS_REST_TYPE {
+                let pool = self.builder.type_field(type_id, TY_DATA0);
+                let spread = self.builder.pool_item(pool, i);
+                let element = self.element_type(spread);
 
-            if kind == N_TS_OPTIONAL_TYPE
-                || (kind == N_TS_NAMED_TUPLE_MEMBER && (ast.flags(element) & NF_OPTIONAL) != 0)
-            {
-                return TYPE_NONE;
-            }
-
-            if kind == N_TS_REST_TYPE {
-                if ast.kind(ast.field(element, NODE_A)) == N_TS_NAMED_TUPLE_MEMBER {
+                if element == TYPE_NONE {
                     return TYPE_NONE;
                 }
 
-                part = self.element_type(part);
-
-                if part == TYPE_NONE {
-                    return TYPE_NONE;
-                }
-            }
+                element
+            } else {
+                self.tuple_slot(type_id, list, i)
+            };
 
             parts.push(part);
         }
 
         self.union(&parts, 0)
+    }
+
+    /// What reading one position of a tuple produces. Up to a rest element
+    /// that is the element at that position; from the rest on it could be
+    /// any of the rest's elements or any element after it.
+    fn tuple_index_type(&mut self, type_id: u32, at: u32) -> u32 {
+        let ast = self.ast;
+        let list = self.tuple_list(type_id);
+        let size = ast.raw_list_size(list);
+        let rest = (0..size).find(|&i| ast.kind(ast.raw_list_item(list, i)) == N_TS_REST_TYPE);
+
+        let rest = match rest {
+            Some(rest) if at >= rest => rest,
+            _ => {
+                return if at < size {
+                    self.tuple_slot(type_id, list, at)
+                } else {
+                    TYPE_NONE
+                };
+            }
+        };
+
+        // Only an array rest is read this way: a spread tuple is flattened
+        // into fixed positions by the checker, which this record does not do.
+        let pool = self.builder.type_field(type_id, TY_DATA0);
+        let spread = self.builder.pool_item(pool, rest);
+
+        if (self.builder.type_field(spread, TY_SHAPE) & TYS_ARRAY) == 0 {
+            return TYPE_NONE;
+        }
+
+        let element = self.element_type(spread);
+
+        if element == TYPE_NONE {
+            return TYPE_NONE;
+        }
+
+        let mut parts = vec![element];
+
+        for i in rest + 1..size {
+            parts.push(self.tuple_slot(type_id, list, i));
+        }
+
+        self.union(&parts, 0)
+    }
+
+    /// The element list of a tuple's own syntax, where the optional and rest
+    /// markers the record unwraps are still written.
+    fn tuple_list(&self, type_id: u32) -> u32 {
+        let node = self.node_at(self.builder.type_field(type_id, TY_NODE));
+
+        self.ast.field(node, NODE_A)
+    }
+
+    /// What a tuple's element at a fixed position holds: an optional element
+    /// holds `undefined` as readily as its type, the checker's answer under
+    /// `strict`.
+    fn tuple_slot(&mut self, type_id: u32, list: u32, at: u32) -> u32 {
+        let ast = self.ast;
+        let element = ast.raw_list_item(list, at);
+        let kind = ast.kind(element);
+        let pool = self.builder.type_field(type_id, TY_DATA0);
+        let part = self.builder.pool_item(pool, at);
+
+        if part != TYPE_NONE
+            && (kind == N_TS_OPTIONAL_TYPE
+                || (kind == N_TS_NAMED_TUPLE_MEMBER && (ast.flags(element) & NF_OPTIONAL) != 0))
+        {
+            return self.union(&[part, TYPE_UNDEFINED], 0);
+        }
+
+        part
     }
 
     /// Whether a type might be generic in the sense `keyof` cares about: a
@@ -884,7 +944,7 @@ impl<'a, 'b> TypesWalker<'a, 'b> {
                 // any length — and the checker normalizes it to the array
                 // type it spreads. So does this.
                 if size == 1 && ast.kind(ast.raw_list_item(list, 0)) == N_TS_REST_TYPE {
-                    let argument = ast.field(ast.raw_list_item(list, 0), NODE_A);
+                    let argument = self.rest_spread(ast.raw_list_item(list, 0));
 
                     return self.convert(argument);
                 }
@@ -1049,11 +1109,29 @@ impl<'a, 'b> TypesWalker<'a, 'b> {
             return self.convert(self.ast.field(element, NODE_B));
         }
 
-        if kind == N_TS_OPTIONAL_TYPE || kind == N_TS_REST_TYPE {
+        if kind == N_TS_REST_TYPE {
+            let spread = self.rest_spread(element);
+
+            return self.convert(spread);
+        }
+
+        if kind == N_TS_OPTIONAL_TYPE {
             return self.convert(self.ast.field(element, NODE_A));
         }
 
         self.convert(element)
+    }
+
+    /// The type node a rest element spreads: `...T[]`, or the `T[]` of a
+    /// labeled `...rest: T[]`, whose label is a name and not a type.
+    fn rest_spread(&self, rest: u32) -> u32 {
+        let inner = self.ast.field(rest, NODE_A);
+
+        if self.ast.kind(inner) == N_TS_NAMED_TUPLE_MEMBER {
+            self.ast.field(inner, NODE_B)
+        } else {
+            inner
+        }
     }
 
     /// The type a `TSTypeReference` names.
@@ -2770,11 +2848,10 @@ impl<'a, 'b> TypesWalker<'a, 'b> {
                     && index != TYPE_NONE
                     && (self.builder.type_field(index, TY_FLAGS) & TYF_NUMBER_LITERAL) != 0
                 {
-                    let pool = self.builder.type_field(object, TY_DATA0);
                     let at = self.numeric_literal_value(index);
 
-                    if at >= 0 && (at as u32) < self.builder.pool_count(pool) {
-                        type_id = self.builder.pool_item(pool, at as u32);
+                    if at >= 0 {
+                        type_id = self.tuple_index_type(object, at as u32);
                     }
                 } else if (shape & TYS_ARRAY) != 0 {
                     let pool = self.builder.type_field(object, TY_DATA0);

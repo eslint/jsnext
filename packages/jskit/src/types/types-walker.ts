@@ -994,56 +994,138 @@ export class TypesWalker {
 	}
 
 	/**
-	 * The union of what iterating a tuple produces. The record keeps one
-	 * type per element with the optional and rest markers unwrapped, so
-	 * this reads the tuple's own syntax beside it: a rest element
-	 * contributes its array's element type, and an optional element — which
-	 * the checker iterates as `undefined` too, or not, depending on
-	 * compiler options — or a labeled rest claims nothing.
+	 * The union of what iterating a tuple produces: every element, a rest
+	 * element contributing its array's element type.
 	 * @param type The tuple's type ID.
 	 * @returns The element type ID, `TYPE_NONE` when unknown.
 	 */
 	#tupleElementType(type: number): number {
 		const reader = this.#reader;
-		const builder = this.#builder;
-		const pool = builder.typeField(type, TY_DATA0);
-		const node = this.#nodeAt(builder.typeField(type, TY_NODE));
-		const list = reader.field(node, NODE_A);
+		const list = this.#tupleList(type);
 		const size = reader.listSize(list);
 		const parts: number[] = [];
 
 		for (let i = 0; i < size; i++) {
-			const element = reader.listItem(list, i);
-			const kind = reader.kind(element);
-			let part = builder.poolItem(pool, i);
+			let part: number;
 
-			if (
-				kind === N_TSOptionalType ||
-				(kind === N_TSNamedTupleMember &&
-					(reader.flags(element) & NF_OPTIONAL) !== 0)
-			) {
-				return TYPE_NONE;
-			}
-
-			if (kind === N_TSRestType) {
-				if (
-					reader.kind(reader.field(element, NODE_A)) ===
-					N_TSNamedTupleMember
-				) {
-					return TYPE_NONE;
-				}
-
-				part = this.#elementType(part);
+			if (reader.kind(reader.listItem(list, i)) === N_TSRestType) {
+				part = this.#elementType(
+					this.#builder.poolItem(
+						this.#builder.typeField(type, TY_DATA0),
+						i,
+					),
+				);
 
 				if (part === TYPE_NONE) {
 					return TYPE_NONE;
 				}
+			} else {
+				part = this.#tupleSlot(type, list, i);
 			}
 
 			parts.push(part);
 		}
 
 		return this.#union(parts, 0);
+	}
+
+	/**
+	 * What reading one position of a tuple produces. Up to a rest element
+	 * that is the element at that position; from the rest on it could be
+	 * any of the rest's elements or any element after it, since the rest
+	 * has no fixed length.
+	 * @param type The tuple's type ID.
+	 * @param at The position read.
+	 * @returns The type ID, `TYPE_NONE` when unknown.
+	 */
+	#tupleIndexType(type: number, at: number): number {
+		const reader = this.#reader;
+		const builder = this.#builder;
+		const list = this.#tupleList(type);
+		const size = reader.listSize(list);
+		let rest = -1;
+
+		for (let i = 0; i < size; i++) {
+			if (reader.kind(reader.listItem(list, i)) === N_TSRestType) {
+				rest = i;
+				break;
+			}
+		}
+
+		if (rest === -1 || at < rest) {
+			return at < size ? this.#tupleSlot(type, list, at) : TYPE_NONE;
+		}
+
+		/*
+		 * Only an array rest is read this way: a spread tuple — `...[A, B]`
+		 * — is flattened into fixed positions by the checker, which this
+		 * record does not do.
+		 */
+		const spread = builder.poolItem(
+			builder.typeField(type, TY_DATA0),
+			rest,
+		);
+
+		if ((builder.typeField(spread, TY_SHAPE) & TYS_ARRAY) === 0) {
+			return TYPE_NONE;
+		}
+
+		const element = this.#elementType(spread);
+
+		if (element === TYPE_NONE) {
+			return TYPE_NONE;
+		}
+
+		const parts = [element];
+
+		for (let i = rest + 1; i < size; i++) {
+			parts.push(this.#tupleSlot(type, list, i));
+		}
+
+		return this.#union(parts, 0);
+	}
+
+	/**
+	 * The element list of a tuple's own syntax. The record keeps one type
+	 * per element with the optional and rest markers unwrapped, so the
+	 * readers that need the markers read them here.
+	 * @param type The tuple's type ID.
+	 * @returns The list handle.
+	 */
+	#tupleList(type: number): number {
+		const node = this.#nodeAt(this.#builder.typeField(type, TY_NODE));
+
+		return this.#reader.field(node, NODE_A);
+	}
+
+	/**
+	 * What a tuple's element at a fixed position holds. An optional element
+	 * may be absent, so it holds `undefined` as readily as its type — the
+	 * checker's answer under `strict`, as for an optional parameter.
+	 * @param type The tuple's type ID.
+	 * @param list The tuple's element list.
+	 * @param at The position, before any rest element.
+	 * @returns The type ID.
+	 */
+	#tupleSlot(type: number, list: number, at: number): number {
+		const reader = this.#reader;
+		const element = reader.listItem(list, at);
+		const kind = reader.kind(element);
+		const part = this.#builder.poolItem(
+			this.#builder.typeField(type, TY_DATA0),
+			at,
+		);
+
+		if (
+			part !== TYPE_NONE &&
+			(kind === N_TSOptionalType ||
+				(kind === N_TSNamedTupleMember &&
+					(reader.flags(element) & NF_OPTIONAL) !== 0))
+		) {
+			return this.#union([part, TYPE_UNDEFINED], 0);
+		}
+
+		return part;
 	}
 
 	/**
@@ -1333,7 +1415,7 @@ export class TypesWalker {
 					reader.kind(reader.listItem(list, 0)) === N_TSRestType
 				) {
 					return this.#convert(
-						reader.field(reader.listItem(list, 0), NODE_A),
+						this.#restSpread(reader.listItem(list, 0)),
 					);
 				}
 
@@ -1523,11 +1605,30 @@ export class TypesWalker {
 			return this.#convert(this.#reader.field(element, NODE_B));
 		}
 
-		if (kind === N_TSOptionalType || kind === N_TSRestType) {
+		if (kind === N_TSRestType) {
+			return this.#convert(this.#restSpread(element));
+		}
+
+		if (kind === N_TSOptionalType) {
 			return this.#convert(this.#reader.field(element, NODE_A));
 		}
 
 		return this.#convert(element);
+	}
+
+	/**
+	 * The type node a rest element spreads: `...T[]`, or the `T[]` of a
+	 * labeled `...rest: T[]`, whose label is a name and not a type.
+	 * @param rest The `TSRestType` node's index.
+	 * @returns The spread type node's index.
+	 */
+	#restSpread(rest: number): number {
+		const reader = this.#reader;
+		const inner = reader.field(rest, NODE_A);
+
+		return reader.kind(inner) === N_TSNamedTupleMember
+			? reader.field(inner, NODE_B)
+			: inner;
 	}
 
 	/**
@@ -3426,11 +3527,10 @@ export class TypesWalker {
 						TYF_NUMBER_LITERAL) !==
 						0
 				) {
-					const pool = builder.typeField(object, TY_DATA0);
 					const at = this.#numericLiteralValue(index);
 
-					if (at >= 0 && at < builder.poolCount(pool)) {
-						type = builder.poolItem(pool, at);
+					if (at >= 0) {
+						type = this.#tupleIndexType(object, at);
 					}
 				} else if ((shape & TYS_ARRAY) !== 0) {
 					const pool = builder.typeField(object, TY_DATA0);
