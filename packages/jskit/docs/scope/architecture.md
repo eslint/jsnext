@@ -96,6 +96,7 @@ src/
   scope.ts                 the rehydrated view: one lexical scope
   scope-manager.ts         the rehydrated view: the collection of scopes
   index.ts                 the public API: analyze(), analyzeTree(), the consumers
+  internal.ts              what other directories import but the package does not export
 ```
 
 The last five are what `toScopeManager()` builds and what anything written
@@ -456,6 +457,16 @@ buffer plus the program it was produced from:
   bitset. Each `Variable` carries its buffer ID as `symbolId`.
 - **`toScopeTree()`** renders a nested, self-contained JSON tree for
   debugging, with nodes spelled `{type, start, end}`.
+
+A fourth, **`toDecodedScopeManager()`**, is internal: `internal.ts` exports
+it and the package does not. It is `toScopeManager()` over a binary-path
+buffer, with each handle resolved through a table of ESTree objects indexed
+by node index instead of to the index itself. `buildAst()` fills that table
+while it decodes — `alias()` in `src/parse/to-ast.ts` decides which object
+stands for a record two slots share — and only the ESLint parser asks it to,
+which is how `parseForESLint()` runs `analyze()` (natively, when a binding is
+registered) and still hands rules a graph over the nodes they hold. No public
+function returns the table, which is why the function is not public either.
 
 The consumers accept either representation and therefore import both
 adapters; only the two entry points are split for tree shaking.

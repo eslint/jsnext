@@ -98,6 +98,9 @@ function valueOf(spec, typescript, use) {
 		case "child":
 			return `node(${slot})`;
 
+		case "aliasChild":
+			return `alias(${slot})`;
+
 		case "children":
 			return `list(${slot})`;
 
@@ -595,6 +598,7 @@ const kindImports = used([
 ]).filter((name, index, all) => all.indexOf(name) === index);
 
 const helperImports = used([
+	"alias",
 	"directiveOf",
 	"identifierName",
 	"list",

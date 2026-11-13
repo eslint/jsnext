@@ -67,6 +67,7 @@ import {
 	NODE_START,
 } from "./node-kinds.js";
 import {
+	alias,
 	directiveOf,
 	identifierName,
 	list,
@@ -2417,7 +2418,7 @@ function Property_js(pos: number): EsNode {
 		type: "Property",
 		start,
 		end,
-		key: node(a),
+		key: alias(a),
 		value: node(b),
 		kind: MKIND_NAMES[(flags & MKIND_MASK) >>> MKIND_SHIFT],
 		computed: (flags & NF_COMPUTED) !== 0,
@@ -2437,7 +2438,7 @@ function Property_ts(pos: number): EsNode {
 		type: "Property",
 		start,
 		end,
-		key: node(a),
+		key: alias(a),
 		value: node(b),
 		kind: MKIND_NAMES[(flags & MKIND_MASK) >>> MKIND_SHIFT],
 		computed: (flags & NF_COMPUTED) !== 0,
@@ -2460,7 +2461,7 @@ function Property_jsL(pos: number): EsNode {
 		end,
 		range: [start, end],
 		loc: locOf(start, end),
-		key: node(a),
+		key: alias(a),
 		value: node(b),
 		kind: MKIND_NAMES[(flags & MKIND_MASK) >>> MKIND_SHIFT],
 		computed: (flags & NF_COMPUTED) !== 0,
@@ -2482,7 +2483,7 @@ function Property_tsL(pos: number): EsNode {
 		end,
 		range: [start, end],
 		loc: locOf(start, end),
-		key: node(a),
+		key: alias(a),
 		value: node(b),
 		kind: MKIND_NAMES[(flags & MKIND_MASK) >>> MKIND_SHIFT],
 		computed: (flags & NF_COMPUTED) !== 0,
@@ -3516,7 +3517,7 @@ function ImportSpecifier_js(pos: number): EsNode {
 		type: "ImportSpecifier",
 		start,
 		end,
-		imported: node(a),
+		imported: alias(a),
 		local: node(b),
 	};
 }
@@ -3532,7 +3533,7 @@ function ImportSpecifier_ts(pos: number): EsNode {
 		type: "ImportSpecifier",
 		start,
 		end,
-		imported: node(a),
+		imported: alias(a),
 		local: node(b),
 		importKind: (flags & NF_TYPE_ONLY) !== 0 ? "type" : "value",
 	};
@@ -3550,7 +3551,7 @@ function ImportSpecifier_jsL(pos: number): EsNode {
 		end,
 		range: [start, end],
 		loc: locOf(start, end),
-		imported: node(a),
+		imported: alias(a),
 		local: node(b),
 	};
 }
@@ -3568,7 +3569,7 @@ function ImportSpecifier_tsL(pos: number): EsNode {
 		end,
 		range: [start, end],
 		loc: locOf(start, end),
-		imported: node(a),
+		imported: alias(a),
 		local: node(b),
 		importKind: (flags & NF_TYPE_ONLY) !== 0 ? "type" : "value",
 	};
@@ -3757,7 +3758,7 @@ function ExportSpecifier_js(pos: number): EsNode {
 		start,
 		end,
 		local: node(a),
-		exported: node(b),
+		exported: alias(b),
 	};
 }
 
@@ -3773,7 +3774,7 @@ function ExportSpecifier_ts(pos: number): EsNode {
 		start,
 		end,
 		local: node(a),
-		exported: node(b),
+		exported: alias(b),
 		exportKind: (flags & NF_TYPE_ONLY) !== 0 ? "type" : "value",
 	};
 }
@@ -3791,7 +3792,7 @@ function ExportSpecifier_jsL(pos: number): EsNode {
 		range: [start, end],
 		loc: locOf(start, end),
 		local: node(a),
-		exported: node(b),
+		exported: alias(b),
 	};
 }
 
@@ -3809,7 +3810,7 @@ function ExportSpecifier_tsL(pos: number): EsNode {
 		range: [start, end],
 		loc: locOf(start, end),
 		local: node(a),
-		exported: node(b),
+		exported: alias(b),
 		exportKind: (flags & NF_TYPE_ONLY) !== 0 ? "type" : "value",
 	};
 }

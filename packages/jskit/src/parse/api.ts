@@ -25,7 +25,7 @@ import {
 } from "./node-kinds.js";
 import { Parser } from "./parser.js";
 import { AstReader, TokenReader } from "./reader.js";
-import { decodeTree } from "./to-ast.js";
+import { decodeTree, type EsNode } from "./to-ast.js";
 import type { Program } from "./ast-types.js";
 import {
 	KIND_TOKEN_TEXT,
@@ -555,12 +555,15 @@ function locateProblems(
  * @param result The value returned by `parse()`.
  * @param options How the tree should be decoded.
  * @param lines Where to look up positions, or `null` for no `range`/`loc`.
+ * @param nodes Filled with every decoded node under its node index, or `null`
+ *      to record nothing. Must hold `null` at every index below the buffer's node count.
  * @returns The ESTree `Program` node.
  */
 export function buildAst(
 	result: ParseResult,
 	options: ToAstOptions,
 	lines: LineIndex | null,
+	nodes: (EsNode | null)[] | null = null,
 ): Program {
 	if (options.text !== undefined) {
 		supplySource(result, options.text);
@@ -572,6 +575,7 @@ export function buildAst(
 		reader,
 		(options.dialect ?? "ts") === "ts",
 		lines,
+		nodes,
 	);
 
 	program.sourceType = sourceType;

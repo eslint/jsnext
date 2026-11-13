@@ -15,11 +15,11 @@
  * addition is `Variable#symbolId`, which carries the buffer's stable ID.
  */
 
-import { N_ArrowFunctionExpression } from "../parse/index.js";
 import { Definition } from "./definition.js";
 import type { DefinitionType, ScopeType } from "./kinds.js";
 import { READ, REF_TYPE, REF_VALUE, SCOPE_FUNCTION, WRITE } from "./kinds.js";
 import {
+	decodedNodeSource,
 	resolveNodeSource,
 	type NodeSource,
 	type ScopeSource,
@@ -94,7 +94,11 @@ import { ScopeManager } from "./scope-manager.js";
 import type { Scopes } from "./scopes.js";
 import { Variable } from "./variable.js";
 import type { EsTreeNode } from "./estree-ast.js";
-import type { AstReader, ParseResult } from "../parse/index.js";
+import {
+	AstReader,
+	N_ArrowFunctionExpression,
+	type ParseResult,
+} from "../parse/index.js";
 
 /**
  * The two methods of `Scopes` the shared-usage bridge actually calls. The
@@ -441,6 +445,46 @@ export function toScopeManager<TSource extends ScopeSource>(
 		resolveNodeSource(source, buffer.treeHandles, options.text),
 		options.scopes,
 	) as ScopeManager<RehydratedNode<TSource>>;
+}
+
+/**
+ * Rebuilds the escope-compatible object graph out of a scope buffer that
+ * `analyze()` wrote, over the ESTree objects decoded from the same parse
+ * buffer rather than over node indexes.
+ *
+ * `toScopeManager()` reaches a tree's own objects only through
+ * `analyzeTree()`, which has to enumerate the tree to number it. A caller
+ * that decoded the tree itself can record each node under its index as it
+ * goes — the ESLint parser does — and then run the binary analysis, native
+ * when a binding is registered, and resolve its handles through that record.
+ * @param scopes The buffer `analyze()` returned.
+ * @param result The parse result both the analysis and the decode read.
+ * @param nodes Every decoded node under its node index.
+ * @returns The reconstructed scope manager, over the decoded objects.
+ * @throws {TypeError} When the buffer is not a scope buffer, or it came from
+ *      `analyzeTree()`.
+ */
+export function toDecodedScopeManager(
+	scopes: ArrayBuffer,
+	result: ParseResult | AstReader,
+	nodes: readonly (EsTreeNode | null)[],
+): ScopeManager<EsTreeNode> {
+	const buffer = new ScopeBufferReader(scopes);
+
+	if (buffer.treeHandles) {
+		throw new TypeError(
+			"This scope buffer came from analyzeTree(); it has no node indexes to resolve.",
+		);
+	}
+
+	return rehydrate(
+		buffer,
+		decodedNodeSource(
+			result instanceof ArrayBuffer ? new AstReader(result) : result,
+			nodes,
+		),
+		undefined,
+	);
 }
 
 /**

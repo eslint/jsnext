@@ -81,6 +81,47 @@ function treeNodeSource(root: EsTreeNode): NodeSource<EsTreeNode> {
 }
 
 /**
+ * Builds the node source for a scope buffer written over a parse buffer whose
+ * tree was also decoded, so that handles resolve to the decoded objects.
+ *
+ * This is what lets the ESLint parser run the binary analysis — the one with
+ * a native implementation — and still hand rules a graph over the very nodes
+ * they are given. The handles are byte offsets, as on any binary path; the
+ * table the decoder filled turns the node index each one names into the
+ * object, so nothing has to enumerate the tree.
+ * @param reader The reader over the parse buffer.
+ * @param nodes Every decoded node under its node index.
+ * @returns The node source.
+ */
+export function decodedNodeSource(
+	reader: AstReader,
+	nodes: readonly (EsTreeNode | null)[],
+): NodeSource<EsTreeNode> {
+	let handles: Map<EsTreeNode, number> | null = null;
+
+	return {
+		ast: new EstreeAst(),
+		reader: null,
+		nodeAt: handle => nodes[nodeAtHandle(reader, handle)] as EsTreeNode,
+		handleOf(node) {
+			if (handles === null) {
+				handles = new Map();
+
+				for (let i = 0; i < nodes.length; i++) {
+					const decoded = nodes[i];
+
+					if (decoded !== null && decoded !== undefined) {
+						handles.set(decoded, nodeHandle(reader, i));
+					}
+				}
+			}
+
+			return handles.get(node) ?? 0;
+		},
+	};
+}
+
+/**
  * Resolves whatever the caller supplied as the program into a node source,
  * checking that it matches the path the buffer was written on.
  *

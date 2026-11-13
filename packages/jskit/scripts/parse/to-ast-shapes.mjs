@@ -18,6 +18,10 @@
  * The operations, and the property each writes:
  *
  * - `child(p, slot)` — the node in the slot, or `null` when the slot is 0.
+ * - `aliasChild(p, slot)` — the same, for a slot that can hold the same
+ *   record as another slot of the node, as shorthand `import { a }` does.
+ *   The other slot is the one the node table records; see `alias()` in
+ *   `src/parse/to-ast.ts`.
  * - `children(p, slot)` — the list in the slot, `[]` when the slot is 0.
  * - `optChild(p, slot)` — a child that `js` mode omits when absent and `ts`
  *   mode spells `null`, matching the reference parsers.
@@ -56,6 +60,15 @@
  * @returns The spec.
  */
 const child = (p, slot) => ({ p, op: "child", slot });
+
+/**
+ * Builds a child property spec for a slot that may share its record with
+ * another slot of the same node, and that yields the node table to it.
+ * @param p The property name.
+ * @param slot The slot letter.
+ * @returns The spec.
+ */
+const aliasChild = (p, slot) => ({ p, op: "aliasChild", slot });
 
 /**
  * Builds an unconditional list property spec.
@@ -443,7 +456,7 @@ export const SHAPES = {
 	],
 
 	Property: [
-		child("key", "A"),
+		aliasChild("key", "A"),
 		child("value", "B"),
 		mkind("kind"),
 		flag("computed", "NF_COMPUTED"),
@@ -531,7 +544,7 @@ export const SHAPES = {
 	],
 
 	ImportSpecifier: [
-		child("imported", "A"),
+		aliasChild("imported", "A"),
 		child("local", "B"),
 		typeOnly("importKind"),
 	],
@@ -551,7 +564,7 @@ export const SHAPES = {
 
 	ExportSpecifier: [
 		child("local", "A"),
-		child("exported", "B"),
+		aliasChild("exported", "B"),
 		typeOnly("exportKind"),
 	],
 

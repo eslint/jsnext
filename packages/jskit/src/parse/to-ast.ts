@@ -67,6 +67,13 @@ let lines: LineIndex | null = null;
 let decoders: readonly Decoder[] = DECODE_TS;
 
 /**
+ * Where to record each decoded node under its node index, or `null` when the
+ * caller did not ask. The ESLint parser asks, so that a scope buffer written
+ * over the parse buffer can be resolved to the very objects in the tree.
+ */
+let table: (EsNode | null)[] | null = null;
+
+/**
  * Converts a node and everything below it.
  * @param index The node index, or `0` for no node.
  * @returns The ESTree node, or `null` when there is no node.
@@ -77,8 +84,41 @@ export function node(index: number): EsNode | null {
 	}
 
 	const pos = nodesBase + index * nodeWords;
+	const result = decoders[words[pos + NODE_KIND]](pos);
 
-	return decoders[words[pos + NODE_KIND]](pos);
+	if (table !== null) {
+		table[index] = result;
+	}
+
+	return result;
+}
+
+/**
+ * Converts a node that may share its record with another slot of its parent.
+ *
+ * Shorthand `import { a }`, `export { a }`, and `{ a }` store one record in
+ * two slots, and the decoder emits a separate object for each. Only one of
+ * them can stand for the record in the node table, and it has to be the one
+ * the scope walk reads — the local name, or a property's value — so the
+ * other slot decodes through here, which records its object only when no
+ * other slot has claimed the index. The claiming slot either decodes first
+ * and wins outright, or decodes second through `node()` and overwrites.
+ * @param index The node index, or `0` for no node.
+ * @returns The ESTree node, or `null` when there is no node.
+ */
+export function alias(index: number): EsNode | null {
+	if (index === 0) {
+		return null;
+	}
+
+	const pos = nodesBase + index * nodeWords;
+	const result = decoders[words[pos + NODE_KIND]](pos);
+
+	if (table !== null && table[index] === null) {
+		table[index] = result;
+	}
+
+	return result;
 }
 
 /**
@@ -182,12 +222,16 @@ export function locOf(start: number, end: number): SourceLocation {
  * @param lineIndex Where to look up positions, or `null` to leave `range`
  *      and `loc` off the nodes entirely. Only the ESLint adapter asks for
  *      them, because ESLint requires both.
+ * @param nodeTable Filled with every decoded node under its node index, or
+ *      `null` to record nothing. It must hold `null` at every index on entry,
+ *      and an index no slot points at stays `null`.
  * @returns The decoded root node.
  */
 export function decodeTree(
 	reader: AstReader,
 	typescript: boolean,
 	lineIndex: LineIndex | null,
+	nodeTable: (EsNode | null)[] | null = null,
 ): EsNode {
 	words = reader.words;
 	nodesBase = reader.nodesBase;
@@ -195,6 +239,7 @@ export function decodeTree(
 	listsBase = reader.listsBase;
 	source = reader.source;
 	lines = lineIndex;
+	table = nodeTable;
 	decoders =
 		lineIndex === null
 			? typescript
@@ -210,6 +255,7 @@ export function decodeTree(
 	words = NO_WORDS;
 	source = "";
 	lines = null;
+	table = null;
 
 	return program;
 }

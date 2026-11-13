@@ -313,9 +313,12 @@ const { ast, scopeManager, visitorKeys } = eslintParser.parseForESLint(code, {
 
 - **`ast`** is what `parse()` returns — the same tree, with the same positions.
   `parse()` is still there for anything that wants only that.
-- **`scopeManager`** is the scope graph over that very tree, built by
-  `analyzeTree()` and rehydrated by `toScopeManager()`, so a rule asking for
-  the scope of a node gets an answer about the node object it is holding.
+- **`scopeManager`** is the scope graph over that very tree, so a rule asking
+  for the scope of a node gets an answer about the node object it is holding.
+  It is built by `analyze()` over the parse buffer — in Rust, when
+  `@eslint/jskit-native` is installed — and resolved to
+  the tree's own objects through a table the decode fills as it creates each
+  node, so nothing walks the tree a second time to number it.
   ESLint takes it in place of running `eslint-scope`, which is what makes scope
   analysis understand TypeScript: `eslint-scope` walks past a type annotation
   without seeing the bindings and references inside it.

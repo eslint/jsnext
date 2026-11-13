@@ -29,6 +29,7 @@ const SRC = new URL("../../src/parse/", import.meta.url);
 /** The value kind each schema operation produces, in this report's terms. */
 const OP_KINDS = {
 	child: "node",
+	aliasChild: "node",
 	optChild: "node",
 	children: "node[]",
 	optChildren: "node[]",

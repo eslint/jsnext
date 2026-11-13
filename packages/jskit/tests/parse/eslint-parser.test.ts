@@ -5,7 +5,15 @@
 import { Linter } from "eslint";
 import * as espree from "espree";
 import { describe, expect, it } from "vitest";
-import { ParseError, eslintParser, parse, toAST } from "../../src/index.js";
+import {
+	ParseError,
+	analyzeTree,
+	eslintParser,
+	parse,
+	toAST,
+	toScopeManager,
+	type EsTreeNode,
+} from "../../src/index.js";
 
 /**
  * Lints a source text with the parser wired into ESLint.
@@ -318,6 +326,81 @@ describe("eslintParser.parseForESLint()", () => {
 		expect(() => eslintParser.parseForESLint("const a =\n  ;")).toThrow(
 			ParseError,
 		);
+	});
+
+	/*
+	 * The graph comes from the binary analysis, resolved through the table
+	 * the decode filled, so it has to name the same objects `analyzeTree()`
+	 * would over the same tree — including where one record decodes to two
+	 * objects, and only the one the walk reads may stand for it.
+	 */
+	describe("node identity", () => {
+		const cases: [string, string][] = [
+			["shorthand import", 'import { a } from "x"; a;'],
+			["shorthand export", "const a = 1; export { a };"],
+			["shorthand property", "const a = 1; const o = { a };"],
+			["shorthand pattern", "const { a } = o; a;"],
+			["shorthand default", "const { a = 1 } = o; a;"],
+			["computed key", "const k = 1; const o = { [k]: k };"],
+			["renamed import", 'import { a as b } from "x"; b;'],
+		];
+
+		for (const [name, code] of cases) {
+			it(`matches analyzeTree() for a ${name}`, () => {
+				const { ast, scopeManager } = eslintParser.parseForESLint(code);
+				const tree = toScopeManager(
+					analyzeTree(ast as unknown as EsTreeNode),
+					ast as unknown as EsTreeNode,
+				);
+
+				expect(scopeManager.scopes).toHaveLength(tree.scopes.length);
+
+				for (let i = 0; i < tree.scopes.length; i++) {
+					const expected = tree.scopes[i];
+					const actual = scopeManager.scopes[i];
+
+					expect(actual.block).toBe(expected.block);
+					expect(actual.references).toHaveLength(
+						expected.references.length,
+					);
+
+					for (let j = 0; j < expected.references.length; j++) {
+						expect(actual.references[j].identifier).toBe(
+							expected.references[j].identifier,
+						);
+					}
+
+					for (let j = 0; j < expected.variables.length; j++) {
+						const defs = expected.variables[j].defs;
+
+						for (let k = 0; k < defs.length; k++) {
+							const def = actual.variables[j].defs[k];
+
+							expect(def.name).toBe(defs[k].name);
+							expect(def.node).toBe(defs[k].node);
+						}
+					}
+				}
+			});
+		}
+
+		it("names the local identifier of a shorthand specifier", () => {
+			const { ast, scopeManager } = eslintParser.parseForESLint(
+				'import { a } from "x"; export { a };',
+			);
+			const [importDeclaration, exportDeclaration] =
+				ast.body as unknown as {
+					specifiers: { local: unknown }[];
+				}[];
+			const variable = scopeManager.scopes[1].set.get("a")!;
+
+			expect(variable.defs[0].name).toBe(
+				importDeclaration.specifiers[0].local,
+			);
+			expect(variable.references[0].identifier).toBe(
+				exportDeclaration.specifiers[0].local,
+			);
+		});
 	});
 });
 

@@ -2,16 +2,14 @@
  * @fileoverview The ESLint-compatible parser object.
  */
 
-import {
-	analyzeTree,
-	toScopeManager,
-	type EsTreeNode,
-	type ScopeManager,
-} from "../scope/index.js";
-import { buildAst, collectProblems, parse } from "./api.js";
+import { analyze, type EsTreeNode, type ScopeManager } from "../scope/index.js";
+import { toDecodedScopeManager } from "../scope/internal.js";
+import { buildAst, collectProblems, parse, type ParseResult } from "./api.js";
 import { readLineStarts } from "./binary.js";
 import { ParseError } from "./errors.js";
 import { LineIndex } from "./locations.js";
+import { AstReader } from "./reader.js";
+import type { EsNode } from "./to-ast.js";
 import { VISITOR_KEYS } from "./visitor-keys.js";
 import type { Program } from "./ast-types.js";
 
@@ -134,15 +132,39 @@ function globalReturnFor(options: EslintParserOptions): boolean {
 }
 
 /**
+ * What `buildProgram()` produces: the tree, and what scope analysis needs to
+ * run over the same parse and name the same objects.
+ */
+interface BuiltProgram {
+	/** The ESTree `Program` node. */
+	ast: Program;
+
+	/** The parse buffer the tree was decoded from. */
+	result: ParseResult;
+
+	/**
+	 * Every decoded node under its node index, or `null` when the caller did
+	 * not ask for the table.
+	 */
+	nodes: (EsNode | null)[] | null;
+}
+
+/**
  * Parses source text the way ESLint needs it: positions on everything, and the
  * first validation problem thrown rather than returned.
  * @param code The JavaScript or TypeScript source to parse.
  * @param options The options ESLint passed to the parser.
- * @returns The ESTree `Program` node.
+ * @param recordNodes Whether to record every decoded node under its node
+ *      index, for resolving a scope buffer to the tree's objects.
+ * @returns The ESTree `Program` node, the parse buffer, and the node table.
  * @throws {ParseError} When the source has a syntax error, or when validation
  * finds a problem that makes the program invalid.
  */
-function buildProgram(code: string, options: EslintParserOptions): Program {
+function buildProgram(
+	code: string,
+	options: EslintParserOptions,
+	recordNodes: boolean,
+): BuiltProgram {
 	const sourceType = options.sourceType ?? "module";
 
 	/*
@@ -201,7 +223,17 @@ function buildProgram(code: string, options: EslintParserOptions): Program {
 		);
 	}
 
-	return buildAst(result, { sourceType: resolvedSourceType, dialect }, lines);
+	const nodes = recordNodes
+		? new Array<EsNode | null>(new AstReader(result).nodeCount).fill(null)
+		: null;
+	const ast = buildAst(
+		result,
+		{ sourceType: resolvedSourceType, dialect },
+		lines,
+		nodes,
+	);
+
+	return { ast, result, nodes };
 }
 
 /**
@@ -256,7 +288,7 @@ export const eslintParser = {
 	 * validation finds a problem that makes the program invalid.
 	 */
 	parse(code: string, options: EslintParserOptions = {}): Program {
-		return buildProgram(code, options);
+		return buildProgram(code, options, false).ast;
 	},
 
 	/**
@@ -277,17 +309,18 @@ export const eslintParser = {
 		code: string,
 		options: EslintParserOptions = {},
 	): EslintParseResult {
-		const ast = buildProgram(code, options);
+		const { ast, result, nodes } = buildProgram(code, options, true);
 
 		/*
 		 * The graph has to refer to the very node objects ESLint is about to
-		 * hand the rules, so this goes through the tree entry point rather
-		 * than the binary one: a rule asking for the scope of a node compares
-		 * node identity, and a scope built over the parse buffer knows only
-		 * byte offsets.
+		 * hand the rules, because a rule asking for the scope of a node
+		 * compares node identity. A scope buffer built over the parse buffer
+		 * knows only byte offsets, so the decode recorded which object it
+		 * made for each node index, and the graph is resolved through that.
+		 * That keeps the analysis on the binary path — the one a native
+		 * binding implements — with no walk over the tree to number it.
 		 */
-		const tree = ast as unknown as EsTreeNode;
-		const scopes = analyzeTree(tree, {
+		const scopes = analyze(result, {
 			sourceType: options.sourceType ?? "module",
 			dialect: dialectFor(options),
 			jsx: jsxFor(options),
@@ -304,7 +337,11 @@ export const eslintParser = {
 
 		return {
 			ast,
-			scopeManager: toScopeManager(scopes, tree),
+			scopeManager: toDecodedScopeManager(
+				scopes,
+				result,
+				nodes as unknown as readonly (EsTreeNode | null)[],
+			),
 			visitorKeys: VISITOR_KEYS,
 		};
 	},

@@ -30,7 +30,9 @@ packages/jskit/
 Everything ships from `src/index.ts` as one bundle, `dist/jskit.js`. Within
 `src/`, `scope/` imports `../parse/index.js`, and `flow/` and `types/` import
 both — always through the sub-index, never a module inside another
-directory. The package is
+directory. A name another directory needs but the package should not export
+goes in that directory's `internal.ts` instead, since `src/index.ts` makes
+everything in `index.ts` public; `scope/internal.ts` is the one so far. The package is
 `sideEffects: false`, so importing one analysis still leaves the others behind;
 `tests/scope/tree-shaking.test.ts` proves it against the built bundle.
 
