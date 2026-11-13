@@ -372,4 +372,18 @@ describe("rendering", () => {
 			}),
 		).toBe('[boolean, "x"]');
 	});
+
+	it("renders a union of literals as a union, not as one literal", () => {
+		const code = `let a: 1 | 2; let b: "x" | "y"; let c: 1 | "x"; a; b; c;`;
+		const fixture = typesOf(code);
+		const render = (snippet: string): string =>
+			fixture.queries.typeToString({
+				type: "Identifier",
+				start: code.indexOf(snippet),
+			});
+
+		expect(render("a;")).toBe("1 | 2");
+		expect(render("b;")).toBe('"x" | "y"');
+		expect(render("c;")).toBe('1 | "x"');
+	});
 });

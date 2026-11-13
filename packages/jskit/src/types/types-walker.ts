@@ -76,6 +76,8 @@ import {
 	N_ConditionalExpression,
 	N_ExportNamedDeclaration,
 	N_ExportSpecifier,
+	N_ForInStatement,
+	N_ForOfStatement,
 	N_FunctionDeclaration,
 	N_FunctionExpression,
 	N_Identifier,
@@ -266,6 +268,7 @@ import {
 	TY_FLAGS,
 	TY_MEMBER_COUNT,
 	TY_MEMBER_FIRST,
+	TY_NODE,
 	TY_SHAPE,
 	TY_SYMBOL,
 } from "./types-buffer.js";
@@ -925,6 +928,178 @@ export class TypesWalker {
 		}
 
 		return type;
+	}
+
+	/**
+	 * The type a `for…of` loop binds from an iterated type: an array's
+	 * element, the union of a tuple's elements, `string` for a string, and
+	 * `any` for `any`. Everything else iterates by a protocol this analysis
+	 * does not model — a `Set`, a `Map`, a generator — and claims nothing.
+	 * @param type The iterated expression's type ID.
+	 * @returns The element type ID, `TYPE_NONE` when unknown.
+	 */
+	#elementType(type: number): number {
+		if (type === TYPE_NONE) {
+			return TYPE_NONE;
+		}
+
+		const builder = this.#builder;
+		const flags = builder.typeField(type, TY_FLAGS);
+
+		// A union first, for the reason `#widen()` gives.
+		if ((flags & TYF_UNION) !== 0) {
+			const pool = builder.typeField(type, TY_DATA0);
+			const count = builder.poolCount(pool);
+			const parts: number[] = [];
+
+			for (let i = 0; i < count; i++) {
+				const part = this.#elementType(builder.poolItem(pool, i));
+
+				if (part === TYPE_NONE) {
+					return TYPE_NONE;
+				}
+
+				parts.push(part);
+			}
+
+			return this.#union(parts, 0);
+		}
+
+		if ((flags & TYF_INTERSECTION) !== 0) {
+			return TYPE_NONE;
+		}
+
+		if (flags === TYF_ANY) {
+			return type;
+		}
+
+		if ((flags & TYF_STRING_LIKE) !== 0) {
+			return TYPE_STRING;
+		}
+
+		const shape = builder.typeField(type, TY_SHAPE);
+		const pool = builder.typeField(type, TY_DATA0);
+
+		if ((shape & TYS_ARRAY) !== 0) {
+			return builder.poolCount(pool) > 0
+				? builder.poolItem(pool, 0)
+				: TYPE_NONE;
+		}
+
+		if ((shape & TYS_TUPLE) !== 0) {
+			return this.#tupleElementType(type);
+		}
+
+		return TYPE_NONE;
+	}
+
+	/**
+	 * The union of what iterating a tuple produces. The record keeps one
+	 * type per element with the optional and rest markers unwrapped, so
+	 * this reads the tuple's own syntax beside it: a rest element
+	 * contributes its array's element type, and an optional element — which
+	 * the checker iterates as `undefined` too, or not, depending on
+	 * compiler options — or a labeled rest claims nothing.
+	 * @param type The tuple's type ID.
+	 * @returns The element type ID, `TYPE_NONE` when unknown.
+	 */
+	#tupleElementType(type: number): number {
+		const reader = this.#reader;
+		const builder = this.#builder;
+		const pool = builder.typeField(type, TY_DATA0);
+		const node = this.#nodeAt(builder.typeField(type, TY_NODE));
+		const list = reader.field(node, NODE_A);
+		const size = reader.listSize(list);
+		const parts: number[] = [];
+
+		for (let i = 0; i < size; i++) {
+			const element = reader.listItem(list, i);
+			const kind = reader.kind(element);
+			let part = builder.poolItem(pool, i);
+
+			if (
+				kind === N_TSOptionalType ||
+				(kind === N_TSNamedTupleMember &&
+					(reader.flags(element) & NF_OPTIONAL) !== 0)
+			) {
+				return TYPE_NONE;
+			}
+
+			if (kind === N_TSRestType) {
+				if (
+					reader.kind(reader.field(element, NODE_A)) ===
+					N_TSNamedTupleMember
+				) {
+					return TYPE_NONE;
+				}
+
+				part = this.#elementType(part);
+
+				if (part === TYPE_NONE) {
+					return TYPE_NONE;
+				}
+			}
+
+			parts.push(part);
+		}
+
+		return this.#union(parts, 0);
+	}
+
+	/**
+	 * Whether a type might be generic in the sense `keyof` cares about: a
+	 * type parameter, a type-level operator the analysis defers, or a
+	 * reference whose arguments or alias target contains either. The
+	 * checker types a `for…in` key over such a value as
+	 * `Extract<keyof T, string>` rather than `string`.
+	 * @param type The type ID.
+	 * @param depth How many hops remain; running out answers `true`.
+	 * @returns `true` unless the type is known not to be generic.
+	 */
+	#mayBeGeneric(type: number, depth: number): boolean {
+		if (depth === 0) {
+			return true;
+		}
+
+		const builder = this.#builder;
+		const flags = builder.typeField(type, TY_FLAGS);
+
+		if ((flags & (TYF_TYPE_PARAMETER | TYF_UNKNOWN)) !== 0) {
+			return true;
+		}
+
+		const shape = builder.typeField(type, TY_SHAPE);
+
+		if (
+			(flags & (TYF_UNION | TYF_INTERSECTION)) !== 0 ||
+			(shape & (TYS_REFERENCE | TYS_TUPLE)) !== 0
+		) {
+			const pool = builder.typeField(type, TY_DATA0);
+			const count = builder.poolCount(pool);
+
+			for (let i = 0; i < count; i++) {
+				if (this.#mayBeGeneric(builder.poolItem(pool, i), depth - 1)) {
+					return true;
+				}
+			}
+		}
+
+		if ((shape & TYS_REFERENCE) !== 0) {
+			// Every reference this walk writes carries a symbol.
+			const symbol = builder.typeField(type, TY_SYMBOL);
+			const target = builder.symbolField(symbol - 1, SY_TARGET);
+
+			if (target !== 0) {
+				const declared = builder.declaredType(target - 1);
+
+				return (
+					declared !== TYPE_NONE &&
+					this.#mayBeGeneric(declared, depth - 1)
+				);
+			}
+		}
+
+		return false;
 	}
 
 	/**
@@ -2695,7 +2870,13 @@ export class TypesWalker {
 			}
 
 			case N_VariableDeclaration:
-				this.#expressDeclaration(node);
+				this.#expressDeclaration(node, false, TYPE_NONE);
+
+				return TYPE_NONE;
+
+			case N_ForInStatement:
+			case N_ForOfStatement:
+				this.#expressLoop(node);
 
 				return TYPE_NONE;
 
@@ -3304,15 +3485,66 @@ export class TypesWalker {
 	}
 
 	/**
+	 * Types a `for…in` or `for…of` loop. The iterated expression is typed
+	 * before the head that binds from it, which is the order the loop runs
+	 * in, so the body's reads of the loop variable see its type.
+	 * @param node The loop node's index.
+	 * @returns Nothing.
+	 */
+	#expressLoop(node: number): void {
+		const reader = this.#reader;
+		const left = reader.field(node, NODE_A);
+		const iterated = this.#express(reader.field(node, NODE_B));
+
+		if (reader.kind(left) === N_VariableDeclaration) {
+			let bound: number;
+
+			if (reader.kind(node) === N_ForInStatement) {
+				/*
+				 * A key is a `string` unless the object might be generic,
+				 * and an object of unknown type might be.
+				 */
+				bound =
+					iterated === TYPE_NONE ||
+					this.#mayBeGeneric(iterated, MEMBER_LOOKUP_DEPTH)
+						? TYPE_NONE
+						: TYPE_STRING;
+			} else {
+				bound = this.#elementType(iterated);
+
+				// `for await` binds what awaiting each element produces.
+				if ((reader.flags(node) & NF_ASYNC) !== 0) {
+					bound = this.#awaited(bound, node);
+				}
+			}
+
+			this.#expressDeclaration(left, true, bound);
+		} else {
+			this.#express(left);
+		}
+
+		this.#express(reader.field(node, NODE_C));
+	}
+
+	/**
 	 * Types the declarators of a declaration, widening initializer types for
 	 * mutable bindings.
 	 * @param node The `VariableDeclaration` node's index.
+	 * @param loop Whether the declaration is a `for…in` or `for…of` head.
+	 * @param bound The type the loop binds each iteration, when it is one.
 	 * @returns Nothing.
 	 */
-	#expressDeclaration(node: number): void {
+	#expressDeclaration(node: number, loop: boolean, bound: number): void {
 		const reader = this.#reader;
 		const declKind = (reader.flags(node) & DECL_MASK) >>> DECL_SHIFT;
+
+		/*
+		 * A loop head binds each value exactly as iterated — the checker
+		 * widens an initializer, never an iterated element — and its
+		 * binding never evolves, so it is held to the `const` rules.
+		 */
 		const isConst =
+			loop ||
 			declKind === DECL_CONST ||
 			declKind === DECL_USING ||
 			declKind === DECL_AWAIT_USING;
@@ -3328,7 +3560,14 @@ export class TypesWalker {
 
 			const id = reader.field(declarator, NODE_A);
 			const init = reader.field(declarator, NODE_B);
-			const initType = init === 0 ? TYPE_NONE : this.#express(init);
+			const expressed = init === 0 ? TYPE_NONE : this.#express(init);
+
+			/*
+			 * A loop head's own initializer — `for (var k = 0 in o)`, which
+			 * Annex B still allows — is overwritten before the body runs,
+			 * so the loop's type is the binding's, not the initializer's.
+			 */
+			const initType = loop ? bound : expressed;
 
 			if (reader.kind(id) !== N_Identifier) {
 				continue;

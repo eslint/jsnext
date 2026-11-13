@@ -182,6 +182,137 @@ describe("evolving bindings", () => {
 	});
 });
 
+describe("loop variables", () => {
+	/**
+	 * The rendered type of the loop variable's read in the loop body.
+	 * @param code The source text, whose body reads the variable as `v;`.
+	 * @returns The rendered type, `"unknown"` when nothing is recorded.
+	 */
+	function bodyType(code: string): string {
+		return typesOf(code).queries.typeToString(identAt(code, "v;"));
+	}
+
+	it("binds an array's element type", () => {
+		expect(
+			bodyType(`declare const xs: number[]; for (const v of xs) v;`),
+		).toBe("number");
+	});
+
+	it("does not widen a literal element under let", () => {
+		expect(
+			bodyType(`declare const xs: (1 | 2)[]; for (let v of xs) v;`),
+		).toBe("1 | 2");
+	});
+
+	it("binds the union of a tuple's elements, spreading a rest", () => {
+		expect(
+			bodyType(`declare const t: [1, "a"]; for (const v of t) v;`),
+		).toBe('1 | "a"');
+		expect(
+			bodyType(
+				`declare const t: [number, ...boolean[]]; for (const v of t) v;`,
+			),
+		).toBe("number | boolean");
+		expect(bodyType(`declare const t: []; for (const v of t) v;`)).toBe(
+			"never",
+		);
+	});
+
+	it("claims nothing for a tuple with an optional element", () => {
+		// The checker adds `undefined` or not depending on `strict`.
+		expect(
+			bodyType(
+				`declare const t: [number, string?]; for (const v of t) v;`,
+			),
+		).toBe("unknown");
+		expect(
+			bodyType(
+				`declare const t: [a: number, b?: string]; for (const v of t) v;`,
+			),
+		).toBe("unknown");
+	});
+
+	it("binds string from a string and any from any", () => {
+		expect(bodyType(`declare const s: "ab"; for (const v of s) v;`)).toBe(
+			"string",
+		);
+		expect(bodyType(`declare const a: any; for (const v of a) v;`)).toBe(
+			"any",
+		);
+	});
+
+	it("binds each union member's element type", () => {
+		expect(
+			bodyType(
+				`declare const u: string | number[]; for (const v of u) v;`,
+			),
+		).toBe("string | number");
+	});
+
+	it("claims nothing for iterables it does not model", () => {
+		expect(
+			bodyType(`declare const s: Set<number>; for (const v of s) v;`),
+		).toBe("unknown");
+		expect(
+			bodyType(
+				`declare const u: number[] | Set<number>; for (const v of u) v;`,
+			),
+		).toBe("unknown");
+		expect(bodyType(`for (const v of unknownThing) v;`)).toBe("unknown");
+	});
+
+	it("awaits each element under for await", () => {
+		expect(
+			bodyType(
+				`declare const ps: Promise<number>[]; async function f() { for await (const v of ps) v; }`,
+			),
+		).toBe("number");
+	});
+
+	it("binds string keys from a non-generic object", () => {
+		expect(
+			bodyType(
+				`declare const r: Record<string, number>; for (const v in r) v;`,
+			),
+		).toBe("string");
+		expect(
+			bodyType(`declare const xs: number[]; for (const v in xs) v;`),
+		).toBe("string");
+	});
+
+	it("claims nothing for keys of a possibly generic object", () => {
+		// The checker types these as `Extract<keyof T, string>`.
+		expect(bodyType(`function f<T>(t: T) { for (const v in t) v; }`)).toBe(
+			"unknown",
+		);
+		expect(
+			bodyType(
+				`function f<T>(r: Record<keyof T, 1>) { for (const v in r) v; }`,
+			),
+		).toBe("unknown");
+		expect(
+			bodyType(
+				`function f<T>() { type M = { [K in keyof T]: 1 }; let m!: M; for (const v in m) v; }`,
+			),
+		).toBe("unknown");
+		expect(bodyType(`for (const v in unknownThing) v;`)).toBe("unknown");
+	});
+
+	it("types the loop's binding, not an Annex B initializer", () => {
+		expect(
+			bodyType(
+				`declare const r: Record<string, number>; for (var v = 0 in r) v;`,
+			),
+		).toBe("string");
+	});
+
+	it("leaves an assignment target loop untouched", () => {
+		const code = `let v: number; for (v of ["a"]) v;`;
+
+		expect(bodyType(code)).toBe("number");
+	});
+});
+
 describe("declarations that bind a value and a type", () => {
 	it("types the enum object as an object and its members by base", () => {
 		const code = `enum E { A, B } E; E.A; let e: E; e;`;

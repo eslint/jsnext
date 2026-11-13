@@ -186,6 +186,17 @@ The rules are fixed and conservative. The ones worth knowing:
   binding whose widened initializer is purely nullish — `let x = null` — is
   an _evolving_ binding the checker types by its later assignments, which
   one pass cannot see, so it stays untyped.
+- **Loop variables** bind from what the loop iterates, which is typed
+  first. A `for…of` declaration binds an array's element type, the union of
+  a tuple's elements (a rest element contributing its array's element),
+  `string` for a string, `any` for `any`, and each constituent's answer for
+  a union; `for await` awaits it. A `for…in` declaration binds `string`.
+  Neither widens, since the checker widens initializers and never iterated
+  values. Each declines where the checker's answer is out of reach: an
+  iterable it does not model (`Set`, `Map`, a generator), a tuple with an
+  optional element — `undefined` is in the checker's answer only under
+  `strict` — and a `for…in` over a value whose type is unknown or might be
+  generic, which the checker types as `Extract<keyof T, string>`.
 - **Optionality admits `undefined`**: `x?: T` on a parameter binds
   `T | undefined` — the argument may simply be absent — and reading an
   optional member produces `T | undefined` the same way. Both are the

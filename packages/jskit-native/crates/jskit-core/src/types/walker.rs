@@ -554,6 +554,154 @@ impl<'a, 'b> TypesWalker<'a, 'b> {
         type_id
     }
 
+    /// The type a `for…of` loop binds from an iterated type: an array's
+    /// element, the union of a tuple's elements, `string` for a string, and
+    /// `any` for `any`. Everything else iterates by a protocol this analysis
+    /// does not model and claims nothing.
+    fn element_type(&mut self, type_id: u32) -> u32 {
+        if type_id == TYPE_NONE {
+            return TYPE_NONE;
+        }
+
+        let flags = self.builder.type_field(type_id, TY_FLAGS);
+
+        // A union first, for the reason `widen()` gives.
+        if (flags & TYF_UNION) != 0 {
+            let pool = self.builder.type_field(type_id, TY_DATA0);
+            let count = self.builder.pool_count(pool);
+            let mut parts: Vec<u32> = Vec::new();
+
+            for i in 0..count {
+                let item = self.builder.pool_item(pool, i);
+                let part = self.element_type(item);
+
+                if part == TYPE_NONE {
+                    return TYPE_NONE;
+                }
+
+                parts.push(part);
+            }
+
+            return self.union(&parts, 0);
+        }
+
+        if (flags & TYF_INTERSECTION) != 0 {
+            return TYPE_NONE;
+        }
+
+        if flags == TYF_ANY {
+            return type_id;
+        }
+
+        if (flags & TYF_STRING_LIKE) != 0 {
+            return TYPE_STRING;
+        }
+
+        let shape = self.builder.type_field(type_id, TY_SHAPE);
+        let pool = self.builder.type_field(type_id, TY_DATA0);
+
+        if (shape & TYS_ARRAY) != 0 {
+            return if self.builder.pool_count(pool) > 0 {
+                self.builder.pool_item(pool, 0)
+            } else {
+                TYPE_NONE
+            };
+        }
+
+        if (shape & TYS_TUPLE) != 0 {
+            return self.tuple_element_type(type_id);
+        }
+
+        TYPE_NONE
+    }
+
+    /// The union of what iterating a tuple produces, reading the tuple's own
+    /// syntax beside its record: a rest element contributes its array's
+    /// element type, and an optional element or a labeled rest claims
+    /// nothing.
+    fn tuple_element_type(&mut self, type_id: u32) -> u32 {
+        let ast = self.ast;
+        let pool = self.builder.type_field(type_id, TY_DATA0);
+        let node = self.node_at(self.builder.type_field(type_id, TY_NODE));
+        let list = ast.field(node, NODE_A);
+        let size = ast.raw_list_size(list);
+        let mut parts: Vec<u32> = Vec::new();
+
+        for i in 0..size {
+            let element = ast.raw_list_item(list, i);
+            let kind = ast.kind(element);
+            let mut part = self.builder.pool_item(pool, i);
+
+            if kind == N_TS_OPTIONAL_TYPE
+                || (kind == N_TS_NAMED_TUPLE_MEMBER && (ast.flags(element) & NF_OPTIONAL) != 0)
+            {
+                return TYPE_NONE;
+            }
+
+            if kind == N_TS_REST_TYPE {
+                if ast.kind(ast.field(element, NODE_A)) == N_TS_NAMED_TUPLE_MEMBER {
+                    return TYPE_NONE;
+                }
+
+                part = self.element_type(part);
+
+                if part == TYPE_NONE {
+                    return TYPE_NONE;
+                }
+            }
+
+            parts.push(part);
+        }
+
+        self.union(&parts, 0)
+    }
+
+    /// Whether a type might be generic in the sense `keyof` cares about: a
+    /// type parameter, a deferred type-level operator, or a reference whose
+    /// arguments or alias target contains either. Running out of depth
+    /// answers `true`.
+    fn may_be_generic(&self, type_id: u32, depth: u32) -> bool {
+        if depth == 0 {
+            return true;
+        }
+
+        let builder = &self.builder;
+        let flags = builder.type_field(type_id, TY_FLAGS);
+
+        if (flags & (TYF_TYPE_PARAMETER | TYF_UNKNOWN)) != 0 {
+            return true;
+        }
+
+        let shape = builder.type_field(type_id, TY_SHAPE);
+
+        if (flags & (TYF_UNION | TYF_INTERSECTION)) != 0
+            || (shape & (TYS_REFERENCE | TYS_TUPLE)) != 0
+        {
+            let pool = builder.type_field(type_id, TY_DATA0);
+            let count = builder.pool_count(pool);
+
+            for i in 0..count {
+                if self.may_be_generic(builder.pool_item(pool, i), depth - 1) {
+                    return true;
+                }
+            }
+        }
+
+        if (shape & TYS_REFERENCE) != 0 {
+            // Every reference this walk writes carries a symbol.
+            let symbol = builder.type_field(type_id, TY_SYMBOL);
+            let target = builder.symbol_field(symbol - 1, SY_TARGET);
+
+            if target != 0 {
+                let declared = builder.declared_type(target - 1);
+
+                return declared != TYPE_NONE && self.may_be_generic(declared, depth - 1);
+            }
+        }
+
+        false
+    }
+
     /// The type of a member on a type, following references and heritage.
     fn member_type(&mut self, type_id: u32, name: &[u16], depth: u32) -> u32 {
         if type_id == TYPE_NONE || depth == 0 {
@@ -2151,7 +2299,13 @@ impl<'a, 'b> TypesWalker<'a, 'b> {
             }
 
             N_VARIABLE_DECLARATION => {
-                self.express_declaration(node);
+                self.express_declaration(node, false, TYPE_NONE);
+
+                TYPE_NONE
+            }
+
+            N_FOR_IN_STATEMENT | N_FOR_OF_STATEMENT => {
+                self.express_loop(node);
 
                 TYPE_NONE
             }
@@ -2671,12 +2825,56 @@ impl<'a, 'b> TypesWalker<'a, 'b> {
         }
     }
 
-    /// Types the declarators of a declaration.
-    fn express_declaration(&mut self, node: u32) {
+    /// Types a `for…in` or `for…of` loop. The iterated expression is typed
+    /// before the head that binds from it, which is the order the loop runs
+    /// in, so the body's reads of the loop variable see its type.
+    fn express_loop(&mut self, node: u32) {
+        let ast = self.ast;
+        let left = ast.field(node, NODE_A);
+        let iterated = self.express(ast.field(node, NODE_B));
+
+        if ast.kind(left) == N_VARIABLE_DECLARATION {
+            let bound = if ast.kind(node) == N_FOR_IN_STATEMENT {
+                // A key is a `string` unless the object might be generic,
+                // and an object of unknown type might be.
+                if iterated == TYPE_NONE || self.may_be_generic(iterated, MEMBER_LOOKUP_DEPTH) {
+                    TYPE_NONE
+                } else {
+                    TYPE_STRING
+                }
+            } else {
+                let element = self.element_type(iterated);
+
+                // `for await` binds what awaiting each element produces.
+                if (ast.flags(node) & NF_ASYNC) != 0 {
+                    self.awaited(element, node)
+                } else {
+                    element
+                }
+            };
+
+            self.express_declaration(left, true, bound);
+        } else {
+            self.express(left);
+        }
+
+        self.express(ast.field(node, NODE_C));
+    }
+
+    /// Types the declarators of a declaration, widening initializer types
+    /// for mutable bindings. `loop_head` marks a `for…in` or `for…of` head, which
+    /// binds `bound` each iteration.
+    fn express_declaration(&mut self, node: u32, loop_head: bool, bound: u32) {
         let ast = self.ast;
         let decl_kind = (ast.flags(node) & DECL_MASK) >> DECL_SHIFT;
-        let is_const =
-            decl_kind == DECL_CONST || decl_kind == DECL_USING || decl_kind == DECL_AWAIT_USING;
+
+        // A loop head binds each value exactly as iterated — the checker
+        // widens an initializer, never an iterated element — and its
+        // binding never evolves, so it is held to the `const` rules.
+        let is_const = loop_head
+            || decl_kind == DECL_CONST
+            || decl_kind == DECL_USING
+            || decl_kind == DECL_AWAIT_USING;
         let list = ast.field(node, NODE_A);
         let size = ast.raw_list_size(list);
 
@@ -2689,11 +2887,16 @@ impl<'a, 'b> TypesWalker<'a, 'b> {
 
             let id = ast.field(declarator, NODE_A);
             let init = ast.field(declarator, NODE_B);
-            let init_type = if init == 0 {
+            let expressed = if init == 0 {
                 TYPE_NONE
             } else {
                 self.express(init)
             };
+
+            // A loop head's own initializer — `for (var k = 0 in o)`, which
+            // Annex B still allows — is overwritten before the body runs, so
+            // the loop's type is the binding's, not the initializer's.
+            let init_type = if loop_head { bound } else { expressed };
 
             if ast.kind(id) != N_IDENTIFIER {
                 continue;

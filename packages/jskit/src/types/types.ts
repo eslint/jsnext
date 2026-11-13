@@ -974,6 +974,19 @@ export class Types<TNode extends number = number> {
 		const flags = buffer.typeField(type, TY_FLAGS);
 		const shape = buffer.typeField(type, TY_SHAPE);
 
+		/*
+		 * A union or intersection first: its flags word carries the OR of
+		 * its constituents', so a literal test would otherwise read a
+		 * `1 | 2` as one number literal.
+		 */
+		if ((flags & TYF_UNION) !== 0) {
+			return this.#renderList(type, " | ", depth);
+		}
+
+		if ((flags & TYF_INTERSECTION) !== 0) {
+			return this.#renderList(type, " & ", depth);
+		}
+
 		if ((flags & TYF_STRING_LITERAL) !== 0) {
 			const text = buffer.string(buffer.typeField(type, TY_DATA0));
 
@@ -997,14 +1010,6 @@ export class Types<TNode extends number = number> {
 
 		if ((flags & TYF_TEMPLATE_LITERAL) !== 0) {
 			return "string";
-		}
-
-		if ((flags & TYF_UNION) !== 0) {
-			return this.#renderList(type, " | ", depth);
-		}
-
-		if ((flags & TYF_INTERSECTION) !== 0) {
-			return this.#renderList(type, " & ", depth);
 		}
 
 		if ((flags & TYF_TYPE_PARAMETER) !== 0) {
