@@ -2,6 +2,11 @@
  * @fileoverview A collapsible tree over any JSON-serializable value, plus
  * the two non-JSON values an ESTree AST actually contains: `RegExp` (a
  * regular expression literal's `value`) and `bigint` (a bigint literal's).
+ *
+ * Any object with numeric `start` and `end` stands for a stretch of the
+ * source — an AST node, or the `{ type, start, end }` reference the scope,
+ * flow, and type trees use for one — and its row can be selected so the
+ * editor can highlight that stretch.
  */
 
 import { useState, type ReactNode } from "react";
@@ -13,12 +18,27 @@ const DEFAULT_EXPANDED_DEPTH = 2;
 /** How far each level indents, in pixels. */
 const INDENT = 16;
 
+/** A stretch of the source, as UTF-16 offsets. */
+export interface SourceRange {
+	start: number;
+	end: number;
+}
+
 export interface TreeViewProps {
 	/** The value to render. */
 	data: unknown;
 
 	/** The name of the root entry. */
 	rootLabel?: string;
+
+	/** The path of the selected row, or `null` when none in this tree is. */
+	selectedPath?: string | null;
+
+	/**
+	 * Called when a row with a source range is selected, or with `null`
+	 * for both when the selected row is clicked again.
+	 */
+	onSelect?: (path: string | null, range: SourceRange | null) => void;
 }
 
 /**
@@ -38,6 +58,19 @@ function isExpandable(value: unknown): value is object {
 	return Array.isArray(value)
 		? value.length > 0
 		: Object.keys(value).length > 0;
+}
+
+/**
+ * Reads the source range an object stands for.
+ * @param value The value to test.
+ * @returns The range, or `null` when the value has none.
+ */
+function rangeOf(value: object): SourceRange | null {
+	const { start, end } = value as Record<string, unknown>;
+
+	return typeof start === "number" && typeof end === "number"
+		? { start, end }
+		: null;
 }
 
 /**
@@ -129,9 +162,19 @@ interface TreeNodeProps {
 	name: string;
 	value: unknown;
 	depth: number;
+	path: string;
+	selectedPath: string | null;
+	onSelect: TreeViewProps["onSelect"];
 }
 
-function TreeNode({ name, value, depth }: TreeNodeProps): ReactNode {
+function TreeNode({
+	name,
+	value,
+	depth,
+	path,
+	selectedPath,
+	onSelect,
+}: TreeNodeProps): ReactNode {
 	const expandable = isExpandable(value);
 	const [expanded, setExpanded] = useState(depth < DEFAULT_EXPANDED_DEPTH);
 	const indent = { paddingLeft: `${depth * INDENT}px` };
@@ -149,36 +192,83 @@ function TreeNode({ name, value, depth }: TreeNodeProps): ReactNode {
 		);
 	}
 
+	const toggle = (): void => setExpanded(current => !current);
+	const range = onSelect === undefined ? null : rangeOf(value);
+	const selected = range !== null && path === selectedPath;
+
+	/*
+	 * A row that stands for source text selects on click and leaves
+	 * expanding to its chevron; every other row expands on click, as all
+	 * of them did before rows could be selected.
+	 */
+	const label = (
+		<>
+			<span className="text-foreground/80">{name}:</span>
+			<span className="text-muted-foreground">{summarize(value)}</span>
+		</>
+	);
+	const chevron = (
+		<svg
+			viewBox="0 0 16 16"
+			width="10"
+			height="10"
+			className={cn(
+				"inline fill-current transition-transform",
+				expanded && "rotate-90",
+			)}
+			aria-hidden="true"
+		>
+			<path d="M6 3l6 5-6 5z" />
+		</svg>
+	);
+
 	return (
 		<div>
-			<button
-				type="button"
-				aria-expanded={expanded}
-				className="hover:bg-accent flex w-full items-start gap-1 rounded-sm py-px text-left leading-6"
-				style={indent}
-				onClick={() => setExpanded(current => !current)}
-			>
-				<span
-					className={cn(
-						"text-muted-foreground w-4 shrink-0 text-center transition-transform",
-						expanded && "rotate-90",
-					)}
+			{range === null ? (
+				<button
+					type="button"
+					aria-expanded={expanded}
+					className="hover:bg-accent flex w-full items-start gap-1 rounded-sm py-px text-left leading-6"
+					style={indent}
+					onClick={toggle}
 				>
-					<svg
-						viewBox="0 0 16 16"
-						width="10"
-						height="10"
-						className="inline fill-current"
-						aria-hidden="true"
+					<span className="text-muted-foreground w-4 shrink-0 text-center">
+						{chevron}
+					</span>
+					{label}
+				</button>
+			) : (
+				<div
+					className={cn(
+						"flex w-full items-start gap-1 rounded-sm py-px leading-6",
+						selected ? "bg-amber-500/20" : "hover:bg-accent",
+					)}
+					style={indent}
+				>
+					<button
+						type="button"
+						aria-expanded={expanded}
+						aria-label={expanded ? "Collapse" : "Expand"}
+						className="text-muted-foreground w-4 shrink-0 text-center"
+						onClick={toggle}
 					>
-						<path d="M6 3l6 5-6 5z" />
-					</svg>
-				</span>
-				<span className="text-foreground/80">{name}:</span>
-				<span className="text-muted-foreground">
-					{summarize(value)}
-				</span>
-			</button>
+						{chevron}
+					</button>
+					<button
+						type="button"
+						aria-pressed={selected}
+						title={`${range.start}–${range.end}`}
+						className="flex min-w-0 flex-1 items-start gap-1 text-left"
+						onClick={() =>
+							selected
+								? onSelect?.(null, null)
+								: onSelect?.(path, range)
+						}
+					>
+						{label}
+					</button>
+				</div>
+			)}
 			{expanded &&
 				entriesOf(value).map(([childName, childValue]) => (
 					<TreeNode
@@ -186,6 +276,9 @@ function TreeNode({ name, value, depth }: TreeNodeProps): ReactNode {
 						name={childName}
 						value={childValue}
 						depth={depth + 1}
+						path={`${path}.${childName}`}
+						selectedPath={selectedPath}
+						onSelect={onSelect}
 					/>
 				))}
 		</div>
@@ -198,10 +291,19 @@ function TreeNode({ name, value, depth }: TreeNodeProps): ReactNode {
 export function TreeView({
 	data,
 	rootLabel = "root",
+	selectedPath = null,
+	onSelect,
 }: TreeViewProps): ReactNode {
 	return (
 		<div className="font-mono text-[13px]">
-			<TreeNode name={rootLabel} value={data} depth={0} />
+			<TreeNode
+				name={rootLabel}
+				value={data}
+				depth={0}
+				path={rootLabel}
+				selectedPath={selectedPath}
+				onSelect={onSelect}
+			/>
 		</div>
 	);
 }

@@ -4,12 +4,23 @@
  * browser; there is no server round trip.
  */
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { inspect, type InspectionOptions } from "@/lib/inspect";
+import {
+	useCallback,
+	useEffect,
+	useMemo,
+	useState,
+	type ReactNode,
+} from "react";
+import {
+	inspect,
+	type Inspection,
+	type InspectionOptions,
+} from "@/lib/inspect";
 import { graphLabel } from "@/lib/flow-diagram";
+import { typeAt } from "@/lib/type-hover";
 import { CodeEditor } from "@/components/CodeEditor";
 import { FlowDiagram } from "@/components/FlowDiagram";
-import { TreeView } from "@/components/TreeView";
+import { TreeView, type SourceRange } from "@/components/TreeView";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 /** How long the editor can be idle before the analyses rerun. */
@@ -46,16 +57,36 @@ export function farthest(origin: Point, points: Point[]): Point | null {
 const SELECT_CLASS =
 	"border-input bg-background h-8 rounded-md border px-2 text-sm shadow-xs focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:outline-none";
 
+/**
+ * The node selected in one of the trees: which tree, which row, and the
+ * source it covers. It belongs to the inspection it was made from, since
+ * the next one's offsets describe different text.
+ */
+interface Selection {
+	inspection: Inspection;
+	pane: string;
+	path: string;
+	range: SourceRange;
+}
+
 interface PaneProps {
 	data: unknown;
 	error: string | null;
 	rootLabel: string;
+	selectedPath?: string | null;
+	onSelect?: (path: string | null, range: SourceRange | null) => void;
 }
 
 /**
  * One tab's body: the tree, or the reason there is none.
  */
-function Pane({ data, error, rootLabel }: PaneProps): ReactNode {
+function Pane({
+	data,
+	error,
+	rootLabel,
+	selectedPath,
+	onSelect,
+}: PaneProps): ReactNode {
 	if (error !== null) {
 		return (
 			<div className="border-destructive/50 text-destructive m-3 rounded-md border px-3 py-2 text-sm">
@@ -66,7 +97,12 @@ function Pane({ data, error, rootLabel }: PaneProps): ReactNode {
 
 	return (
 		<div className="p-3">
-			<TreeView data={data} rootLabel={rootLabel} />
+			<TreeView
+				data={data}
+				rootLabel={rootLabel}
+				selectedPath={selectedPath}
+				onSelect={onSelect}
+			/>
 		</div>
 	);
 }
@@ -112,6 +148,47 @@ export default function Inspector(): ReactNode {
 	 */
 	const units = inspection.flow.data?.graphs ?? [];
 	const unit = flowUnit < units.length ? flowUnit : 0;
+
+	/*
+	 * One selection across all the trees, so the editor highlights
+	 * whichever node was picked last. A selection from an earlier
+	 * inspection is ignored rather than cleared, which drops it the moment
+	 * the analyses rerun without an effect to do so.
+	 */
+	const [rawSelection, setSelection] = useState<Selection | null>(null);
+	const selection =
+		rawSelection?.inspection === inspection ? rawSelection : null;
+
+	/*
+	 * The type data describes the debounced text, so between a keystroke
+	 * and the rerun its offsets point at the wrong characters; the tooltip
+	 * stays off until the two agree again.
+	 */
+	const typeTree = inspection.types.data;
+	const lookUpType = useCallback(
+		(offset: number) =>
+			typeTree === null ? null : typeAt(typeTree, offset),
+		[typeTree],
+	);
+
+	/**
+	 * Wires one tree into the shared selection.
+	 * @param pane The tree's name, unique among the trees.
+	 * @returns The props that tree's pane takes.
+	 */
+	function selectable(
+		pane: string,
+	): Pick<PaneProps, "selectedPath" | "onSelect"> {
+		return {
+			selectedPath: selection?.pane === pane ? selection.path : null,
+			onSelect: (path, range) =>
+				setSelection(
+					path === null || range === null
+						? null
+						: { inspection, pane, path, range },
+				),
+		};
+	}
 
 	return (
 		<div className="flex h-full flex-col">
@@ -179,6 +256,8 @@ export default function Inspector(): ReactNode {
 						value={code}
 						typescript={dialect === "ts"}
 						jsx={jsx}
+						highlight={selection?.range ?? null}
+						typeAt={code === debouncedCode ? lookUpType : null}
 						onChange={setCode}
 					/>
 				</section>
@@ -217,6 +296,7 @@ export default function Inspector(): ReactNode {
 								data={inspection.ast.data}
 								error={inspection.ast.error}
 								rootLabel="Program"
+								{...selectable("ast")}
 							/>
 						</TabsContent>
 						<TabsContent
@@ -227,6 +307,7 @@ export default function Inspector(): ReactNode {
 								data={inspection.scopes.data}
 								error={inspection.scopes.error}
 								rootLabel="scopes"
+								{...selectable("scopes")}
 							/>
 						</TabsContent>
 						<TabsContent
@@ -292,6 +373,7 @@ export default function Inspector(): ReactNode {
 										data={inspection.flow.data}
 										error={inspection.flow.error}
 										rootLabel="flow"
+										{...selectable("flow")}
 									/>
 								</TabsContent>
 								<TabsContent
@@ -324,6 +406,7 @@ export default function Inspector(): ReactNode {
 								data={inspection.types.data}
 								error={inspection.types.error}
 								rootLabel="types"
+								{...selectable("types")}
 							/>
 						</TabsContent>
 					</Tabs>

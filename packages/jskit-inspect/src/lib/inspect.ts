@@ -16,6 +16,7 @@ import {
 	validate,
 	type FlowTree,
 	type ParseResult,
+	type TypeTree,
 	type ValidationError,
 } from "@eslint/jskit";
 
@@ -37,7 +38,8 @@ export interface InspectionOptions {
  *
  * The tree view reads any of these as plain JSON, so most panes leave the
  * data untyped. The control flow one names its type, because its second
- * view — the diagram — reads the fields rather than walking them.
+ * view — the diagram — reads the fields rather than walking them, and so
+ * does the type one, because the editor's hover tooltip looks types up.
  */
 export interface PaneResult<T = unknown> {
 	data: T | null;
@@ -57,7 +59,7 @@ export interface Inspection {
 	ast: PaneResult;
 	scopes: PaneResult;
 	flow: PaneResult<FlowTree>;
-	types: PaneResult;
+	types: PaneResult<TypeTree>;
 }
 
 /**
@@ -167,7 +169,7 @@ export function inspect(code: string, options: InspectionOptions): Inspection {
 		}
 	}
 
-	let typesPane: PaneResult;
+	let typesPane: PaneResult<TypeTree>;
 
 	if (scopeBuffer === null) {
 		typesPane = failed(
