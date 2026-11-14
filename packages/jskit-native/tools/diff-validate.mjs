@@ -14,6 +14,9 @@
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { buildBinding } from "./build-native.mjs";
+
+buildBinding();
 
 const { parse, validate, setNative } = await import(
 	new URL("../../jskit/dist/jskit-node.js", import.meta.url)

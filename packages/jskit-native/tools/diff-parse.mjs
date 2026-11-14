@@ -14,14 +14,13 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { buildDump } from "./build-native.mjs";
 
-const here = fileURLToPath(new URL(".", import.meta.url));
 const { parse } = await import(
 	new URL("../../jskit/dist/jskit.js", import.meta.url)
 );
 
-const DUMP = join(here, "..", "target", "release", "jskit-dump");
+const DUMP = buildDump();
 
 const args = process.argv.slice(2);
 const flags = args.filter(a => a.startsWith("--"));

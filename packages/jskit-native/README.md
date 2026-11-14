@@ -76,7 +76,11 @@ node tools/diff-validate.mjs ../../test262/test
 ```
 
 Each accepts a directory (or one file), an optional file cap, and option
-flags; run them from this package. `mismatch=0` is the standard, and both
+flags; run them from this package. Each also rebuilds the Rust side it
+compares against before it starts — `jskit-dump` for the four buffer runs,
+the binding for `diff-validate.mjs` — because a binary left over from before
+an edit reports on the old code. The TypeScript side is read from
+`../jskit/dist`, so build that first. `mismatch=0` is the standard, and both
 implementations must also agree on which files they reject. The full corpus —
 21,000+ files — currently passes all three with zero mismatches, as do the
 JSX/TSX fixtures under every `jsx`/`sourceType`/buffer-option combination,
