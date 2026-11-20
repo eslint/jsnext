@@ -244,6 +244,17 @@ export const RF_TAINTED = 16;
 export const RF_VALUE = 32;
 export const RF_TYPE = 64;
 
+/**
+ * The reference is captured: it resolved to a symbol declared outside its
+ * own variable scope, so reaching it crosses a function boundary — or a
+ * class field initializer, a class static block, a module, or a TypeScript
+ * namespace, the other scopes that are their own variable scope. A reference
+ * resolved within its own function, however many blocks lie between, is not
+ * captured, and neither is an unresolved one. The builder decides it as it
+ * resolves the reference, by the same comparison that clears `VF_STACK`.
+ */
+export const RF_CAPTURED = 128;
+
 /** Words per definition record. */
 export const DEFINITION_WORDS = 7;
 export const D_TYPE = 0; // definition type code

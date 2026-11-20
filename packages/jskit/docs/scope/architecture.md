@@ -420,7 +420,8 @@ The enum code tables in `scope-buffer.ts` — scope types, definition types —
 are part of the format, and their order is **append-only**: repositioning an
 entry changes what every previously written buffer means.
 
-The format keeps two summaries, both on the symbol record. The first is the
+The format keeps three summaries. The first two are on the symbol record, and
+the first is the
 two counts. They are what pattern 3 of the rule survey asks over and over — is this
 binding read at all, is it written more than once — and answering either by
 walking the reference list costs a pool read per reference to learn something
@@ -441,11 +442,25 @@ the definition, the same moment it decides the type and value binding bits,
 which occupy bits 3 and 4 of its working copy of the word and are never
 serialized. Like the type table, the bit positions are append-only.
 
+The third is the **captured bit**, `RF_CAPTURED` in a reference's flags word:
+set when the reference resolved to a symbol whose scope has a different
+variable scope than the scope the reference was written in — when reaching
+the binding crosses a function, a class field initializer, a class static
+block, a module, or a namespace. It answers `Scopes#isCapturedReference()`.
+It is derivable — compare `S_VARIABLE_SCOPE` of `R_FROM` with that of the
+resolved symbol's `V_SCOPE` — but that is three records read to answer what
+a closure-dependency rule asks of every reference it visits. The builder sets
+it in the comparison that already clears `VF_STACK` when a reference
+resolves, and in `addGlobals()` for a reference that resolves to a
+configured global after the fact, where the symbol's scope is the global
+scope and so its variable scope is scope 0. An unresolved reference never has
+it.
+
 ### What is stored and what is re-derived
 
 Serialization keeps what cannot be recomputed and drops what can, with the
-read and write counts and the definition-type bits above as the deliberate
-exceptions.
+read and write counts, the definition-type bits, and the captured bit above
+as the deliberate exceptions.
 Stored: every flag the walk decided (`isStrict`, `dynamic`, taint, `stack`),
 every list in its final order, the `through` lists, the declared-variables
 index (its per-node order is walk order, not derivable from the records), and

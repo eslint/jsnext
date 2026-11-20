@@ -37,6 +37,7 @@ import {
 	R_NAME,
 	R_RESOLVED,
 	R_WRITE_EXPR,
+	RF_CAPTURED,
 	RF_INIT,
 	RF_PARTIAL,
 	RF_READ,
@@ -122,7 +123,9 @@ export interface ScopeTreeScopeLink {
 
 /**
  * One reference, numbered with its stable ID. `origins` spells out
- * `Scopes#referenceOrigins()`.
+ * `Scopes#referenceOrigins()`, and `captured` is
+ * `Scopes#referenceIsCaptured()`: whether it resolved to a binding declared
+ * outside its own function.
  */
 export interface ScopeTreeReference {
 	referenceId: number;
@@ -136,6 +139,7 @@ export interface ScopeTreeReference {
 	tainted: boolean;
 	valueReference: boolean;
 	typeReference: boolean;
+	captured: boolean;
 	resolved: ScopeTreeResolvedVariable | null;
 	writeExpr: ScopeTreeNode | null;
 }
@@ -301,6 +305,7 @@ export function toScopeTree(
 			tainted: (flags & RF_TAINTED) !== 0,
 			valueReference: (flags & RF_VALUE) !== 0,
 			typeReference: (flags & RF_TYPE) !== 0,
+			captured: (flags & RF_CAPTURED) !== 0,
 			resolved: resolved === 0 ? null : resolvedVariable(resolved - 1),
 			writeExpr: node(buffer.referenceField(reference, R_WRITE_EXPR)),
 		};

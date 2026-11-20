@@ -259,6 +259,44 @@ answers `0`.
 `symbolOrigins(symbol)` and `referenceOrigins(reference)` answer the same
 question for a symbol or reference ID already in hand.
 
+#### Captured references
+
+`isCapturedReference(node)` says whether an identifier refers to a binding
+declared outside the function it is written in — what a closure captures, and
+what `react-hooks/exhaustive-deps` collects as a callback's dependencies. It
+costs the identifier lookup plus one word read: the analysis sets the bit as
+it resolves each reference.
+
+```js
+const result = parse(
+	"let count = 0; function f(step) { let n = step; { n; } return () => count + n; }",
+);
+const scopes = new Scopes(analyze(result), result);
+
+scopes.isCapturedReference(node); // true for count and the n in the arrow
+```
+
+"Outside the function" means outside the reference's **variable scope** — the
+scope `var` declarations would land in — so blocks never count, and the
+other scopes that are their own variable scope do:
+
+| Reference                                                      | Captured |
+| -------------------------------------------------------------- | -------- |
+| to a `let` in an enclosing block of the same function          | no       |
+| to the function's own parameter, or its own `arguments`        | no       |
+| from a nested function or arrow to anything of the outer one   | yes      |
+| to a class's name from its methods, field initializers, blocks | yes      |
+| to a named function expression's name from its body            | yes      |
+| from the program's top level to a binding declared there       | no       |
+| to a configured global from inside a function                  | yes      |
+| to a configured global from a module's top level               | yes      |
+| unresolved, including every reference out of a dynamic scope   | no       |
+
+The last row is the one to keep in mind: a scope with a direct `eval` leaves
+every reference in it unresolved, so nothing there is captured either.
+`referenceIsCaptured(reference)` answers the same for a reference ID already
+in hand.
+
 Scopes, symbols, and references are all stable integer IDs, assigned when the
 buffer is written and never renumbered. A `Variable` rehydrated by
 `toScopeManager()` carries its ID as `variable.symbolId`, and passing the
@@ -288,6 +326,7 @@ that a viewer such as `jskit-inspect` can highlight in the source.
 | `scope.variableScope` | `{ scopeId, type, block }` for the scope `var` declarations land in                                                         |
 | `variable.origins`    | `symbolOrigins()`, spelled as names: `["Variable", "FunctionName"]`, `["ConfiguredGlobal"]`                                 |
 | `reference.origins`   | `referenceOrigins()`, spelled the same way: `["Parameter"]`, `["Unresolved"]`, `["ImplicitGlobal"]`                         |
+| `reference.captured`  | `referenceIsCaptured()`: whether it resolved to a binding declared outside its own variable scope                           |
 
 So one reference can appear in several places — its scope's `references`,
 some scope's `through`, its variable's `references` — rendered identically

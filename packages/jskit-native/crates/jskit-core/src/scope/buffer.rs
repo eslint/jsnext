@@ -103,6 +103,9 @@ pub const RF_PARTIAL: u32 = 8;
 pub const RF_TAINTED: u32 = 16;
 pub const RF_VALUE: u32 = 32;
 pub const RF_TYPE: u32 = 64;
+/// The reference resolved to a symbol declared outside its own variable
+/// scope. See `scope-buffer.ts`.
+pub const RF_CAPTURED: u32 = 128;
 
 /// Words per definition record.
 pub const DEFINITION_WORDS: usize = 7;

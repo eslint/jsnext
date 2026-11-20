@@ -125,6 +125,7 @@ import {
 	R_RESOLVED,
 	R_WRITE_EXPR,
 	REFERENCE_WORDS,
+	RF_CAPTURED,
 	RF_INIT,
 	RF_PARTIAL,
 	RF_READ,
@@ -1644,6 +1645,7 @@ export class ScopeBuilder<TNode> {
 			scopeWords[scope * BS_WORDS + BS_VARIABLE_SCOPE]
 		) {
 			symbolFlags &= ~VF_STACK;
+			refWords[refBase + R_FLAGS] = refFlags | RF_CAPTURED;
 		}
 
 		if ((refFlags & RF_TAINTED) !== 0) {
@@ -1902,7 +1904,17 @@ export class ScopeBuilder<TNode> {
 			if (added.has(nameId)) {
 				const symbol = map.get(nameId)!;
 
-				refWords[reference * REFERENCE_WORDS + R_RESOLVED] = symbol + 1;
+				const refBase = reference * REFERENCE_WORDS;
+				const fromScope = refWords[refBase + R_FROM];
+
+				refWords[refBase + R_RESOLVED] = symbol + 1;
+
+				// A configured global lives in the global scope, which is
+				// its own variable scope.
+				if (words[fromScope * BS_WORDS + BS_VARIABLE_SCOPE] !== 0) {
+					refWords[refBase + R_FLAGS] |= RF_CAPTURED;
+				}
+
 				this.appendTo(
 					this.symbols,
 					symbol * BV_WORDS,

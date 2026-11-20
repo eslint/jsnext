@@ -96,6 +96,11 @@ must be _possible_ but does not need to be optimized for.
       scope (`no-undef`) or any function scope (`no-loop-func`).
     - `getScope(node)`, `upper(scope)`, `variableScope(scope)`,
       `isStrict(scope)` — chain walking for the shadowing/position rules.
+    - `isCapturedReference(node)` / `referenceIsCaptured(referenceId)` —
+      whether a reference resolved to a binding declared outside its own
+      variable scope, the closure-capture test
+      `react-hooks/exhaustive-deps` applies to find a callback's
+      dependencies; one flag read.
     - `markSymbolAsUsed(symbolId)` / `isSymbolUsed(symbolId)` — the
       `eslintUsed` protocol. The buffer is immutable, so this is a mutable side
       bitset keyed by symbol ID, owned by the `Scopes` instance.

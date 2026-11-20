@@ -35,6 +35,7 @@ import {
 	R_IDENTIFIER,
 	R_NAME,
 	R_RESOLVED,
+	RF_CAPTURED,
 	RF_INIT,
 	RF_READ,
 	RF_WRITE,
@@ -498,6 +499,29 @@ export class Scopes<TNode = number> {
 	}
 
 	//-------------------------------------------------------------------------
+	// Captures
+	//-------------------------------------------------------------------------
+
+	/**
+	 * Whether an identifier is a captured reference: one that resolved to a
+	 * binding declared outside the function it is written in — or outside
+	 * whichever other scope is its variable scope, such as a class field
+	 * initializer or a module. Blocks do not count: a reference to a `let`
+	 * declared earlier in the same function is not captured, however deeply
+	 * it is nested. An unresolved reference is never captured. This is the
+	 * test `react-hooks/exhaustive-deps` applies to find a callback's
+	 * dependencies, answered with one flag read.
+	 * @param node The `Identifier` node, or a positional reference to it.
+	 * @returns `true` for a captured reference; `false` for any other
+	 *      reference, and for an identifier that is not a reference at all.
+	 */
+	isCapturedReference(node: TNode | NodeRef): boolean {
+		const ref = this.buffer.firstReferenceAtIdentifier(this.resolve(node));
+
+		return ref !== -1 && this.referenceIsCaptured(ref);
+	}
+
+	//-------------------------------------------------------------------------
 	// Symbols
 	//-------------------------------------------------------------------------
 
@@ -733,6 +757,18 @@ export class Scopes<TNode = number> {
 	 */
 	referenceIsInit(reference: number): boolean {
 		return (this.buffer.referenceField(reference, R_FLAGS) & RF_INIT) !== 0;
+	}
+
+	/**
+	 * Whether a reference is captured; see `isCapturedReference()`.
+	 * @param reference The reference ID.
+	 * @returns `true` when it resolved to a binding declared outside its own
+	 *      variable scope.
+	 */
+	referenceIsCaptured(reference: number): boolean {
+		return (
+			(this.buffer.referenceField(reference, R_FLAGS) & RF_CAPTURED) !== 0
+		);
 	}
 
 	//-------------------------------------------------------------------------

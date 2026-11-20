@@ -1163,6 +1163,7 @@ impl<'a> ScopeBuilder<'a> {
             != self.scopes.words[scope as usize * BS_WORDS + BS_VARIABLE_SCOPE]
         {
             symbol_flags &= !VF_STACK;
+            self.refs.words[ref_base + R_FLAGS] |= RF_CAPTURED;
         }
 
         if (ref_flags & RF_TAINTED) != 0 {
@@ -1379,7 +1380,17 @@ impl<'a> ScopeBuilder<'a> {
                     .get(&name_id)
                     .unwrap();
 
-                self.refs.words[reference as usize * REFERENCE_WORDS + R_RESOLVED] = symbol + 1;
+                let ref_base = reference as usize * REFERENCE_WORDS;
+                let from_scope = self.refs.words[ref_base + R_FROM] as usize;
+
+                self.refs.words[ref_base + R_RESOLVED] = symbol + 1;
+
+                // A configured global lives in the global scope, which is
+                // its own variable scope.
+                if self.scopes.words[from_scope * BS_WORDS + BS_VARIABLE_SCOPE] != 0 {
+                    self.refs.words[ref_base + R_FLAGS] |= RF_CAPTURED;
+                }
+
                 self.append_to_symbol(symbol as usize * BV_WORDS, BV_REFS_HEAD, reference);
             } else {
                 self.cells.words[cell as usize + 1] = 0;
