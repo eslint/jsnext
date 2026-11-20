@@ -49,11 +49,13 @@ import {
 	SF_FUNCTION_EXPRESSION_SCOPE,
 	SF_STRICT,
 	V_DEFINITIONS,
+	V_FLAGS,
 	V_NAME,
 	V_READ_COUNT,
 	V_REFERENCES,
 	V_WRITE_COUNT,
 	V_SCOPE,
+	VF_DEFINITION_MASK,
 } from "./scope-buffer.js";
 import type { DefinitionType, ScopeType } from "./kinds.js";
 
@@ -396,7 +398,10 @@ export class Scopes<TNode = number> {
 		for (const ref of refs) {
 			const resolved = this.buffer.referenceField(ref, R_RESOLVED);
 
-			if (resolved !== 0 && this.symbolIsConfiguredGlobal(resolved - 1)) {
+			if (
+				resolved !== 0 &&
+				this.#symbolIsConfiguredGlobal(resolved - 1)
+			) {
 				return true;
 			}
 		}
@@ -444,13 +449,52 @@ export class Scopes<TNode = number> {
 	 * @param symbol The symbol ID.
 	 * @returns `true` for a configured global.
 	 */
-	private symbolIsConfiguredGlobal(symbol: number): boolean {
+	#symbolIsConfiguredGlobal(symbol: number): boolean {
 		return (
-			this.buffer.symbolField(symbol, V_SCOPE) === GLOBAL_SCOPE &&
-			this.buffer.listCount(
-				this.buffer.symbolField(symbol, V_DEFINITIONS),
-			) === 0
+			(this.buffer.symbolField(symbol, V_FLAGS) & VF_DEFINITION_MASK) ===
+				0 && this.buffer.symbolField(symbol, V_SCOPE) === GLOBAL_SCOPE
 		);
+	}
+
+	//-------------------------------------------------------------------------
+	// Binding origins
+	//-------------------------------------------------------------------------
+
+	/**
+	 * Where the binding an identifier refers to comes from, as a bitmask of
+	 * `BINDING_ORIGIN_*` constants. A binding declared more than once — `var
+	 * f; function f() {}` — sets one bit per kind of declaration; the four
+	 * origins without a declaration (`CONFIGURED_GLOBAL`, `IMPLICIT_GLOBAL`,
+	 * `UNRESOLVED`, `ARGUMENTS`) are each the whole answer when set. A global
+	 * the file declares itself answers with its declaration, never
+	 * `CONFIGURED_GLOBAL`.
+	 * @param node The `Identifier` node, or a positional reference to it.
+	 * @returns The origins, or `0` when the identifier is not a reference.
+	 */
+	getBindingOrigins(node: TNode | NodeRef): number {
+		const ref = this.buffer.firstReferenceAtIdentifier(this.resolve(node));
+
+		return ref === -1 ? 0 : this.referenceOrigins(ref);
+	}
+
+	/**
+	 * Where the binding a reference refers to comes from.
+	 * @param reference The reference ID.
+	 * @returns The `BINDING_ORIGIN_*` bitmask; see `getBindingOrigins()`.
+	 */
+	referenceOrigins(reference: number): number {
+		return this.buffer.referenceOrigins(reference);
+	}
+
+	/**
+	 * Where a symbol comes from: the kinds of declaration that bind it, or,
+	 * for a symbol nothing in code declares, a configured global or
+	 * `arguments`. One masked word read, plus the scope for the latter two.
+	 * @param symbol The symbol ID.
+	 * @returns The `BINDING_ORIGIN_*` bitmask; see `getBindingOrigins()`.
+	 */
+	symbolOrigins(symbol: number): number {
+		return this.buffer.symbolOrigins(symbol);
 	}
 
 	//-------------------------------------------------------------------------
@@ -582,9 +626,8 @@ export class Scopes<TNode = number> {
 	 */
 	symbolHasDefinitions(symbol: number): boolean {
 		return (
-			this.buffer.listCount(
-				this.buffer.symbolField(symbol, V_DEFINITIONS),
-			) > 0
+			(this.buffer.symbolField(symbol, V_FLAGS) & VF_DEFINITION_MASK) !==
+			0
 		);
 	}
 
@@ -616,9 +659,9 @@ export class Scopes<TNode = number> {
 	 *      occurrence.
 	 */
 	resolveReference(node: TNode | NodeRef): number | null {
-		const refs = this.buffer.referencesAtIdentifier(this.resolve(node));
+		const ref = this.buffer.firstReferenceAtIdentifier(this.resolve(node));
 
-		return refs.length === 0 ? null : refs[0];
+		return ref === -1 ? null : ref;
 	}
 
 	/**

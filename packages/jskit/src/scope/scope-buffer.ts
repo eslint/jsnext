@@ -169,6 +169,62 @@ export const VF_STACK = 2;
  */
 export const VF_IMPLICIT_GLOBAL = 4;
 
+/*
+ * Bits 3 and 4 are left clear: the builder uses them for its own bookkeeping
+ * while the graph is built, and they are never serialized.
+ */
+
+/**
+ * The symbol's definition types, one bit each: bit `VF_DEFINITION_SHIFT +
+ * code` is set when at least one definition has the type whose code in
+ * `DEFINITION_TYPE_CODES` is `code`. A name declared twice — `var f;
+ * function f() {}` — is one symbol with both bits set, since which value is
+ * live depends on execution order rather than declaration order. No bits
+ * set means no definitions in code: a configured global in the global scope,
+ * `arguments` anywhere else. Like the code table, the bits are append-only.
+ */
+export const VF_DEFINITION_SHIFT = 8;
+
+/** Every definition-type bit; one per entry in `DEFINITION_TYPE_CODES`. */
+export const VF_DEFINITION_MASK = 0x7ff << VF_DEFINITION_SHIFT;
+
+/*
+ * Binding origins: what `Scopes#getBindingOrigins()` answers, as a bitmask.
+ * The definition-type origins are the symbol's `VF_*` definition bits
+ * unchanged, so a symbol's origins cost one masked word read; the four below
+ * them describe references with no definition in code to point at, and each
+ * of those is the whole answer when it is set.
+ */
+
+/** Resolves to a configured global that no code in the file declares. */
+export const BINDING_ORIGIN_CONFIGURED_GLOBAL = 1;
+
+/**
+ * Unresolved, but a sloppy-mode assignment somewhere in the file creates the
+ * name as a global — every reference to it, not only that assignment.
+ */
+export const BINDING_ORIGIN_IMPLICIT_GLOBAL = 2;
+
+/** Resolves to nothing at all: no binding, no configured global. */
+export const BINDING_ORIGIN_UNRESOLVED = 4;
+
+/** Resolves to a function's implicit `arguments` binding. */
+export const BINDING_ORIGIN_ARGUMENTS = 8;
+
+/* One per definition type, at `1 << (VF_DEFINITION_SHIFT + code)`. */
+export const BINDING_ORIGIN_CATCH_CLAUSE = 1 << 8;
+export const BINDING_ORIGIN_PARAMETER = 1 << 9;
+export const BINDING_ORIGIN_FUNCTION_NAME = 1 << 10;
+export const BINDING_ORIGIN_CLASS_NAME = 1 << 11;
+export const BINDING_ORIGIN_VARIABLE = 1 << 12;
+export const BINDING_ORIGIN_IMPORT_BINDING = 1 << 13;
+// Code 6, `ImplicitGlobalVariable`, is BINDING_ORIGIN_IMPLICIT_GLOBAL above:
+// no reference resolves to an implicit global's symbol.
+export const BINDING_ORIGIN_TYPE = 1 << 15;
+export const BINDING_ORIGIN_TS_ENUM_NAME = 1 << 16;
+export const BINDING_ORIGIN_TS_MODULE_NAME = 1 << 17;
+export const BINDING_ORIGIN_TS_ENUM_MEMBER = 1 << 18;
+
 /** Words per reference record. */
 export const REFERENCE_WORDS = 8;
 export const R_IDENTIFIER = 0; // node handle
@@ -295,4 +351,48 @@ export function codeOfScopeType(type: ScopeType): number {
  */
 export function codeOfDefinitionType(type: DefinitionType): number {
 	return DEFINITION_TYPE_OF.get(type)!;
+}
+
+/**
+ * The name of a binding origin: one of the four without a declaration, or
+ * the definition type of a declaration.
+ */
+export type BindingOriginName =
+	| "ConfiguredGlobal"
+	| "ImplicitGlobal"
+	| "Unresolved"
+	| "Arguments"
+	| DefinitionType;
+
+/** The four origins without a declaration, by bit, lowest first. */
+const UNDECLARED_ORIGIN_NAMES: readonly BindingOriginName[] = [
+	"ConfiguredGlobal",
+	"ImplicitGlobal",
+	"Unresolved",
+	"Arguments",
+];
+
+/**
+ * Spells a `BINDING_ORIGIN_*` bitmask out as names, for debugging output and
+ * error messages: the declaration-less origins first, then the definition
+ * types in code order.
+ * @param origins The bitmask.
+ * @returns One name per set bit; empty for `0`.
+ */
+export function bindingOriginNames(origins: number): BindingOriginName[] {
+	const names: BindingOriginName[] = [];
+
+	for (let bit = 0; bit < UNDECLARED_ORIGIN_NAMES.length; bit++) {
+		if ((origins & (1 << bit)) !== 0) {
+			names.push(UNDECLARED_ORIGIN_NAMES[bit]);
+		}
+	}
+
+	for (let code = 0; code < DEFINITION_TYPE_CODES.length; code++) {
+		if ((origins & (1 << (VF_DEFINITION_SHIFT + code))) !== 0) {
+			names.push(DEFINITION_TYPE_CODES[code]);
+		}
+	}
+
+	return names;
 }

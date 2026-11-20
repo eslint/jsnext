@@ -47,7 +47,8 @@ pub const BVF_TYPE_BINDING: u32 = 8;
 pub const BVF_VALUE_BINDING: u32 = 16;
 
 /// The `VF_*` subset of symbol flags that is serialized.
-const BVF_SERIALIZED: u32 = VF_TAINTED | VF_STACK | VF_IMPLICIT_GLOBAL;
+const BVF_SERIALIZED: u32 =
+    VF_TAINTED | VF_STACK | VF_IMPLICIT_GLOBAL | VF_DEFINITION_MASK;
 
 /// Scope type codes whose scopes are their own variable scope, as a bitmask.
 const VARIABLE_SCOPE_MASK: u32 = (1 << CODE_GLOBAL)
@@ -681,6 +682,8 @@ impl<'a> ScopeBuilder<'a> {
 
         let symbol_flags = symbol as usize * BV_WORDS + BV_FLAGS;
 
+        self.symbols.words[symbol_flags] |= 1 << (VF_DEFINITION_SHIFT + def_type);
+
         if (flags & DF_TYPE_DEFINITION) != 0 {
             self.symbols.words[symbol_flags] |= BVF_TYPE_BINDING;
         }
@@ -1294,7 +1297,8 @@ impl<'a> ScopeBuilder<'a> {
             self.def_starts.push(0);
 
             self.append_to_symbol(symbol as usize * BV_WORDS, BV_DEFS_HEAD, definition);
-            self.symbols.words[symbol as usize * BV_WORDS + BV_FLAGS] |= BVF_VALUE_BINDING;
+            self.symbols.words[symbol as usize * BV_WORDS + BV_FLAGS] |=
+                BVF_VALUE_BINDING | (1 << (VF_DEFINITION_SHIFT + DEF_CODE_IMPLICIT));
             self.declare_on_handle(ig_node, symbol);
 
             cell = self.cells.words[cell as usize + 1];

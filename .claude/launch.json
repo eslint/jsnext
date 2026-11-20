@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "jskit-inspect",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start", "--workspace=@eslint/jskit-inspect"],
+      "port": 3000
+    }
+  ]
+}

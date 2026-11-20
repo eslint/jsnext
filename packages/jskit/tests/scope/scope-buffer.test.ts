@@ -645,8 +645,78 @@ describe("toScopeTree", () => {
 
 		expect(read.name).toBe("a");
 		expect(read.read).toBe(true);
-		expect(read.resolved).toBe(
-			root.variables.find(variable => variable.name === "a")!.symbolId,
+		const { references, ...a } = root.variables.find(
+			variable => variable.name === "a",
+		)!;
+
+		expect(read.resolved).toEqual(a);
+		expect(references.map(reference => reference.referenceId)).toContain(
+			read.referenceId,
+		);
+	});
+
+	it("spells out binding origins on variables and references", () => {
+		const { parsed, buffer } = analyzed(
+			"var v; function f(p) { arguments; v; p; Promise; missing; undeclared; } undeclared = 2;",
+			{ sourceType: "script", globals: ["Promise"] },
+		);
+		const root = toScopeTree(buffer, parsed).root!;
+		const fScope = root.childScopes[0];
+		const originsOf = (name: string): string[] =>
+			fScope.references.find(reference => reference.name === name)!
+				.origins;
+
+		expect(root.variables.find(v => v.name === "v")!.origins).toEqual([
+			"Variable",
+		]);
+		expect(root.variables.find(v => v.name === "Promise")!.origins).toEqual(
+			["ConfiguredGlobal"],
+		);
+		expect(root.implicit![0].origins).toEqual(["ImplicitGlobalVariable"]);
+		expect(originsOf("arguments")).toEqual(["Arguments"]);
+		expect(originsOf("v")).toEqual(["Variable"]);
+		expect(originsOf("p")).toEqual(["Parameter"]);
+		expect(originsOf("Promise")).toEqual(["ConfiguredGlobal"]);
+		expect(originsOf("missing")).toEqual(["Unresolved"]);
+		expect(originsOf("undeclared")).toEqual(["ImplicitGlobal"]);
+	});
+
+	it("names every cross-link by its node, never by a bare ID", () => {
+		const { parsed, buffer } = analyzed(
+			"let a = 1; function f() { { a; missing; } }",
+			{ sourceType: "script" },
+		);
+		const root = toScopeTree(buffer, parsed).root!;
+		const fScope = root.childScopes[0];
+		const block = fScope.childScopes[0];
+		const variable = root.variables.find(v => v.name === "a")!;
+
+		expect(fScope.type).toBe("function");
+		expect(block.type).toBe("block");
+
+		expect(block.variableScope).toEqual({
+			scopeId: fScope.scopeId,
+			type: "function",
+			block: fScope.block,
+		});
+		expect(block.through.map(reference => reference.name)).toEqual([
+			"a",
+			"missing",
+		]);
+		expect(block.through[0].identifier).toMatchObject({
+			type: "Identifier",
+		});
+		expect(block.through[0].resolved).toMatchObject({
+			name: "a",
+			symbolId: variable.symbolId,
+			identifiers: [{ type: "Identifier", start: 4, end: 5 }],
+		});
+		expect(variable.references.map(reference => reference.name)).toEqual([
+			"a",
+			"a",
+		]);
+		expect(variable.references[1].identifier).toEqual(
+			block.through[0].identifier,
 		);
 	});
 

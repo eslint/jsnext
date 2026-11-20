@@ -352,6 +352,8 @@ and why — are recorded in [`requirements.md`](./requirements.md).
 
 Every scope, symbol (the format's name for a variable), reference, and
 definition is identified by its zero-based index into its record section.
+[`api.md`'s terms](./api.md#terms) define each of those, and how they map
+onto `eslint-scope`'s names.
 IDs are assigned once, when the buffer is written, and are never renumbered:
 
 - **Scopes** are numbered in creation order.
@@ -418,18 +420,32 @@ The enum code tables in `scope-buffer.ts` — scope types, definition types —
 are part of the format, and their order is **append-only**: repositioning an
 entry changes what every previously written buffer means.
 
-The two counts on a symbol record are the one summary the format keeps.
-They are what pattern 3 of the rule survey asks over and over — is this
+The format keeps two summaries, both on the symbol record. The first is the
+two counts. They are what pattern 3 of the rule survey asks over and over — is this
 binding read at all, is it written more than once — and answering either by
 walking the reference list costs a pool read per reference to learn something
 a word already knows. A read-write such as `x += 1` counts in both, so the
 counts do not sum to the reference count. The emitter computes them in the
 pass that lays the reference list down, so they cost the writer nothing.
 
+The second is the **definition-type bits** in the symbol's flags word: bit
+`VF_DEFINITION_SHIFT + code` (8 and up) is set when any of the symbol's
+definitions has that type code, so `VF_DEFINITION_MASK` covers one bit per
+entry in the definition type table and grows with it. They answer where a
+binding comes from — `Scopes#getBindingOrigins()`, and the configured-global
+test inside `isGlobalReference()` — without reading the definition list:
+no bits set means nothing in code declares the symbol, which is a configured
+global in the global scope and `arguments` anywhere else. A name declared
+more than once sets one bit per kind. The builder sets each bit as it records
+the definition, the same moment it decides the type and value binding bits,
+which occupy bits 3 and 4 of its working copy of the word and are never
+serialized. Like the type table, the bit positions are append-only.
+
 ### What is stored and what is re-derived
 
 Serialization keeps what cannot be recomputed and drops what can, with the
-read and write counts above as the deliberate exception.
+read and write counts and the definition-type bits above as the deliberate
+exceptions.
 Stored: every flag the walk decided (`isStrict`, `dynamic`, taint, `stack`),
 every list in its final order, the `through` lists, the declared-variables
 index (its per-node order is walk order, not derivable from the records), and

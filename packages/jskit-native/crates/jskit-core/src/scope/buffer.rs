@@ -79,6 +79,11 @@ pub const V_WRITE_COUNT: usize = 7;
 pub const VF_TAINTED: u32 = 1;
 pub const VF_STACK: u32 = 2;
 pub const VF_IMPLICIT_GLOBAL: u32 = 4;
+/// Bit `VF_DEFINITION_SHIFT + code` is set when the symbol has a definition
+/// of that type code. See `scope-buffer.ts`.
+pub const VF_DEFINITION_SHIFT: u32 = 8;
+/// Every definition-type bit, one per definition type code.
+pub const VF_DEFINITION_MASK: u32 = 0x7ff << VF_DEFINITION_SHIFT;
 
 /// Words per reference record.
 pub const REFERENCE_WORDS: usize = 8;

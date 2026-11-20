@@ -6,6 +6,32 @@ places the two reference analyzers disagree.
 
 The [package README](../../README.md#scope-analysis) has the short version.
 
+## Terms
+
+The buffer, `Scopes`, and `toScopeTree()` use their own names for some of
+the things `eslint-scope` names. Each row is one kind of record, or one idea,
+and the right-hand column is what `toScopeManager()` turns it into.
+
+| Term                  | Means                                                                                                                                                                                                                                                                                                                                                                                  | `eslint-scope`                               |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| **scope**             | A region of the program with its own bindings: the global scope, a module, a function, a block, a class, and so on.                                                                                                                                                                                                                                                                    | `Scope`                                      |
+| **symbol**            | One binding of one name in one scope. A name declared twice in the same scope — `var f; function f() {}` — is one symbol with two definitions. Declarations, configured globals, each non-arrow function's `arguments`, the inner name of a named function or class expression, and implicit globals each create one. References, property names, labels, and unresolved names do not. | `Variable`                                   |
+| **definition**        | One declaration of a symbol: the node that declares it and what kind of declaration it is. A symbol has zero or more.                                                                                                                                                                                                                                                                  | `Definition`                                 |
+| **reference**         | One use of a name at an identifier, with whether it reads, writes, or both. It points at the symbol it resolved to, or at nothing.                                                                                                                                                                                                                                                     | `Reference`                                  |
+| **resolved**          | A reference whose name some enclosing scope binds, or a configured global supplies.                                                                                                                                                                                                                                                                                                    | `reference.resolved`                         |
+| **unresolved**        | A reference nothing binds. It passes out through every scope's `through` list to the global scope's, which is what `no-undef` reports.                                                                                                                                                                                                                                                 | `reference.resolved === null`                |
+| **through**           | A scope's references that it, and every scope inside it, could not resolve: what it closes over, or, for the global scope, what is unresolved.                                                                                                                                                                                                                                         | `scope.through`                              |
+| **configured global** | A name supplied by the `globals` option. It is a symbol in the global scope with no definitions, and stops being one the moment the file declares the name itself.                                                                                                                                                                                                                     | an entry in `globalScope.set` with no `defs` |
+| **implicit global**   | A name a sloppy-mode assignment creates on the global object (`x = 1` with no `x` declared). The reference stays unresolved; a symbol for the name goes on the global scope's `implicit` list, never its own variables. Strict code and modules create none.                                                                                                                           | `globalScope.implicit`                       |
+| **binding origin**    | Where the symbol a reference resolved to was introduced, as a bitmask: one bit per kind of declaration, or one of the four that have none — configured global, implicit global, unresolved, `arguments`.                                                                                                                                                                               | none                                         |
+| **handle**            | A node as the buffer stores it: a byte offset into the parse buffer on the binary path, or a position in a tree walk on the tree path. `0` is no node.                                                                                                                                                                                                                                 | none: nodes are objects                      |
+| **`NodeRef`**         | A node named by position instead — `{ type, start, end? }` — so a consumer holding only ESTree nodes can ask about one.                                                                                                                                                                                                                                                                | none                                         |
+
+Scopes, symbols, references, and definitions are each numbered from zero in
+their own sequence — the **scope ID**, **symbol ID**, **reference ID**, and
+**definition ID** — assigned once, when the buffer is written, and never
+renumbered.
+
 ## Two ways in
 
 | Entry point     | Reads                                          | Use it when                                                                                                     |
@@ -191,6 +217,48 @@ offset zero; `end` narrows the match further when it is given.
 A read-write such as `x += 1` counts as both a read and a write, so the two
 counts do not sum to `getReferences(symbol).length`.
 
+#### Where a binding comes from
+
+`getBindingOrigins(node)` says where the binding an identifier refers to was
+introduced, as a bitmask of `BINDING_ORIGIN_*` constants. It costs the
+identifier lookup plus one word read: the analysis records each symbol's
+kinds of declaration as it writes the buffer.
+
+```js
+import {
+	BINDING_ORIGIN_CONFIGURED_GLOBAL,
+	BINDING_ORIGIN_IMPORT_BINDING,
+} from "@eslint/jskit";
+
+const origins = scopes.getBindingOrigins(node);
+
+origins === BINDING_ORIGIN_CONFIGURED_GLOBAL; // the same as isGlobalReference(node)
+(origins & BINDING_ORIGIN_IMPORT_BINDING) !== 0; // imported, perhaps among others
+```
+
+| Origin                                                     | When                                                                                                                    |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `CONFIGURED_GLOBAL`                                        | a configured global, nothing in the file declares                                                                       |
+| `IMPLICIT_GLOBAL`                                          | unresolved, but a sloppy-mode assignment in the file creates the name — every reference to it, not only that assignment |
+| `UNRESOLVED`                                               | nothing declares or configures the name                                                                                 |
+| `ARGUMENTS`                                                | a function's implicit `arguments`                                                                                       |
+| `VARIABLE`                                                 | `var`, `let`, `const`, `using`, `await using`                                                                           |
+| `FUNCTION_NAME`, `CLASS_NAME`                              | a function or class declaration, or the inner name of the expression form                                               |
+| `PARAMETER`, `CATCH_CLAUSE`, `IMPORT_BINDING`              | as named                                                                                                                |
+| `TYPE`, `TS_ENUM_NAME`, `TS_ENUM_MEMBER`, `TS_MODULE_NAME` | the TypeScript declarations                                                                                             |
+
+The first four are each the whole answer when set. The rest come from
+declarations, and a name declared more than once sets one bit per kind:
+`var f; function f() {}` is `VARIABLE | FUNCTION_NAME`, because a scope holds
+one binding per name, and which declaration supplies the value at run time
+depends on execution order, not declaration order. A configured global the
+file declares itself — `var Array` in a script — answers with that
+declaration, never `CONFIGURED_GLOBAL`. An identifier that is not a reference
+answers `0`.
+
+`symbolOrigins(symbol)` and `referenceOrigins(reference)` answer the same
+question for a symbol or reference ID already in hand.
+
 Scopes, symbols, and references are all stable integer IDs, assigned when the
 buffer is written and never renumbered. A `Variable` rehydrated by
 `toScopeManager()` carries its ID as `variable.symbolId`, and passing the
@@ -206,6 +274,26 @@ const tree = toScopeTree(scopes, result);
 
 JSON.stringify(tree, null, 2); // fully self-contained; nodes are {type, start, end}
 ```
+
+Scopes nest the way they nest in the program, with each scope's variables
+and references inside it. Nothing in the tree points elsewhere by a bare ID:
+every cross-link is rendered where it is used, so each one carries a node
+that a viewer such as `jskit-inspect` can highlight in the source.
+
+| Field                 | Holds                                                                                                                       |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `variable.references` | the variable's references, in full                                                                                          |
+| `scope.through`       | the scope's unresolved references, in full                                                                                  |
+| `reference.resolved`  | the variable it resolved to, in full except for that variable's own `references`, which would lead straight back; or `null` |
+| `scope.variableScope` | `{ scopeId, type, block }` for the scope `var` declarations land in                                                         |
+| `variable.origins`    | `symbolOrigins()`, spelled as names: `["Variable", "FunctionName"]`, `["ConfiguredGlobal"]`                                 |
+| `reference.origins`   | `referenceOrigins()`, spelled the same way: `["Parameter"]`, `["Unresolved"]`, `["ImplicitGlobal"]`                         |
+
+So one reference can appear in several places — its scope's `references`,
+some scope's `through`, its variable's `references` — rendered identically
+each time and numbered with the same `referenceId`. `bindingOriginNames()`
+is the function that spells the origins out, for any other bitmask that
+needs reading.
 
 ### Options
 

@@ -17,6 +17,8 @@ import type { DefinitionType, ScopeType } from "./kinds.js";
 import { resolveNodeSource, type ScopeSource } from "./node-source.js";
 import { ScopeBufferReader } from "./scope-buffer-reader.js";
 import {
+	bindingOriginNames,
+	type BindingOriginName,
 	D_FLAGS,
 	D_INDEX,
 	D_KIND,
@@ -63,6 +65,7 @@ import {
 	V_NAME,
 	V_READ_COUNT,
 	V_REFERENCES,
+	V_SCOPE,
 	V_WRITE_COUNT,
 	VF_STACK,
 	VF_TAINTED,
@@ -86,24 +89,46 @@ export interface ScopeTreeDefinition {
 	rest: boolean;
 }
 
-/** One variable, with its definitions inline and its references by ID. */
+/**
+ * One variable, with its definitions and its references inline. `origins`
+ * spells out `Scopes#symbolOrigins()`.
+ */
 export interface ScopeTreeVariable {
 	symbolId: number;
 	name: string;
+	scopeId: number;
+	origins: BindingOriginName[];
 	tainted: boolean;
 	stack: boolean;
 	identifiers: ScopeTreeNode[];
 	defs: ScopeTreeDefinition[];
-	references: number[];
+	references: ScopeTreeReference[];
 	readCount: number;
 	writeCount: number;
 }
 
-/** One reference, numbered with its stable ID. */
+/**
+ * The variable a reference resolved to: everything a `ScopeTreeVariable`
+ * carries but its own references, which would lead straight back here.
+ */
+export type ScopeTreeResolvedVariable = Omit<ScopeTreeVariable, "references">;
+
+/** A scope named from elsewhere in the tree, without its contents. */
+export interface ScopeTreeScopeLink {
+	scopeId: number;
+	type: ScopeType;
+	block: ScopeTreeNode;
+}
+
+/**
+ * One reference, numbered with its stable ID. `origins` spells out
+ * `Scopes#referenceOrigins()`.
+ */
 export interface ScopeTreeReference {
 	referenceId: number;
 	identifier: ScopeTreeNode;
 	name: string;
+	origins: BindingOriginName[];
 	read: boolean;
 	write: boolean;
 	init: boolean;
@@ -111,7 +136,7 @@ export interface ScopeTreeReference {
 	tainted: boolean;
 	valueReference: boolean;
 	typeReference: boolean;
-	resolved: number | null;
+	resolved: ScopeTreeResolvedVariable | null;
 	writeExpr: ScopeTreeNode | null;
 }
 
@@ -125,10 +150,10 @@ export interface ScopeTreeScope {
 	functionExpressionScope: boolean;
 	directCallToEvalScope: boolean;
 	thisFound: boolean;
-	variableScope: number;
+	variableScope: ScopeTreeScopeLink;
 	variables: ScopeTreeVariable[];
 	references: ScopeTreeReference[];
-	through: number[];
+	through: ScopeTreeReference[];
 	implicit: ScopeTreeVariable[] | null;
 	childScopes: ScopeTreeScope[];
 }
@@ -194,16 +219,33 @@ export function toScopeTree(
 	}
 
 	/**
-	 * Renders one variable.
+	 * Renders one variable with its references inline.
 	 * @param symbol The symbol ID.
 	 * @returns The rendered variable.
 	 */
 	function variable(symbol: number): ScopeTreeVariable {
+		return {
+			...resolvedVariable(symbol),
+			references: buffer
+				.listItems(buffer.symbolField(symbol, V_REFERENCES))
+				.map(renderReference),
+		};
+	}
+
+	/**
+	 * Renders one variable without its references, the way a reference
+	 * shows the variable it resolved to.
+	 * @param symbol The symbol ID.
+	 * @returns The rendered variable, references aside.
+	 */
+	function resolvedVariable(symbol: number): ScopeTreeResolvedVariable {
 		const flags = buffer.symbolField(symbol, V_FLAGS);
 
 		return {
 			symbolId: symbol,
 			name: buffer.string(buffer.symbolField(symbol, V_NAME)),
+			scopeId: buffer.symbolField(symbol, V_SCOPE),
+			origins: bindingOriginNames(buffer.symbolOrigins(symbol)),
 			tainted: (flags & VF_TAINTED) !== 0,
 			stack: (flags & VF_STACK) !== 0,
 			identifiers: buffer
@@ -233,9 +275,6 @@ export function toScopeTree(
 						rest: (definitionFlags & DF_REST) !== 0,
 					};
 				}),
-			references: buffer.listItems(
-				buffer.symbolField(symbol, V_REFERENCES),
-			),
 			readCount: buffer.symbolField(symbol, V_READ_COUNT),
 			writeCount: buffer.symbolField(symbol, V_WRITE_COUNT),
 		};
@@ -254,6 +293,7 @@ export function toScopeTree(
 			referenceId: reference,
 			identifier: node(buffer.referenceField(reference, R_IDENTIFIER))!,
 			name: buffer.string(buffer.referenceField(reference, R_NAME)),
+			origins: bindingOriginNames(buffer.referenceOrigins(reference)),
 			read: (flags & RF_READ) !== 0,
 			write: (flags & RF_WRITE) !== 0,
 			init: (flags & RF_INIT) !== 0,
@@ -261,7 +301,7 @@ export function toScopeTree(
 			tainted: (flags & RF_TAINTED) !== 0,
 			valueReference: (flags & RF_VALUE) !== 0,
 			typeReference: (flags & RF_TYPE) !== 0,
-			resolved: resolved === 0 ? null : resolved - 1,
+			resolved: resolved === 0 ? null : resolvedVariable(resolved - 1),
 			writeExpr: node(buffer.referenceField(reference, R_WRITE_EXPR)),
 		};
 	}
@@ -278,6 +318,19 @@ export function toScopeTree(
 		if (upper !== 0) {
 			children[upper - 1].push(i);
 		}
+	}
+
+	/**
+	 * Renders a scope named from elsewhere in the tree.
+	 * @param scope The scope ID.
+	 * @returns The scope, without its contents.
+	 */
+	function scopeLink(scope: number): ScopeTreeScopeLink {
+		return {
+			scopeId: scope,
+			type: SCOPE_TYPE_CODES[buffer.scopeField(scope, S_TYPE)],
+			block: node(buffer.scopeField(scope, S_BLOCK))!,
+		};
 	}
 
 	/**
@@ -301,14 +354,18 @@ export function toScopeTree(
 				(flags & SF_FUNCTION_EXPRESSION_SCOPE) !== 0,
 			directCallToEvalScope: (flags & SF_DIRECT_EVAL) !== 0,
 			thisFound: (flags & SF_THIS_FOUND) !== 0,
-			variableScope: buffer.scopeField(scope, S_VARIABLE_SCOPE),
+			variableScope: scopeLink(
+				buffer.scopeField(scope, S_VARIABLE_SCOPE),
+			),
 			variables: buffer
 				.listItems(buffer.scopeField(scope, S_VARIABLES))
 				.map(variable),
 			references: buffer
 				.listItems(buffer.scopeField(scope, S_REFERENCES))
 				.map(renderReference),
-			through: buffer.listItems(buffer.scopeField(scope, S_THROUGH)),
+			through: buffer
+				.listItems(buffer.scopeField(scope, S_THROUGH))
+				.map(renderReference),
 			implicit: isGlobal
 				? buffer.listItems(implicit).map(variable)
 				: null,

@@ -159,6 +159,8 @@ import {
 	V_REFERENCES,
 	V_WRITE_COUNT,
 	V_SCOPE,
+	VF_DEFINITION_MASK,
+	VF_DEFINITION_SHIFT,
 	VF_IMPLICIT_GLOBAL,
 	VF_STACK,
 	VF_TAINTED,
@@ -271,7 +273,8 @@ const BVF_TYPE_BINDING = 8;
 const BVF_VALUE_BINDING = 16;
 
 /** The `VF_*` subset of symbol flags that is serialized. */
-const BVF_SERIALIZED = VF_TAINTED | VF_STACK | VF_IMPLICIT_GLOBAL;
+const BVF_SERIALIZED =
+	VF_TAINTED | VF_STACK | VF_IMPLICIT_GLOBAL | VF_DEFINITION_MASK;
 
 /** Scope type codes whose scopes are their own variable scope, as a bitmask. */
 const VARIABLE_SCOPE_MASK = /* @__PURE__ */ SCOPE_TYPE_CODES.reduce(
@@ -1025,6 +1028,8 @@ export class ScopeBuilder<TNode> {
 		);
 
 		const symbolFlags = symbol * BV_WORDS + BV_FLAGS;
+
+		this.symbols.data[symbolFlags] |= 1 << (VF_DEFINITION_SHIFT + type);
 
 		if ((flags & DF_TYPE_DEFINITION) !== 0) {
 			this.symbols.data[symbolFlags] |= BVF_TYPE_BINDING;
@@ -1816,7 +1821,8 @@ export class ScopeBuilder<TNode> {
 				definition,
 			);
 			this.symbols.data[symbol * BV_WORDS + BV_FLAGS] |=
-				BVF_VALUE_BINDING;
+				BVF_VALUE_BINDING |
+				(1 << (VF_DEFINITION_SHIFT + DEF_CODE_IMPLICIT));
 			this.declareOnHandle(refWords[refBase + R_IG_NODE], symbol);
 		}
 	}

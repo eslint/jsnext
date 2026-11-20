@@ -12,8 +12,19 @@
  */
 
 import {
+	BINDING_ORIGIN_ARGUMENTS,
+	BINDING_ORIGIN_CONFIGURED_GLOBAL,
+	BINDING_ORIGIN_IMPLICIT_GLOBAL,
+	BINDING_ORIGIN_UNRESOLVED,
 	BUFFER_TREE_HANDLES,
 	DEFINITION_WORDS,
+	R_NAME,
+	R_RESOLVED,
+	S_IMPLICIT,
+	V_FLAGS,
+	V_NAME,
+	V_SCOPE,
+	VF_DEFINITION_MASK,
 	SCOPE_H_DECLARED_BASE,
 	SCOPE_H_DECLARED_COUNT,
 	SCOPE_H_DEFINITION_COUNT,
@@ -230,7 +241,28 @@ export class ScopeBufferReader {
 	 * @param key The key to search for.
 	 * @returns The values stored under the key, in sorted order.
 	 */
-	private pairValues(base: number, count: number, key: number): number[] {
+	#pairValues(base: number, count: number, key: number): number[] {
+		const words = this.words;
+		let low = this.#pairLowerBound(base, count, key);
+		const values: number[] = [];
+
+		while (low < count && words[base + low * 2] === key) {
+			values.push(words[base + low * 2 + 1]);
+			low++;
+		}
+
+		return values;
+	}
+
+	/**
+	 * Binary-searches a sorted pair section for the first pair whose key is
+	 * not below `key`.
+	 * @param base Word index at which the pairs begin.
+	 * @param count How many pairs the section holds.
+	 * @param key The key to search for.
+	 * @returns The pair index, `count` when every key is below `key`.
+	 */
+	#pairLowerBound(base: number, count: number, key: number): number {
 		const words = this.words;
 		let low = 0;
 		let high = count;
@@ -245,14 +277,24 @@ export class ScopeBufferReader {
 			}
 		}
 
-		const values: number[] = [];
+		return low;
+	}
 
-		while (low < count && words[base + low * 2] === key) {
-			values.push(words[base + low * 2 + 1]);
-			low++;
-		}
+	/**
+	 * The first reference recorded at an identifier, without allocating —
+	 * the one per-node queries want, since an identifier almost always
+	 * carries at most one.
+	 * @param handle The identifier's handle.
+	 * @returns The reference ID, or `-1` when none was recorded there.
+	 */
+	firstReferenceAtIdentifier(handle: number): number {
+		const base = this.words[SCOPE_H_IDENT_REF_BASE];
+		const count = this.words[SCOPE_H_IDENT_REF_COUNT];
+		const at = this.#pairLowerBound(base, count, handle);
 
-		return values;
+		return at < count && this.words[base + at * 2] === handle
+			? this.words[base + at * 2 + 1]
+			: -1;
 	}
 
 	/**
@@ -261,7 +303,7 @@ export class ScopeBufferReader {
 	 * @returns The scope IDs, in creation order.
 	 */
 	scopesOfNode(handle: number): number[] {
-		return this.pairValues(
+		return this.#pairValues(
 			this.words[SCOPE_H_NODE_SCOPE_BASE],
 			this.words[SCOPE_H_NODE_SCOPE_COUNT],
 			handle,
@@ -274,7 +316,7 @@ export class ScopeBufferReader {
 	 * @returns The symbol IDs, in declaration order.
 	 */
 	declaredSymbolsOfNode(handle: number): number[] {
-		const lists = this.pairValues(
+		const lists = this.#pairValues(
 			this.words[SCOPE_H_DECLARED_BASE],
 			this.words[SCOPE_H_DECLARED_COUNT],
 			handle,
@@ -289,7 +331,7 @@ export class ScopeBufferReader {
 	 * @returns The reference IDs, almost always zero or one of them.
 	 */
 	referencesAtIdentifier(handle: number): number[] {
-		return this.pairValues(
+		return this.#pairValues(
 			this.words[SCOPE_H_IDENT_REF_BASE],
 			this.words[SCOPE_H_IDENT_REF_COUNT],
 			handle,
@@ -345,5 +387,72 @@ export class ScopeBufferReader {
 		}
 
 		return value;
+	}
+
+	//-------------------------------------------------------------------------
+	// Binding origins
+	//-------------------------------------------------------------------------
+
+	/**
+	 * Where a symbol comes from: the kinds of declaration that bind it, or,
+	 * for a symbol nothing in code declares, a configured global (in the
+	 * global scope) or `arguments` (anywhere else). One masked word read,
+	 * plus the scope for the latter two.
+	 * @param symbol The symbol ID.
+	 * @returns The `BINDING_ORIGIN_*` bitmask.
+	 */
+	symbolOrigins(symbol: number): number {
+		const definitions =
+			this.symbolField(symbol, V_FLAGS) & VF_DEFINITION_MASK;
+
+		if (definitions !== 0) {
+			return definitions;
+		}
+
+		return this.symbolField(symbol, V_SCOPE) === 0
+			? BINDING_ORIGIN_CONFIGURED_GLOBAL
+			: BINDING_ORIGIN_ARGUMENTS;
+	}
+
+	/**
+	 * Where the binding a reference refers to comes from: its symbol's
+	 * origins when it resolved, and otherwise `IMPLICIT_GLOBAL` or
+	 * `UNRESOLVED`, depending on whether a sloppy-mode assignment in the file
+	 * creates the name.
+	 * @param reference The reference ID.
+	 * @returns The `BINDING_ORIGIN_*` bitmask.
+	 */
+	referenceOrigins(reference: number): number {
+		const resolved = this.referenceField(reference, R_RESOLVED);
+
+		if (resolved !== 0) {
+			return this.symbolOrigins(resolved - 1);
+		}
+
+		return this.#isImplicitGlobalName(
+			this.referenceField(reference, R_NAME),
+		)
+			? BINDING_ORIGIN_IMPLICIT_GLOBAL
+			: BINDING_ORIGIN_UNRESOLVED;
+	}
+
+	/**
+	 * Whether a sloppy-mode assignment in the file creates a global by this
+	 * name. The global scope's implicit list holds one symbol per such name
+	 * and is short in practice, and interned names compare as integers.
+	 * @param nameId The name's string ID.
+	 * @returns `true` when the name is an implicit global.
+	 */
+	#isImplicitGlobalName(nameId: number): boolean {
+		const list = this.scopeField(0, S_IMPLICIT);
+		const count = this.listCount(list);
+
+		for (let i = 0; i < count; i++) {
+			if (this.symbolField(this.listItem(list, i), V_NAME) === nameId) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 }
