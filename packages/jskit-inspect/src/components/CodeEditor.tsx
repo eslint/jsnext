@@ -5,7 +5,9 @@
  * `value` prop.
  *
  * The `highlight` prop marks one stretch of the document: the source range
- * of whatever node is selected in a tree on the right. The `typeAt` prop
+ * of whatever node is selected in a tree on the right. `onCursorChange`
+ * reports where the user puts the cursor, which is how a tree follows it.
+ * The `typeAt` prop
  * answers the hover tooltip, which shows the type recorded for the
  * identifier or expression under the pointer.
  */
@@ -16,7 +18,7 @@ import { oneDark } from "@codemirror/theme-one-dark";
 import { Decoration, hoverTooltip, type DecorationSet } from "@codemirror/view";
 import { basicSetup, EditorView } from "codemirror";
 import { useEffect, useRef, type ReactNode } from "react";
-import type { SourceRange } from "@/components/TreeView";
+import type { SourceRange } from "@/lib/tree-ranges";
 import type { TypeHover } from "@/lib/type-hover";
 
 /** Replaces the highlighted range, or clears it with `null`. */
@@ -106,6 +108,20 @@ export interface CodeEditorProps {
 	highlight?: SourceRange | null;
 
 	/**
+	 * Whether a new highlight scrolls into view. A highlight that followed
+	 * the cursor is already in view, and scrolling to the start of a large
+	 * one — a scope, say — would pull the cursor off screen.
+	 */
+	scrollToHighlight?: boolean;
+
+	/**
+	 * Called with the cursor's offset whenever the user moves it, by
+	 * clicking, by the keyboard, or by typing. Changes made while the
+	 * editor does not have focus are not reported.
+	 */
+	onCursorChange?: (offset: number) => void;
+
+	/**
 	 * Looks up the type recorded at an offset, for the hover tooltip, or
 	 * `null` while there is no type data that matches the document.
 	 */
@@ -120,16 +136,20 @@ export function CodeEditor({
 	typescript,
 	jsx,
 	highlight = null,
+	scrollToHighlight = true,
 	typeAt = null,
 	onChange,
+	onCursorChange,
 }: CodeEditorProps): ReactNode {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const viewRef = useRef<EditorView | null>(null);
 	const onChangeRef = useRef(onChange);
+	const onCursorChangeRef = useRef(onCursorChange);
 
 	const typeAtRef = useRef(typeAt);
 
 	onChangeRef.current = onChange;
+	onCursorChangeRef.current = onCursorChange;
 	typeAtRef.current = typeAt;
 
 	useEffect(() => {
@@ -166,6 +186,12 @@ export function CodeEditor({
 				EditorView.updateListener.of(update => {
 					if (update.docChanged) {
 						onChangeRef.current(update.state.doc.toString());
+					}
+
+					if (update.selectionSet && update.view.hasFocus) {
+						onCursorChangeRef.current?.(
+							update.state.selection.main.head,
+						);
 					}
 				}),
 			],
@@ -206,7 +232,7 @@ export function CodeEditor({
 
 		const effects: StateEffect<unknown>[] = [setHighlight.of(highlight)];
 
-		if (highlight !== null) {
+		if (highlight !== null && scrollToHighlight) {
 			effects.push(
 				EditorView.scrollIntoView(
 					Math.min(highlight.start, view.state.doc.length),
@@ -216,7 +242,7 @@ export function CodeEditor({
 		}
 
 		view.dispatch({ effects });
-	}, [highlight, typescript, jsx]);
+	}, [highlight, scrollToHighlight, typescript, jsx]);
 
 	return (
 		<div

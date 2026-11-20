@@ -3,26 +3,35 @@
  * the two non-JSON values an ESTree AST actually contains: `RegExp` (a
  * regular expression literal's `value`) and `bigint` (a bigint literal's).
  *
- * Any object with numeric `start` and `end` stands for a stretch of the
- * source — an AST node, or the `{ type, start, end }` reference the scope,
- * flow, and type trees use for one — and its row can be selected so the
- * editor can highlight that stretch.
+ * Any object that stands for a stretch of the source — an AST node, the
+ * `{ type, start, end }` reference the scope, flow, and type trees use for
+ * one, or a scope, variable, or reference by the node it names (see
+ * `rangeOf()`) — can be selected so the editor can highlight that stretch.
+ *
+ * Which rows are expanded is held by the caller, keyed by path, so it
+ * outlives the tree: switching tabs, or a parse error that briefly takes
+ * the tree away, leaves it where it was.
  */
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
+import {
+	entriesOf,
+	isExpandable,
+	rangeOf,
+	type SourceRange,
+} from "@/lib/tree-ranges";
 import { cn } from "@/lib/utils";
 
+export type { SourceRange } from "@/lib/tree-ranges";
+
 /** How many levels start expanded. */
-const DEFAULT_EXPANDED_DEPTH = 2;
+export const DEFAULT_EXPANDED_DEPTH = 2;
 
 /** How far each level indents, in pixels. */
 const INDENT = 16;
 
-/** A stretch of the source, as UTF-16 offsets. */
-export interface SourceRange {
-	start: number;
-	end: number;
-}
+/** The rows a user has expanded or collapsed, by path. */
+export type Expansion = ReadonlyMap<string, boolean>;
 
 export interface TreeViewProps {
 	/** The value to render. */
@@ -36,41 +45,25 @@ export interface TreeViewProps {
 
 	/**
 	 * Called when a row with a source range is selected, or with `null`
-	 * for both when the selected row is clicked again.
+	 * for both when the selected row is clicked again. Without it, no row
+	 * is selectable.
 	 */
 	onSelect?: (path: string | null, range: SourceRange | null) => void;
-}
 
-/**
- * Decides whether a value gets a chevron and children of its own.
- * @param value The value to test.
- * @returns `true` for arrays and plain-ish objects with at least one entry.
- */
-function isExpandable(value: unknown): value is object {
-	if (
-		typeof value !== "object" ||
-		value === null ||
-		value instanceof RegExp
-	) {
-		return false;
-	}
+	/**
+	 * The rows expanded or collapsed by hand; a row missing from it is
+	 * expanded when it is shallower than `DEFAULT_EXPANDED_DEPTH`.
+	 */
+	expansion: Expansion;
 
-	return Array.isArray(value)
-		? value.length > 0
-		: Object.keys(value).length > 0;
-}
+	/** Called when a row's chevron is clicked. */
+	onToggle: (path: string, expanded: boolean) => void;
 
-/**
- * Reads the source range an object stands for.
- * @param value The value to test.
- * @returns The range, or `null` when the value has none.
- */
-function rangeOf(value: object): SourceRange | null {
-	const { start, end } = value as Record<string, unknown>;
-
-	return typeof start === "number" && typeof end === "number"
-		? { start, end }
-		: null;
+	/**
+	 * A row to scroll into view. It is scrolled to whenever `nonce`
+	 * changes, so asking for the same row twice scrolls twice.
+	 */
+	reveal?: { path: string; nonce: number } | null;
 }
 
 /**
@@ -132,30 +125,59 @@ function Primitive({ value }: { value: unknown }): ReactNode {
 
 /**
  * Summarizes an expandable value for its header row: an AST node by its
- * `type`, a scope by its `type`, an array by its length, and anything else
- * by an ellipsis.
+ * `type`, a scope by its `type`, a variable or reference by its `name`, a
+ * recorded type by its `text`, a typed node entry by its node's `type`, an
+ * array by its length, and anything else by an ellipsis.
  * @param value The expandable value.
- * @returns The one-word summary.
+ * @returns The one-line summary.
  */
 function summarize(value: object): string {
 	if (Array.isArray(value)) {
 		return `[${value.length}]`;
 	}
 
-	const type = (value as Record<string, unknown>).type;
+	const { type, name, text, node } = value as Record<string, unknown>;
 
-	return typeof type === "string" ? type : "{…}";
+	if (typeof type === "string") {
+		return type;
+	}
+
+	if (typeof name === "string") {
+		return JSON.stringify(name);
+	}
+
+	if (typeof text === "string") {
+		return JSON.stringify(text);
+	}
+
+	const nodeType =
+		typeof node === "object" && node !== null
+			? (node as Record<string, unknown>).type
+			: null;
+
+	return typeof nodeType === "string" ? nodeType : "{…}";
 }
 
 /**
- * The entries of an object or array, in insertion order.
- * @param value The expandable value.
- * @returns The name/value pairs to render.
+ * Finds the element that scrolls an element: its nearest ancestor that
+ * lets its content overflow, or the document's.
+ * @param element The element.
+ * @returns The scrolling element.
  */
-function entriesOf(value: object): [string, unknown][] {
-	return Array.isArray(value)
-		? value.map((item, index): [string, unknown] => [String(index), item])
-		: Object.entries(value);
+function scrollParentOf(element: Element): Element {
+	for (
+		let current = element.parentElement;
+		current !== null;
+		current = current.parentElement
+	) {
+		const { overflowY } = getComputedStyle(current);
+
+		if (overflowY === "auto" || overflowY === "scroll") {
+			return current;
+		}
+	}
+
+	return document.scrollingElement ?? document.documentElement;
 }
 
 interface TreeNodeProps {
@@ -165,6 +187,8 @@ interface TreeNodeProps {
 	path: string;
 	selectedPath: string | null;
 	onSelect: TreeViewProps["onSelect"];
+	expansion: Expansion;
+	onToggle: TreeViewProps["onToggle"];
 }
 
 function TreeNode({
@@ -174,9 +198,10 @@ function TreeNode({
 	path,
 	selectedPath,
 	onSelect,
+	expansion,
+	onToggle,
 }: TreeNodeProps): ReactNode {
 	const expandable = isExpandable(value);
-	const [expanded, setExpanded] = useState(depth < DEFAULT_EXPANDED_DEPTH);
 	const indent = { paddingLeft: `${depth * INDENT}px` };
 
 	if (!expandable) {
@@ -192,7 +217,8 @@ function TreeNode({
 		);
 	}
 
-	const toggle = (): void => setExpanded(current => !current);
+	const expanded = expansion.get(path) ?? depth < DEFAULT_EXPANDED_DEPTH;
+	const toggle = (): void => onToggle(path, !expanded);
 	const range = onSelect === undefined ? null : rangeOf(value);
 	const selected = range !== null && path === selectedPath;
 
@@ -223,7 +249,7 @@ function TreeNode({
 	);
 
 	return (
-		<div>
+		<div data-path={path}>
 			{range === null ? (
 				<button
 					type="button"
@@ -279,6 +305,8 @@ function TreeNode({
 						path={`${path}.${childName}`}
 						selectedPath={selectedPath}
 						onSelect={onSelect}
+						expansion={expansion}
+						onToggle={onToggle}
 					/>
 				))}
 		</div>
@@ -293,9 +321,54 @@ export function TreeView({
 	rootLabel = "root",
 	selectedPath = null,
 	onSelect,
+	expansion,
+	onToggle,
+	reveal = null,
 }: TreeViewProps): ReactNode {
+	const containerRef = useRef<HTMLDivElement | null>(null);
+	const revealPath = reveal?.path ?? null;
+	const revealNonce = reveal?.nonce ?? 0;
+
+	/*
+	 * Runs after the commit that expanded the row's ancestors, so the row
+	 * is in the document by now. Its first child is the row's own line
+	 * rather than its subtree, which is the part worth bringing into view.
+	 * A line already in view is left where it is, so moving the cursor
+	 * between nearby nodes does not jolt the tree; one out of view is
+	 * centered, which leaves room for the children it was expanded to show.
+	 */
+	useEffect(() => {
+		if (revealPath === null) {
+			return;
+		}
+
+		const row = containerRef.current?.querySelector(
+			`[data-path="${CSS.escape(revealPath)}"]`,
+		);
+		const line = row?.firstElementChild ?? row;
+
+		if (line === null || line === undefined) {
+			return;
+		}
+
+		/*
+		 * Scrolled by hand rather than with `scrollIntoView()`, which would
+		 * scroll every ancestor on both axes — the page included.
+		 */
+		const scroller = scrollParentOf(line);
+		const viewport = scroller.getBoundingClientRect();
+		const bounds = line.getBoundingClientRect();
+
+		if (bounds.top < viewport.top || bounds.bottom > viewport.bottom) {
+			scroller.scrollTop +=
+				bounds.top -
+				viewport.top -
+				(viewport.height - bounds.height) / 2;
+		}
+	}, [revealPath, revealNonce]);
+
 	return (
-		<div className="font-mono text-[13px]">
+		<div ref={containerRef} className="font-mono text-[13px]">
 			<TreeNode
 				name={rootLabel}
 				value={data}
@@ -303,6 +376,8 @@ export function TreeView({
 				path={rootLabel}
 				selectedPath={selectedPath}
 				onSelect={onSelect}
+				expansion={expansion}
+				onToggle={onToggle}
 			/>
 		</div>
 	);

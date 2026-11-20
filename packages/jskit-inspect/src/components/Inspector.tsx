@@ -2,6 +2,11 @@
  * @fileoverview The whole app: a code editor on the left, and the four
  * analyses of what it contains on the right. Everything runs in the
  * browser; there is no server round trip.
+ *
+ * The two sides follow each other. Selecting a row on the right highlights
+ * the source it stands for, and moving the cursor on the left selects,
+ * expands to, and scrolls to the row in the open tab that covers it most
+ * tightly.
  */
 
 import {
@@ -17,10 +22,15 @@ import {
 	type InspectionOptions,
 } from "@/lib/inspect";
 import { graphLabel } from "@/lib/flow-diagram";
+import { isScopeEntity, locate } from "@/lib/tree-ranges";
 import { typeAt } from "@/lib/type-hover";
 import { CodeEditor } from "@/components/CodeEditor";
 import { FlowDiagram } from "@/components/FlowDiagram";
-import { TreeView, type SourceRange } from "@/components/TreeView";
+import {
+	TreeView,
+	type Expansion,
+	type SourceRange,
+} from "@/components/TreeView";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 /** How long the editor can be idle before the analyses rerun. */
@@ -57,16 +67,86 @@ export function farthest(origin: Point, points: Point[]): Point | null {
 const SELECT_CLASS =
 	"border-input bg-background h-8 rounded-md border px-2 text-sm shadow-xs focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:outline-none";
 
+/** The trees, by the name of the analysis each one shows. */
+type PaneName = "ast" | "scopes" | "flow" | "types";
+
+const PANE_NAMES: readonly PaneName[] = ["ast", "scopes", "flow", "types"];
+
+/** The root row's name in each tree, which also starts every path in it. */
+const ROOT_LABELS: Record<PaneName, string> = {
+	ast: "Program",
+	scopes: "scopes",
+	flow: "flow",
+	types: "types",
+};
+
+const NO_EXPANSION: Expansion = new Map();
+
 /**
  * The node selected in one of the trees: which tree, which row, and the
  * source it covers. It belongs to the inspection it was made from, since
- * the next one's offsets describe different text.
+ * the next one's offsets describe different text. `fromEditor` marks a
+ * selection that followed the cursor rather than a click in the tree.
  */
 interface Selection {
 	inspection: Inspection;
-	pane: string;
+	pane: PaneName;
 	path: string;
 	range: SourceRange;
+	fromEditor: boolean;
+}
+
+/** A row the open tree should scroll to, and a counter to ask again. */
+interface Reveal {
+	pane: PaneName;
+	path: string;
+	nonce: number;
+}
+
+/**
+ * The last data each tree had, kept so that a program that briefly stops
+ * parsing mid-edit leaves the trees in place, scrolled where they were,
+ * rather than replacing them with an error.
+ */
+interface Shown {
+	inspection: Inspection;
+	data: Record<PaneName, unknown>;
+}
+
+/**
+ * Carries each tree's data forward from the last inspection that had any.
+ * @param inspection The new inspection.
+ * @param previous The data shown before it, if any.
+ * @returns The data to show now.
+ */
+function carryForward(inspection: Inspection, previous: Shown | null): Shown {
+	const data = {} as Record<PaneName, unknown>;
+
+	for (const name of PANE_NAMES) {
+		data[name] = inspection[name].data ?? previous?.data[name] ?? null;
+	}
+
+	return { inspection, data };
+}
+
+/**
+ * Marks rows expanded.
+ * @param expansion The rows expanded or collapsed so far.
+ * @param paths The rows to expand.
+ * @returns The new expansion, or the old one when nothing changed.
+ */
+function expand(expansion: Expansion, paths: string[]): Expansion {
+	if (paths.every(path => expansion.get(path) === true)) {
+		return expansion;
+	}
+
+	const next = new Map(expansion);
+
+	for (const path of paths) {
+		next.set(path, true);
+	}
+
+	return next;
 }
 
 interface PaneProps {
@@ -75,10 +155,15 @@ interface PaneProps {
 	rootLabel: string;
 	selectedPath?: string | null;
 	onSelect?: (path: string | null, range: SourceRange | null) => void;
+	expansion?: Expansion;
+	onToggle?: (path: string, expanded: boolean) => void;
+	reveal?: Reveal | null;
 }
 
 /**
- * One tab's body: the tree, or the reason there is none.
+ * One tab's body: the tree, the reason there is none, or both — the reason
+ * above the last tree there was, dimmed and not selectable, since its
+ * offsets describe text that has since changed.
  */
 function Pane({
 	data,
@@ -86,24 +171,33 @@ function Pane({
 	rootLabel,
 	selectedPath,
 	onSelect,
+	expansion = NO_EXPANSION,
+	onToggle = () => {},
+	reveal = null,
 }: PaneProps): ReactNode {
-	if (error !== null) {
-		return (
-			<div className="border-destructive/50 text-destructive m-3 rounded-md border px-3 py-2 text-sm">
-				{error}
-			</div>
-		);
-	}
+	const stale = error !== null;
 
 	return (
-		<div className="p-3">
-			<TreeView
-				data={data}
-				rootLabel={rootLabel}
-				selectedPath={selectedPath}
-				onSelect={onSelect}
-			/>
-		</div>
+		<>
+			{stale && (
+				<div className="border-destructive/50 text-destructive bg-background sticky top-0 z-10 m-3 rounded-md border px-3 py-2 text-sm">
+					{error}
+				</div>
+			)}
+			{data !== null && (
+				<div className={stale ? "px-3 pb-3 opacity-50" : "p-3"}>
+					<TreeView
+						data={data}
+						rootLabel={rootLabel}
+						selectedPath={stale ? null : selectedPath}
+						onSelect={stale ? undefined : onSelect}
+						expansion={expansion}
+						onToggle={onToggle}
+						reveal={stale ? null : reveal}
+					/>
+				</div>
+			)}
+		</>
 	);
 }
 
@@ -114,6 +208,9 @@ export default function Inspector(): ReactNode {
 		useState<InspectionOptions["sourceType"]>("module");
 	const [dialect, setDialect] = useState<InspectionOptions["dialect"]>("ts");
 	const [jsx, setJsx] = useState(true);
+
+	/** Which of the four tabs is open. */
+	const [tab, setTab] = useState<PaneName>("ast");
 
 	/*
 	 * Which of the control flow tab's two views is showing. It is held
@@ -130,6 +227,32 @@ export default function Inspector(): ReactNode {
 	 */
 	const [flowUnit, setFlowUnit] = useState(0);
 
+	/*
+	 * The rows expanded or collapsed in each tree. They are held here, by
+	 * path, rather than in the rows, so that they survive what unmounts a
+	 * tree: switching tabs, or an edit that stops the program parsing.
+	 * Paths are positional, so an edit that adds a statement shifts which
+	 * one is open below it — but the shape of the tree, and the reader's
+	 * place in it, stays put.
+	 */
+	const [expansions, setExpansions] = useState<Record<PaneName, Expansion>>(
+		() => ({
+			ast: NO_EXPANSION,
+			scopes: NO_EXPANSION,
+			flow: NO_EXPANSION,
+			types: NO_EXPANSION,
+		}),
+	);
+
+	/** The row the open tree should scroll to next. */
+	const [reveal, setReveal] = useState<Reveal | null>(null);
+
+	/*
+	 * Where the user last put the cursor. A fresh object every time, so
+	 * clicking the same spot twice still counts as a move.
+	 */
+	const [cursor, setCursor] = useState<{ offset: number } | null>(null);
+
 	useEffect(() => {
 		const timer = setTimeout(() => setDebouncedCode(code), DEBOUNCE_MS);
 
@@ -140,6 +263,18 @@ export default function Inspector(): ReactNode {
 		() => inspect(debouncedCode, { sourceType, dialect, jsx }),
 		[debouncedCode, sourceType, dialect, jsx],
 	);
+
+	/*
+	 * Updated during render rather than in an effect, so the trees never
+	 * show a frame without data between one inspection and the next.
+	 */
+	const [shown, setShown] = useState<Shown>(() =>
+		carryForward(inspection, null),
+	);
+
+	if (shown.inspection !== inspection) {
+		setShown(carryForward(inspection, shown));
+	}
 
 	/*
 	 * An edit can leave the program with fewer units than it had, so the
@@ -160,10 +295,11 @@ export default function Inspector(): ReactNode {
 		rawSelection?.inspection === inspection ? rawSelection : null;
 
 	/*
-	 * The type data describes the debounced text, so between a keystroke
-	 * and the rerun its offsets point at the wrong characters; the tooltip
-	 * stays off until the two agree again.
+	 * The analyses describe the debounced text, so between a keystroke and
+	 * the rerun their offsets point at the wrong characters; the tooltip
+	 * and the cursor following stay off until the two agree again.
 	 */
+	const inSync = code === debouncedCode;
 	const typeTree = inspection.types.data;
 	const lookUpType = useCallback(
 		(offset: number) =>
@@ -171,22 +307,95 @@ export default function Inspector(): ReactNode {
 		[typeTree],
 	);
 
+	/*
+	 * The tree the cursor is followed into: the open tab's, unless the
+	 * open tab is showing the flow diagram, which has no rows.
+	 */
+	const followPane: PaneName | null =
+		tab === "flow" && flowView !== "tree" ? null : tab;
+
+	/*
+	 * Follows the cursor into the open tree: selects the row that covers
+	 * it most tightly, expands everything down to it, and scrolls to it.
+	 * It runs again when the tab changes, so the tree just opened catches
+	 * up, and when a debounced edit produces a new inspection, so the
+	 * selection follows the cursor through typing.
+	 */
+	useEffect(() => {
+		if (cursor === null || followPane === null || !inSync) {
+			return;
+		}
+
+		const data = inspection[followPane].data;
+		const found =
+			data === null
+				? null
+				: locate(
+						data,
+						ROOT_LABELS[followPane],
+						cursor.offset,
+						followPane === "scopes" ? isScopeEntity : undefined,
+					);
+
+		if (found === null) {
+			setSelection(null);
+			return;
+		}
+
+		setSelection({
+			inspection,
+			pane: followPane,
+			path: found.path,
+			range: found.range,
+			fromEditor: true,
+		});
+		setExpansions(current => ({
+			...current,
+			[followPane]: expand(current[followPane], [
+				...found.ancestors,
+				found.path,
+			]),
+		}));
+		setReveal(current => ({
+			pane: followPane,
+			path: found.path,
+			nonce: (current?.nonce ?? 0) + 1,
+		}));
+	}, [cursor, followPane, inspection, inSync]);
+
 	/**
-	 * Wires one tree into the shared selection.
-	 * @param pane The tree's name, unique among the trees.
+	 * Wires one tree into the shared selection and expansion state.
+	 * @param pane The tree's name.
 	 * @returns The props that tree's pane takes.
 	 */
-	function selectable(
-		pane: string,
-	): Pick<PaneProps, "selectedPath" | "onSelect"> {
+	function paneProps(pane: PaneName): PaneProps {
 		return {
+			data: shown.data[pane],
+			error: inspection[pane].error,
+			rootLabel: ROOT_LABELS[pane],
 			selectedPath: selection?.pane === pane ? selection.path : null,
 			onSelect: (path, range) =>
 				setSelection(
 					path === null || range === null
 						? null
-						: { inspection, pane, path, range },
+						: {
+								inspection,
+								pane,
+								path,
+								range,
+								fromEditor: false,
+							},
 				),
+			expansion: expansions[pane],
+			onToggle: (path, expanded) =>
+				setExpansions(current => {
+					const next = new Map(current[pane]);
+
+					next.set(path, expanded);
+
+					return { ...current, [pane]: next };
+				}),
+			reveal: reveal?.pane === pane ? reveal : null,
 		};
 	}
 
@@ -257,15 +466,21 @@ export default function Inspector(): ReactNode {
 						typescript={dialect === "ts"}
 						jsx={jsx}
 						highlight={selection?.range ?? null}
-						typeAt={code === debouncedCode ? lookUpType : null}
+						scrollToHighlight={selection?.fromEditor !== true}
+						typeAt={inSync ? lookUpType : null}
 						onChange={setCode}
+						onCursorChange={offset => setCursor({ offset })}
 					/>
 				</section>
 				<section
 					aria-label="Analysis"
 					className="flex min-h-0 flex-1 basis-1/2 flex-col"
 				>
-					<Tabs defaultValue="ast" className="min-h-0 flex-1 gap-0">
+					<Tabs
+						value={tab}
+						onValueChange={value => setTab(value as PaneName)}
+						className="min-h-0 flex-1 gap-0"
+					>
 						<div className="border-b px-3 py-2">
 							<TabsList>
 								<TabsTrigger value="ast">AST</TabsTrigger>
@@ -292,23 +507,13 @@ export default function Inspector(): ReactNode {
 							value="ast"
 							className="min-h-0 overflow-auto"
 						>
-							<Pane
-								data={inspection.ast.data}
-								error={inspection.ast.error}
-								rootLabel="Program"
-								{...selectable("ast")}
-							/>
+							<Pane {...paneProps("ast")} />
 						</TabsContent>
 						<TabsContent
 							value="scopes"
 							className="min-h-0 overflow-auto"
 						>
-							<Pane
-								data={inspection.scopes.data}
-								error={inspection.scopes.error}
-								rootLabel="scopes"
-								{...selectable("scopes")}
-							/>
+							<Pane {...paneProps("scopes")} />
 						</TabsContent>
 						<TabsContent
 							value="flow"
@@ -369,12 +574,7 @@ export default function Inspector(): ReactNode {
 									value="tree"
 									className="min-h-0 overflow-auto"
 								>
-									<Pane
-										data={inspection.flow.data}
-										error={inspection.flow.error}
-										rootLabel="flow"
-										{...selectable("flow")}
-									/>
+									<Pane {...paneProps("flow")} />
 								</TabsContent>
 								<TabsContent
 									value="diagram"
@@ -402,12 +602,7 @@ export default function Inspector(): ReactNode {
 							value="types"
 							className="min-h-0 overflow-auto"
 						>
-							<Pane
-								data={inspection.types.data}
-								error={inspection.types.error}
-								rootLabel="types"
-								{...selectable("types")}
-							/>
+							<Pane {...paneProps("types")} />
 						</TabsContent>
 					</Tabs>
 				</section>
