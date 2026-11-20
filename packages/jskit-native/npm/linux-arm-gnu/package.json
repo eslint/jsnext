@@ -1,6 +1,6 @@
 {
   "name": "@eslint/jskit-native-linux-arm-gnu",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The Linux ARMv7 (glibc, hard-float) binary for @eslint/jskit-native.",
   "type": "commonjs",
   "main": "jskit.linux-arm-gnu.node",
