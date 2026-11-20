@@ -1586,22 +1586,32 @@ impl<'a> ScopeBuilder<'a> {
 
             out_symbols[to + V_REFERENCES] = refs_handle;
 
-            // Summarize the read and write counts off the just-laid list.
+            // Summarize the read and write counts off the just-laid list. A
+            // write counts unless it initializes; one that initializes sets
+            // `VF_INITIALIZED` instead.
             if refs_handle != 0 {
                 let end = refs_handle as usize + pool.words[refs_handle as usize] as usize;
                 let mut reads = 0u32;
                 let mut writes = 0u32;
+                let mut inits = 0u32;
 
                 for at in refs_handle as usize + 1..=end {
                     let ref_flags = self.refs.words
                         [pool.words[at] as usize * REFERENCE_WORDS + R_FLAGS];
+                    let write = (ref_flags & RF_WRITE) >> 1;
+                    let init = (ref_flags & RF_INIT) >> 2;
 
                     reads += ref_flags & RF_READ;
-                    writes += (ref_flags & RF_WRITE) >> 1;
+                    writes += write & (init ^ 1);
+                    inits |= write & init;
                 }
 
                 out_symbols[to + V_READ_COUNT] = reads;
                 out_symbols[to + V_WRITE_COUNT] = writes;
+
+                if inits != 0 {
+                    out_symbols[to + V_FLAGS] |= VF_INITIALIZED;
+                }
             }
         }
 

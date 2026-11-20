@@ -29,11 +29,18 @@ export class Variable<TNode> {
 	readCount = 0;
 
 	/**
-	 * How many of them write it, its initializer included. A read-write such
-	 * as `x += 1` counts in both, so the two do not sum to
-	 * `references.length`.
+	 * How many of them assign it. A read-write such as `x += 1` counts in
+	 * both, so the two do not sum to `references.length`. An initializer is
+	 * not an assignment and is not counted here: it sets `initialized`
+	 * instead, so `let a = 1;` leaves this at 0.
 	 */
 	writeCount = 0;
+
+	/**
+	 * Whether some occurrence initializes the variable — a declarator's
+	 * `= value`, or the binding a `for-in`/`for-of` head declares.
+	 */
+	initialized = false;
 
 	/** Every declaration of the name. */
 	readonly defs: Definition<TNode>[] = [];
@@ -73,7 +80,7 @@ export class Variable<TNode> {
 
 	/**
 	 * Records an occurrence of the variable and keeps the read and write
-	 * counts current. The counts are what rules like `prefer-const` and
+	 * counts and `initialized` current. The counts are what rules like `prefer-const` and
 	 * `no-unused-vars` ask for, and asking them should not mean walking the
 	 * reference list.
 	 * @param reference The occurrence that resolved here.
@@ -87,7 +94,11 @@ export class Variable<TNode> {
 		}
 
 		if (reference.isWrite()) {
-			this.writeCount++;
+			if (reference.init) {
+				this.initialized = true;
+			} else {
+				this.writeCount++;
+			}
 		}
 	}
 

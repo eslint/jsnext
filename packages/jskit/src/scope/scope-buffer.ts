@@ -151,13 +151,16 @@ export const V_IDENTIFIERS = 3; // pool handle: node handles
 export const V_DEFINITIONS = 4; // pool handle: definition IDs
 export const V_REFERENCES = 5; // pool handle: reference IDs
 export const V_READ_COUNT = 6; // references that read the symbol
-export const V_WRITE_COUNT = 7; // references that write it
+export const V_WRITE_COUNT = 7; // references that assign it, initializers excluded
 
 /*
  * The two counts summarize `V_REFERENCES` so that the questions rules ask
- * most of a binding — is it read at all, is it written more than once — cost
- * a word read rather than a walk of the list. A read-write reference such as
+ * most of a binding — is it read at all, is it ever reassigned — cost a word
+ * read rather than a walk of the list. A read-write reference such as
  * `x += 1` counts in **both**, so the two do not sum to the reference count.
+ * An initializing write (`RF_INIT`) counts in neither: it sets
+ * `VF_INITIALIZED` instead, so `let a = 1;` has a write count of 0 and
+ * `let a; a = 1;` a write count of 1.
  */
 
 export const VF_TAINTED = 1;
@@ -173,6 +176,13 @@ export const VF_IMPLICIT_GLOBAL = 4;
  * Bits 3 and 4 are left clear: the builder uses them for its own bookkeeping
  * while the graph is built, and they are never serialized.
  */
+
+/**
+ * At least one reference initializes the symbol — a declarator's `= value`,
+ * or the binding a `for-in`/`for-of` head declares — rather than assigning
+ * it. Those references are left out of `V_WRITE_COUNT`.
+ */
+export const VF_INITIALIZED = 32;
 
 /**
  * The symbol's definition types, one bit each: bit `VF_DEFINITION_SHIFT +

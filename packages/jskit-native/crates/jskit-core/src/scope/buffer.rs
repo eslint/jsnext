@@ -79,6 +79,10 @@ pub const V_WRITE_COUNT: usize = 7;
 pub const VF_TAINTED: u32 = 1;
 pub const VF_STACK: u32 = 2;
 pub const VF_IMPLICIT_GLOBAL: u32 = 4;
+// Bits 3 and 4 are the builder's own bookkeeping and are never serialized.
+/// At least one reference initializes the symbol; those references are left
+/// out of `V_WRITE_COUNT`.
+pub const VF_INITIALIZED: u32 = 32;
 /// Bit `VF_DEFINITION_SHIFT + code` is set when the symbol has a definition
 /// of that type code. See `scope-buffer.ts`.
 pub const VF_DEFINITION_SHIFT: u32 = 8;

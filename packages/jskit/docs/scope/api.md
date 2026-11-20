@@ -178,7 +178,8 @@ for (const symbol of scopes.getDeclaredSymbols(declarationNode)) {
 
 // How often a binding is read and written, without walking that list:
 scopes.getSymbolReadCount(symbol); // 0 means nothing ever reads it
-scopes.getSymbolWriteCount(symbol); // more than 1 settles prefer-const
+scopes.getSymbolWriteCount(symbol); // assignments only; initializers excluded
+scopes.isSymbolInitialized(symbol); // a declarator or for-in/of head set it
 
 // getVariableByName(): a name as the scope it is written in resolves it:
 scopes.getSymbolByName(scope, "Symbol"); // symbol ID, or null
@@ -419,8 +420,11 @@ declaration.
 `name`, `scope`, `identifiers` (the nodes that declare it), `defs` (how), and
 `references` (every occurrence that resolved to it). `readCount` and
 `writeCount` summarize that list, so a rule that only needs to know whether a
-binding is ever read, or written more than once, does not scan it; a
-read-write counts in both. `isTypeVariable` and
+binding is ever read, or ever reassigned, does not scan it; a read-write
+counts in both. `writeCount` counts assignments only: an initializer — a
+declarator's `= value`, or the binding a `for-in`/`for-of` head declares —
+sets `initialized` instead, so `let a = 1;` has a `writeCount` of 0 and
+`let a; a = 1;` one of 1. `isTypeVariable` and
 `isValueVariable` report whether the name can be used where a type or a value
 is expected, which is how `interface A {}` fails to satisfy `A;`.
 

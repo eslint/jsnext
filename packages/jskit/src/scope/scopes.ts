@@ -57,6 +57,7 @@ import {
 	V_WRITE_COUNT,
 	V_SCOPE,
 	VF_DEFINITION_MASK,
+	VF_INITIALIZED,
 } from "./scope-buffer.js";
 import type { DefinitionType, ScopeType } from "./kinds.js";
 
@@ -583,14 +584,28 @@ export class Scopes<TNode = number> {
 	}
 
 	/**
-	 * How many references write a symbol, counted when the buffer was
-	 * written. `prefer-const` is the shape this exists for: a binding written
-	 * more than once is settled without touching its reference list at all.
+	 * How many references assign a symbol, counted when the buffer was
+	 * written. An initializer is not an assignment and is not counted; ask
+	 * `isSymbolInitialized()` for that. `prefer-const` is the shape this
+	 * exists for: a binding assigned after its declaration is settled
+	 * without touching its reference list at all.
 	 * @param symbol The symbol ID.
-	 * @returns The number of writes, initializers included.
+	 * @returns The number of writes, initializers excluded.
 	 */
 	getSymbolWriteCount(symbol: number): number {
 		return this.buffer.symbolField(symbol, V_WRITE_COUNT);
+	}
+
+	/**
+	 * Whether some reference initializes a symbol — a declarator's
+	 * `= value`, or the binding a `for-in`/`for-of` head declares.
+	 * @param symbol The symbol ID.
+	 * @returns `true` when the symbol has an initializing write.
+	 */
+	isSymbolInitialized(symbol: number): boolean {
+		return (
+			(this.buffer.symbolField(symbol, V_FLAGS) & VF_INITIALIZED) !== 0
+		);
 	}
 
 	/**

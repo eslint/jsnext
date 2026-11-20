@@ -426,7 +426,10 @@ two counts. They are what pattern 3 of the rule survey asks over and over — is
 binding read at all, is it written more than once — and answering either by
 walking the reference list costs a pool read per reference to learn something
 a word already knows. A read-write such as `x += 1` counts in both, so the
-counts do not sum to the reference count. The emitter computes them in the
+counts do not sum to the reference count. An initializing write (`RF_INIT`)
+is not counted as a write; it sets the symbol's `VF_INITIALIZED` flag
+instead, so "is this binding ever reassigned" is `write count > 0` with no
+need to tell the initializer apart from the list. The emitter computes them in the
 pass that lays the reference list down, so they cost the writer nothing.
 
 The second is the **definition-type bits** in the symbol's flags word: bit

@@ -163,6 +163,7 @@ import {
 	VF_DEFINITION_MASK,
 	VF_DEFINITION_SHIFT,
 	VF_IMPLICIT_GLOBAL,
+	VF_INITIALIZED,
 	VF_STACK,
 	VF_TAINTED,
 } from "./scope-buffer.js";
@@ -2169,8 +2170,10 @@ export class ScopeBuilder<TNode> {
 			 * resolution: the list has just been laid down contiguously, so
 			 * one pass over it costs a walk the emitter is already paying
 			 * for, and the builder's symbol record stays two words smaller.
-			 * `RF_READ` is 1 and `RF_WRITE` is 2, so each flag turns into its
-			 * own increment without a branch.
+			 * `RF_READ` is 1, `RF_WRITE` is 2, and `RF_INIT` is 4, so each
+			 * flag shifts down to a 0-or-1 and the tallies need no branch: a
+			 * write counts unless it initializes, and one that initializes
+			 * sets `VF_INITIALIZED` instead.
 			 */
 			if (refsHandle !== 0) {
 				const poolWords = pool.data;
@@ -2178,17 +2181,25 @@ export class ScopeBuilder<TNode> {
 				const end = refsHandle + poolWords[refsHandle];
 				let reads = 0;
 				let writes = 0;
+				let inits = 0;
 
 				for (let at = refsHandle + 1; at <= end; at++) {
 					const refFlags =
 						refWords[poolWords[at] * REFERENCE_WORDS + R_FLAGS];
+					const write = (refFlags & RF_WRITE) >> 1;
+					const init = (refFlags & RF_INIT) >> 2;
 
 					reads += refFlags & RF_READ;
-					writes += (refFlags & RF_WRITE) >> 1;
+					writes += write & (init ^ 1);
+					inits |= write & init;
 				}
 
 				outSymbols[to + V_READ_COUNT] = reads;
 				outSymbols[to + V_WRITE_COUNT] = writes;
+
+				if (inits !== 0) {
+					outSymbols[to + V_FLAGS] |= VF_INITIALIZED;
+				}
 			}
 		}
 

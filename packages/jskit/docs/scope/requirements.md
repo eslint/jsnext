@@ -32,9 +32,11 @@ below needs each of them without recomputation:
   keyed by, so it must be stable across the lifetime of the analysis result.
 - **Per symbol, continued:** a **read count** and a **write count** over the
   symbol's references. Pattern 3 below asks both of a binding constantly —
-  `no-unused-vars` wants "read at all?", `prefer-const` wants "written more
-  than once?" — and neither should cost a walk of the reference list. A
-  read-write (`x += 1`) counts in both.
+  `no-unused-vars` wants "read at all?", `prefer-const` wants "ever
+  reassigned?" — and neither should cost a walk of the reference list. A
+  read-write (`x += 1`) counts in both. An initializer is not counted as a
+  write; an **initialized** flag records it instead, so the write count is
+  the number of assignments after declaration.
 - **Per reference:** identifier node offset, containing scope, resolved symbol
   ID or an explicit unresolved marker, and read/write/init flags.
 
@@ -87,6 +89,7 @@ must be _possible_ but does not need to be optimized for.
     - `getReferences(symbolId)` — iterate a symbol's references with their
       read/write/init flags exposed.
     - `getSymbolReadCount(symbolId)` / `getSymbolWriteCount(symbolId)` /
+      `isSymbolInitialized(symbolId)` /
       `getSymbolReferenceCount(symbolId)` — the same list summarized, for the
       rules that only need to count.
     - `getOwnSymbolByName(scope, name)` / `getSymbolByName(scope, name)` —

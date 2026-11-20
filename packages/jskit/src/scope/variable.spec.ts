@@ -22,9 +22,10 @@ const scope = { type: "module" } as unknown as Scope<number>;
 /**
  * Builds a reference of one read/write shape.
  * @param flag `READ`, `WRITE`, or `READ_WRITE`.
+ * @param init Whether the write initializes a declaration.
  * @returns The reference.
  */
-function reference(flag: number): Reference<number> {
+function reference(flag: number, init = false): Reference<number> {
 	return new Reference(
 		1,
 		"a",
@@ -33,7 +34,7 @@ function reference(flag: number): Reference<number> {
 		null,
 		null,
 		false,
-		false,
+		init,
 		REF_VALUE,
 	);
 }
@@ -59,6 +60,7 @@ describe("Variable", () => {
 
 		expect(variable.readCount).toBe(0);
 		expect(variable.writeCount).toBe(0);
+		expect(variable.initialized).toBe(false);
 	});
 
 	describe("addReference", () => {
@@ -80,6 +82,26 @@ describe("Variable", () => {
 
 			expect(variable.readCount).toBe(0);
 			expect(variable.writeCount).toBe(1);
+		});
+
+		it("marks an initializer without counting it as a write", () => {
+			const variable = new Variable("a", scope);
+
+			variable.addReference(reference(WRITE, true));
+
+			expect(variable.references).toHaveLength(1);
+			expect(variable.writeCount).toBe(0);
+			expect(variable.initialized).toBe(true);
+		});
+
+		it("counts an assignment after the initializer", () => {
+			const variable = new Variable("a", scope);
+
+			variable.addReference(reference(WRITE, true));
+			variable.addReference(reference(WRITE));
+
+			expect(variable.writeCount).toBe(1);
+			expect(variable.initialized).toBe(true);
 		});
 
 		it("counts a read-write in both, so the counts outnumber the references", () => {

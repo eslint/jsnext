@@ -68,6 +68,7 @@ import {
 	V_REFERENCES,
 	V_SCOPE,
 	V_WRITE_COUNT,
+	VF_INITIALIZED,
 	VF_STACK,
 	VF_TAINTED,
 } from "./scope-buffer.js";
@@ -106,6 +107,7 @@ export interface ScopeTreeVariable {
 	references: ScopeTreeReference[];
 	readCount: number;
 	writeCount: number;
+	initialized: boolean;
 }
 
 /**
@@ -281,6 +283,7 @@ export function toScopeTree(
 				}),
 			readCount: buffer.symbolField(symbol, V_READ_COUNT),
 			writeCount: buffer.symbolField(symbol, V_WRITE_COUNT),
+			initialized: (flags & VF_INITIALIZED) !== 0,
 		};
 	}
 

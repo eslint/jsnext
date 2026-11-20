@@ -18,6 +18,7 @@ import {
 	VF_DEFINITION_MASK,
 	VF_DEFINITION_SHIFT,
 	VF_IMPLICIT_GLOBAL,
+	VF_INITIALIZED,
 	VF_STACK,
 	VF_TAINTED,
 	V_DEFINITIONS,
@@ -123,7 +124,11 @@ describe("ScopeBuilder symbol flags", () => {
 		(code, options) => {
 			const reader = readerFor(code, options);
 			const serialized =
-				VF_TAINTED | VF_STACK | VF_IMPLICIT_GLOBAL | VF_DEFINITION_MASK;
+				VF_TAINTED |
+				VF_STACK |
+				VF_IMPLICIT_GLOBAL |
+				VF_INITIALIZED |
+				VF_DEFINITION_MASK;
 
 			for (let symbol = 0; symbol < reader.symbolCount; symbol++) {
 				expect(reader.symbolField(symbol, V_FLAGS) & ~serialized).toBe(
