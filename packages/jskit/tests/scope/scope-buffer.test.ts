@@ -668,3 +668,112 @@ describe("toScopeTree", () => {
 		);
 	});
 });
+
+describe("a tree toAST() decoded, paired with analyze()", () => {
+	const CODE =
+		"import { a } from 'm'; let b = a; function f(c = b) { return c + d; } ({ b } = f());";
+
+	/**
+	 * Runs the four public steps: parse, decode, analyze the parse buffer, and
+	 * hand the consumers the decoded `Program`.
+	 * @returns The decoded tree and the scope buffer over its parse result.
+	 */
+	function pipeline(): { program: EsTreeNode; buffer: ArrayBuffer } {
+		const parsed = parse(CODE);
+
+		return {
+			program: toAST(parsed) as unknown as EsTreeNode,
+			buffer: analyze(parsed, { sourceType: "module" }),
+		};
+	}
+
+	/**
+	 * Every node object a scope graph hands back, in a fixed order.
+	 * @param manager The graph.
+	 * @returns The nodes.
+	 */
+	function graphNodes(
+		manager: ReturnType<typeof toScopeManager<EsTreeNode>>,
+	): unknown[] {
+		const nodes: unknown[] = [];
+
+		for (const scope of manager.scopes) {
+			nodes.push(scope.block);
+
+			for (const variable of scope.variables) {
+				nodes.push(...variable.identifiers);
+
+				for (const def of variable.defs) {
+					nodes.push(def.name, def.node, def.parent);
+				}
+			}
+
+			for (const reference of scope.references) {
+				nodes.push(reference.identifier, reference.writeExpr);
+			}
+		}
+
+		return nodes;
+	}
+
+	it("rehydrates over the tree's own objects, as analyzeTree() would", () => {
+		const { program, buffer } = pipeline();
+		const manager = toScopeManager(buffer, program);
+		const expected = toScopeManager(
+			analyzeTree(program, { sourceType: "module" }),
+			program,
+		);
+
+		expect(manager.globalScope!.block).toBe(program);
+		expect(manager.reader).toBeNull();
+
+		const actual = graphNodes(manager);
+		const wanted = graphNodes(expected);
+
+		expect(actual).toHaveLength(wanted.length);
+		actual.forEach((node, i) => {
+			expect(node).toBe(wanted[i]);
+		});
+	});
+
+	it("answers Scopes queries keyed by the tree's own nodes", () => {
+		const { program, buffer } = pipeline();
+		const scopes = new Scopes<EsTreeNode>(buffer, program);
+		const statement = (program.body as EsTreeNode[])[1];
+		const declarator = (statement.declarations as EsTreeNode[])[0];
+		const init = declarator.init as EsTreeNode;
+		const reference = scopes.resolveReference(init)!;
+
+		expect(scopes.referenceIdentifier(reference)).toBe(init);
+		expect(scopes.isGlobalReference(init)).toBe(false);
+	});
+
+	it("renders the same scope tree as the parse result does", () => {
+		const parsed = parse(CODE);
+		const program = toAST(parsed) as unknown as EsTreeNode;
+		const buffer = analyze(parsed, { sourceType: "module" });
+
+		expect(toScopeTree(buffer, program)).toEqual(
+			toScopeTree(buffer, parsed),
+		);
+	});
+
+	it("keeps the table out of sight, so a copy of the tree is refused", () => {
+		const { program, buffer } = pipeline();
+		const copy = JSON.parse(JSON.stringify(program)) as EsTreeNode;
+
+		expect(copy).toEqual(program);
+		expect(() => toScopeManager(buffer, copy)).toThrow(
+			/or a Program toAST\(\) decoded from it/u,
+		);
+	});
+
+	it("refuses a tree decoded from a different parse result", () => {
+		const { buffer } = pipeline();
+		const other = toAST(parse("x;")) as unknown as EsTreeNode;
+
+		expect(() => toScopeManager(buffer, other)).toThrow(
+			/not written over the parse result/u,
+		);
+	});
+});

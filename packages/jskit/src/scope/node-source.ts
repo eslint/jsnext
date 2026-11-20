@@ -4,8 +4,10 @@
  * A scope buffer refers to the AST by handle: a byte offset into the binary
  * parse buffer, or a position in the tree enumeration. The consumers that hand
  * nodes back to a caller — `Scopes`, `toScopeManager()`, `toScopeTree()` —
- * need the reverse mapping, and this module supplies it for both paths behind
- * one interface.
+ * need the reverse mapping, and this module supplies it behind one interface
+ * for three pairings: a binary buffer over node indexes, a binary buffer over
+ * the tree `toAST()` decoded from the same parse result, and a tree buffer
+ * over the tree `analyzeTree()` walked.
  *
  * Note that this module imports both adapters, so unlike `analyze()` and
  * `analyzeTree()` the consumers built on it are not split for tree shaking.
@@ -13,6 +15,7 @@
  */
 
 import { AstReader, supplySource, type ParseResult } from "../parse/index.js";
+import { decodedNodes, type DecodedNodes } from "../parse/internal.js";
 import type { AstAccess } from "./ast-access.js";
 import { BinaryAst } from "./binary-ast.js";
 import { EstreeAst, type EsTreeNode } from "./estree-ast.js";
@@ -22,7 +25,8 @@ import { collectTreeNodes, isEsTreeNode } from "./tree-nodes.js";
 /**
  * What a consumer of a scope buffer accepts as "the program": the parse
  * buffer the binary analysis ran over, a reader already constructed over it,
- * or the very `Program` node `analyzeTree()` was given.
+ * a `Program` node `toAST()` decoded from that buffer, or the very
+ * `Program` node `analyzeTree()` was given.
  */
 export type ScopeSource = ParseResult | AstReader | EsTreeNode;
 
@@ -81,37 +85,53 @@ function treeNodeSource(root: EsTreeNode): NodeSource<EsTreeNode> {
 }
 
 /**
- * Builds the node source for a scope buffer written over a parse buffer whose
- * tree was also decoded, so that handles resolve to the decoded objects.
+ * Builds the node source for a scope buffer `analyze()` wrote, over a tree
+ * `toAST()` decoded from the same parse buffer.
  *
- * This is what lets the ESLint parser run the binary analysis — the one with
- * a native implementation — and still hand rules a graph over the very nodes
- * they are given. The handles are byte offsets, as on any binary path; the
- * table the decoder filled turns the node index each one names into the
- * object, so nothing has to enumerate the tree.
- * @param reader The reader over the parse buffer.
- * @param nodes Every decoded node under its node index.
+ * This is what lets the binary analysis — the one with a native
+ * implementation — hand back the very objects a caller's tree holds. The
+ * handles are byte offsets, as on any binary path; the table the decoder
+ * filled turns the node index each one names into the object, so nothing has
+ * to enumerate the tree.
+ *
+ * Nothing in either buffer names the other, so a tree decoded from a
+ * different parse result cannot be refused up front. It is refused at the
+ * first handle that names no node in this tree, which every mismatch of any
+ * size reaches almost at once.
+ * @param decoded The table the decoder recorded against the tree.
  * @returns The node source.
+ * @throws {TypeError} When a handle names no node in the tree.
  */
-export function decodedNodeSource(
-	reader: AstReader,
-	nodes: readonly (EsTreeNode | null)[],
-): NodeSource<EsTreeNode> {
+function decodedNodeSource(decoded: DecodedNodes): NodeSource<EsTreeNode> {
+	const nodes = decoded.nodes;
 	let handles: Map<EsTreeNode, number> | null = null;
 
 	return {
 		ast: new EstreeAst(),
 		reader: null,
-		nodeAt: handle => nodes[nodeAtHandle(reader, handle)] as EsTreeNode,
+		nodeAt(handle) {
+			const node = nodes[nodeAtHandle(decoded, handle)];
+
+			if (node === undefined) {
+				throw new TypeError(
+					"This scope buffer was not written over the parse result this Program was decoded from.",
+				);
+			}
+
+			return node as EsTreeNode;
+		},
 		handleOf(node) {
 			if (handles === null) {
 				handles = new Map();
 
 				for (let i = 0; i < nodes.length; i++) {
-					const decoded = nodes[i];
+					const decodedNode = nodes[i];
 
-					if (decoded !== null && decoded !== undefined) {
-						handles.set(decoded, nodeHandle(reader, i));
+					if (decodedNode !== undefined) {
+						handles.set(
+							decodedNode as EsTreeNode,
+							nodeHandle(decoded, i),
+						);
 					}
 				}
 			}
@@ -170,13 +190,19 @@ export function resolveNodeSource(
 	}
 
 	if (isEsTreeNode(source)) {
-		if (!treeHandles) {
+		if (treeHandles) {
+			return treeNodeSource(source);
+		}
+
+		const decoded = decodedNodes(source);
+
+		if (decoded === null) {
 			throw new TypeError(
-				"This scope buffer came from analyze(); pass the parse result it analyzed.",
+				"This scope buffer came from analyze(); pass the parse result it analyzed, or a Program toAST() decoded from it.",
 			);
 		}
 
-		return treeNodeSource(source);
+		return decodedNodeSource(decoded);
 	}
 
 	throw new TypeError(

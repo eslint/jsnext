@@ -134,8 +134,9 @@ export class Scopes<TNode = number> {
 	/**
 	 * Creates the query view over a scope buffer.
 	 * @param scopes The buffer `analyze()` or `analyzeTree()` returned.
-	 * @param source The parse result the buffer was produced from, or the
-	 *      `Program` node when it came from `analyzeTree()`.
+	 * @param source The parse result the buffer was produced from, or a
+	 *      `Program` node: one `toAST()` decoded from that result, or the
+	 *      one `analyzeTree()` walked.
 	 * @param options How the program should be read.
 	 */
 	constructor(

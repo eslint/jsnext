@@ -283,6 +283,18 @@ and `declaration` are not options here, because neither changes the tree.
 `text` is the same fallback `validate()` takes, for a buffer that cannot
 otherwise reach its program text.
 
+The tree is ready for [scope analysis](../scope/api.md#from-source-text-back-to-your-tree)
+as it comes. Run `analyze()` over the same parse result — in Rust, when
+`@eslint/jskit-native` is installed — and pass this `Program` to
+`toScopeManager()`, `Scopes`, or `toScopeTree()`, and every node they hand
+back is one of this tree's own objects. The decode records each object it
+makes under its node index, against the `Program`, and that is what the
+scope buffer's handles are resolved through. It is stored on the `Program`
+under a non-enumerable `Symbol.for("@eslint/jskit.decodedNodes")`, so
+`Object.keys()`, spread, `JSON.stringify()`, and deep equality never see
+it, and a copy of the tree — `structuredClone()`, say — does not carry it.
+Recording it costs `toAST()` about a tenth of its time.
+
 ## Using it with ESLint
 
 `eslintParser` is a ready-made parser object. Drop it into `languageOptions`
@@ -315,10 +327,10 @@ const { ast, scopeManager, visitorKeys } = eslintParser.parseForESLint(code, {
   `parse()` is still there for anything that wants only that.
 - **`scopeManager`** is the scope graph over that very tree, so a rule asking
   for the scope of a node gets an answer about the node object it is holding.
-  It is built by `analyze()` over the parse buffer — in Rust, when
-  `@eslint/jskit-native` is installed — and resolved to
-  the tree's own objects through a table the decode fills as it creates each
-  node, so nothing walks the tree a second time to number it.
+  It is built the way any caller of the public API would build it:
+  `analyze()` over the parse buffer — in Rust, when `@eslint/jskit-native`
+  is installed — and `toScopeManager()` handed the decoded `Program`, so
+  nothing walks the tree a second time to number it.
   ESLint takes it in place of running `eslint-scope`, which is what makes scope
   analysis understand TypeScript: `eslint-scope` walks past a type annotation
   without seeing the bindings and references inside it.

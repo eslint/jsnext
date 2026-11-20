@@ -14,22 +14,29 @@
 import type { AstReader } from "../parse/index.js";
 
 /**
+ * The two layout numbers the arithmetic needs: a reader over the parse
+ * buffer has them, and so does the node table `toAST()` records, which
+ * outlives the buffer.
+ */
+export type NodeLayout = Pick<AstReader, "nodesBase" | "nodeWords">;
+
+/**
  * The handle the binary path stores for a node: the byte offset of its
  * record in the parse buffer.
- * @param reader The reader over the parse buffer.
+ * @param reader The reader over the parse buffer, or its layout.
  * @param node The node index.
  * @returns The byte offset.
  */
-export function nodeHandle(reader: AstReader, node: number): number {
+export function nodeHandle(reader: NodeLayout, node: number): number {
 	return (reader.nodesBase + node * reader.nodeWords) * 4;
 }
 
 /**
  * The node index a stored handle names.
- * @param reader The reader over the parse buffer.
+ * @param reader The reader over the parse buffer, or its layout.
  * @param handle The byte offset of the node's record.
  * @returns The node index.
  */
-export function nodeAtHandle(reader: AstReader, handle: number): number {
+export function nodeAtHandle(reader: NodeLayout, handle: number): number {
 	return (handle / 4 - reader.nodesBase) / reader.nodeWords;
 }

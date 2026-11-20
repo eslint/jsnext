@@ -68,10 +68,72 @@ let decoders: readonly Decoder[] = DECODE_TS;
 
 /**
  * Where to record each decoded node under its node index, or `null` when the
- * caller did not ask. The ESLint parser asks, so that a scope buffer written
- * over the parse buffer can be resolved to the very objects in the tree.
+ * caller did not ask. `buildAst()` always asks, so that a scope buffer
+ * `analyze()` wrote over the parse buffer can be resolved to the very objects
+ * in the tree.
  */
-let table: (EsNode | null)[] | null = null;
+let table: (EsNode | undefined)[] | null = null;
+
+/**
+ * What a decoded tree remembers about the buffer it came from: every node
+ * under its node index, and the two layout numbers that turn the byte-offset
+ * handles `analyze()` stores into those indexes. The parse buffer itself is
+ * not kept — the tree outlives it as often as not.
+ */
+export interface DecodedNodes {
+	/** Every decoded node under its node index; a hole where none was. */
+	readonly nodes: readonly (EsNode | undefined)[];
+
+	/** Word index at which the parse buffer's node region begins. */
+	readonly nodesBase: number;
+
+	/** Number of words in one node record. */
+	readonly nodeWords: number;
+}
+
+/**
+ * The key a decoded `Program` carries its node table under.
+ *
+ * A non-enumerable property, so `Object.keys()`, `for…in`, spread,
+ * `JSON.stringify()`, and deep equality all pass it by, and the tree still
+ * compares equal to `espree`'s. It is a property rather than a `WeakMap`
+ * for the two reasons the source cache in `binary.ts` is one. A registry
+ * symbol is shared by every bundled copy of this module in the realm, so a
+ * tree one copy decoded is recognized by another's `toScopeManager()`. And
+ * it is cheap: a `WeakMap` entry holding a table of every node made
+ * `toAST()` half again slower, nearly all of it in collecting the
+ * ephemerons, where the property costs a tenth.
+ */
+const DECODED_NODES = Symbol.for("@eslint/jskit.decodedNodes");
+
+/** A `Program` that may carry its node table. */
+interface Recorded {
+	[DECODED_NODES]?: DecodedNodes;
+}
+
+/**
+ * Remembers the node table of a decoded tree.
+ * @param program The decoded `Program` node.
+ * @param record The table and the layout it indexes.
+ * @returns {void}
+ */
+export function recordDecodedNodes(
+	program: object,
+	record: DecodedNodes,
+): void {
+	Object.defineProperty(program, DECODED_NODES, { value: record });
+}
+
+/**
+ * The node table recorded for a `Program` node, if this package decoded it.
+ * @param program A `Program` node.
+ * @returns The record, or `null` for a tree decoded elsewhere.
+ */
+export function decodedNodes(program: object): DecodedNodes | null {
+	return Object.hasOwn(program, DECODED_NODES)
+		? ((program as Recorded)[DECODED_NODES] as DecodedNodes)
+		: null;
+}
 
 /**
  * Converts a node and everything below it.
@@ -114,7 +176,7 @@ export function alias(index: number): EsNode | null {
 	const pos = nodesBase + index * nodeWords;
 	const result = decoders[words[pos + NODE_KIND]](pos);
 
-	if (table !== null && table[index] === null) {
+	if (table !== null && table[index] === undefined) {
 		table[index] = result;
 	}
 
@@ -223,15 +285,15 @@ export function locOf(start: number, end: number): SourceLocation {
  *      and `loc` off the nodes entirely. Only the ESLint adapter asks for
  *      them, because ESLint requires both.
  * @param nodeTable Filled with every decoded node under its node index, or
- *      `null` to record nothing. It must hold `null` at every index on entry,
- *      and an index no slot points at stays `null`.
+ *      `null` to record nothing. It must be empty on entry — holes, which
+ *      cost nothing to allocate — and an index no slot points at stays one.
  * @returns The decoded root node.
  */
 export function decodeTree(
 	reader: AstReader,
 	typescript: boolean,
 	lineIndex: LineIndex | null,
-	nodeTable: (EsNode | null)[] | null = null,
+	nodeTable: (EsNode | undefined)[] | null = null,
 ): EsNode {
 	words = reader.words;
 	nodesBase = reader.nodesBase;

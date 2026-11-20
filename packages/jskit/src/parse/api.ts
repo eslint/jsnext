@@ -25,7 +25,7 @@ import {
 } from "./node-kinds.js";
 import { Parser } from "./parser.js";
 import { AstReader, TokenReader } from "./reader.js";
-import { decodeTree, type EsNode } from "./to-ast.js";
+import { decodeTree, recordDecodedNodes, type EsNode } from "./to-ast.js";
 import type { Program } from "./ast-types.js";
 import {
 	KIND_TOKEN_TEXT,
@@ -552,18 +552,20 @@ function locateProblems(
 
 /**
  * Converts a parse result into an ESTree AST.
+ *
+ * Every node is also recorded under its node index, against the returned
+ * `Program`, which is what lets `toScopeManager()`, `Scopes`, and
+ * `toScopeTree()` resolve a scope buffer `analyze()` wrote to this tree's
+ * own objects.
  * @param result The value returned by `parse()`.
  * @param options How the tree should be decoded.
  * @param lines Where to look up positions, or `null` for no `range`/`loc`.
- * @param nodes Filled with every decoded node under its node index, or `null`
- *      to record nothing. Must hold `null` at every index below the buffer's node count.
  * @returns The ESTree `Program` node.
  */
 export function buildAst(
 	result: ParseResult,
 	options: ToAstOptions,
 	lines: LineIndex | null,
-	nodes: (EsNode | null)[] | null = null,
 ): Program {
 	if (options.text !== undefined) {
 		supplySource(result, options.text);
@@ -571,6 +573,7 @@ export function buildAst(
 
 	const reader = new AstReader(result);
 	const sourceType = resolveSourceType(result, options.sourceType);
+	const nodes = new Array<EsNode | undefined>(reader.nodeCount);
 	const program = decodeTree(
 		reader,
 		(options.dialect ?? "ts") === "ts",
@@ -579,6 +582,11 @@ export function buildAst(
 	);
 
 	program.sourceType = sourceType;
+	recordDecodedNodes(program, {
+		nodes,
+		nodesBase: reader.nodesBase,
+		nodeWords: reader.nodeWords,
+	});
 
 	/*
 	 * The buffer decides whether the tree reports tokens: one parsed with
@@ -619,6 +627,12 @@ export function buildAst(
  * *allowed* — that is `validate()`'s job, and the two are separate passes
  * over the same buffer: run both when the problems matter, either one alone
  * when they do not.
+ *
+ * The tree is ready for scope analysis either way. Pass the same parse
+ * result to `analyze()` — native when `@eslint/jskit-native` is installed —
+ * and this `Program` to `toScopeManager()`, `Scopes`, or `toScopeTree()`,
+ * and every node they hand back is one of this tree's own objects.
+ * `analyzeTree()` is only for a tree this package did not decode.
  * @param result The value returned by `parse()`.
  * @param options How the tree should be decoded.
  * @returns The ESTree `Program` node.

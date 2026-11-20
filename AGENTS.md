@@ -32,7 +32,7 @@ Everything ships from `src/index.ts` as one bundle, `dist/jskit.js`. Within
 both — always through the sub-index, never a module inside another
 directory. A name another directory needs but the package should not export
 goes in that directory's `internal.ts` instead, since `src/index.ts` makes
-everything in `index.ts` public; `scope/internal.ts` is the one so far. The package is
+everything in `index.ts` public; `parse/internal.ts` is the one so far. The package is
 `sideEffects: false`, so importing one analysis still leaves the others behind;
 `tests/scope/tree-shaking.test.ts` proves it against the built bundle.
 
@@ -81,7 +81,11 @@ separate implementation — the walk goes through the `AstAccess` interface and
 each representation supplies an adapter. Both return an `ArrayBuffer` in the
 binary scope format; the escope-compatible object graph comes back through
 `toScopeManager(buffer, program)`, point queries through `Scopes`, and a JSON
-debugging view through `toScopeTree()`. The format is specified in
+debugging view through `toScopeTree()`. Each consumer is handed `analyze()`'s
+buffer with either the parse result or the `Program` that `toAST()` decoded
+from it — the second resolves handles to the tree's own objects through the
+node table the decode records against that `Program` — or `analyzeTree()`'s
+buffer with the tree it walked. The format is specified in
 [`packages/jskit/docs/scope/architecture.md`](./packages/jskit/docs/scope/architecture.md).
 A change to the walk's decisions belongs
 in `referencer.ts`, a change to binding/resolution semantics in
@@ -115,7 +119,9 @@ JavaScript from the buffer, which is why `toAST()`'s speed lives in the
 _generated_ decoder (`src/parse/to-ast-decode.ts`, from
 `scripts/parse/to-ast-shapes.mjs`) rather than in Rust. `analyzeTree()` has
 no native form on purpose: it reads the caller's ESTree objects, and crossing
-the Node-API boundary per node costs more than the walk saves. `inferTypes()`
+the Node-API boundary per node costs more than the walk saves — and a tree
+`toAST()` decoded never needs it, since `analyze()` over the same parse result
+resolves to that tree's objects. `inferTypes()`
 follows the same split: the Rust side produces the buffer, and the `Types`
 queries stay TypeScript.
 

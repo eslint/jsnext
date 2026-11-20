@@ -13,6 +13,11 @@ The [package README](../../README.md#scope-analysis) has the short version.
 | `analyze()`     | the [parser](../parse/api.md)'s binary buffers | The source is yours to parse. Nothing is ever decoded into ESTree objects, which is where the speed comes from. |
 | `analyzeTree()` | An ordinary ESTree tree                        | You already have an AST, from `espree`, `@typescript-eslint/parser`, or anything else ESLint-compatible.        |
 
+A tree `toAST()` decoded does not need `analyzeTree()`: run `analyze()` over
+its parse result and pass the consumers the tree, as
+[below](#from-source-text-back-to-your-tree). `analyzeTree()` is for a tree this
+package did not decode, and it has no native implementation.
+
 Both run the same walk and return the same thing: one `ArrayBuffer` in a
 compact binary scope format, where every binding has a stable symbol ID and
 every node reference is an integer handle into the program that was analyzed.
@@ -85,6 +90,34 @@ scopeManager.reader.text(scope.variables[0].identifiers[0]); // "answer"
 
 `nodeType()` and `nodeRange()` work on either representation, so code written
 against them runs unchanged on both.
+
+### From source text, back to your tree
+
+The two paths above meet here: parse the text, decode the tree you will work
+with, analyze the _parse result_, and hand the consumers the _tree_.
+
+```js
+import { analyze, parse, toAST, toScopeManager, validate } from "@eslint/jskit";
+
+const result = parse("const answer = 42; answer;");
+const problems = validate(result, { sourceType: "module" });
+const program = toAST(result);
+const scopes = analyze(result, { sourceType: "module" });
+const scopeManager = toScopeManager(scopes, program);
+
+scopeManager.scopes[1].variables[0].identifiers[0]; // the Identifier in program
+```
+
+`parse()` and `analyze()` both run in Rust when `@eslint/jskit-native` is
+installed, and nothing walks the tree to number it: `toAST()` records every
+object it creates under its node index, against the `Program` it returns, and
+the consumers resolve the scope buffer's handles through that record. It is
+the pipeline the [ESLint parser object](../parse/api.md#using-it-with-eslint)
+runs. `Scopes` and `toScopeTree()` accept the `Program` the same way.
+
+The tree has to come from the same parse result the analysis read. One
+decoded from another is refused — at the first handle that names no node in
+it, since neither buffer names the other.
 
 ### Querying the buffer directly
 
@@ -230,7 +263,7 @@ it.
 | `scopes`                            | Every scope, in the order they were created.                  |
 | `globalScope`                       | The outermost scope.                                          |
 | `ast`                               | How the analysis read the program.                            |
-| `reader`                            | The `AstReader`, for `analyze()`; `null` for `analyzeTree()`. |
+| `reader`                            | The `AstReader` over a parse result; `null` over a `Program`. |
 | `acquire(node, inner?)`             | The scope a node opened.                                      |
 | `acquireAll(node)`                  | Every scope a node opened.                                    |
 | `release(node, inner?)`             | The scope enclosing the one a node opened.                    |

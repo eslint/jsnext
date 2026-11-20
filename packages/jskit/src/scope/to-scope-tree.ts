@@ -156,8 +156,9 @@ export interface ToScopeTreeOptions {
 /**
  * Renders a scope buffer as a plain, self-contained scope tree.
  * @param scopes The buffer `analyze()` or `analyzeTree()` returned.
- * @param source The parse result the buffer was produced from, or the
- *      `Program` node when the buffer came from `analyzeTree()`.
+ * @param source The parse result the buffer was produced from, or a
+ *      `Program` node: one `toAST()` decoded from that result, or the one
+ *      `analyzeTree()` walked.
  * @param options How the program should be read.
  * @returns The tree, ready for `JSON.stringify`.
  * @throws {TypeError} When the buffer is not a scope buffer, or the source
